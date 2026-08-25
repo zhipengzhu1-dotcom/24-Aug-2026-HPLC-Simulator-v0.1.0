@@ -1,0 +1,17 @@
+field,value,units,notes
+column_length,,mm,
+column_id,,mm,
+particle_size,,um,
+flow,,mL/min,
+temperature,,C,metadata only in v0.1
+percentB_start,,%,phi0 x 100
+percentB_end,,%,phif x 100
+initial_hold,,min,t_init; 0 if none
+dwell_volume,,mL,measured per PROTOCOL step 1
+dwell_time,,min,VD / F
+t0,,min,measured marker time
+t0_marker,,,e.g. uracil
+injection_volume,,uL,keep constant across runs
+instrument,,,make/model
+column_name,,,vendor + phase
+sample,,,mixture identity
