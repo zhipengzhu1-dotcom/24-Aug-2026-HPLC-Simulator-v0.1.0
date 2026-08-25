@@ -3,7 +3,8 @@ column_length,100,mm,
 column_id,2.1,mm,
 particle_size,1.6,um,
 flow,0.4,mL/min,
-temperature,,C,metadata only in v0.1
+temperature,45,C,metadata only in v0.1
+sample_manager_temp,20,C,provenance only
 percentB_start,,%,phi0 x 100
 percentB_end,,%,phif x 100
 initial_hold,,min,t_init; 0 if none
