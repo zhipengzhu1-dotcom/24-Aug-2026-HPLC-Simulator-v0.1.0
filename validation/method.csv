@@ -1,7 +1,7 @@
 field,value,units,notes
-column_length,,mm,
-column_id,,mm,
-particle_size,,um,
+column_length,100,mm,
+column_id,2.1,mm,
+particle_size,1.6,um,
 flow,,mL/min,
 temperature,,C,metadata only in v0.1
 percentB_start,,%,phi0 x 100
@@ -13,5 +13,5 @@ t0,,min,measured marker time
 t0_marker,,,e.g. uracil
 injection_volume,,uL,keep constant across runs
 instrument,,,make/model
-column_name,,,vendor + phase
+column_name,Waters CORTECS UPLC Shield RP18,,vendor + phase
 sample,,,mixture identity
