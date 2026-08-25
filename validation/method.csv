@@ -13,6 +13,7 @@ dwell_time,0.9375,min,VD / F
 t0,,min,measured marker time
 t0_marker,,,e.g. uracil
 injection_volume,10,uL,keep constant across runs
+sample_diluent,50:50 water:ACN,,consider diluting 1:1 with water or 2-3 uL injection; keep identical across runs
 instrument,Waters UPLC Acquity H-Class,,make/model
 column_name,Waters CORTECS UPLC Shield RP18,,vendor + phase
 sample,,,mixture identity
