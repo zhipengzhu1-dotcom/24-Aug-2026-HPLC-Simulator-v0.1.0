@@ -37,3 +37,26 @@ If a peak can't be assigned in some run (co-elution, below detection), leave tha
 ## 5 · Commit
 
 Fill `method.csv`, `run1.csv`, `run2.csv`, `run3.csv` (and `run4.csv` if run) in this folder, commit, and note completion on [issue #8](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/8) — that closes the last blocker before spec assembly.
+
+## Worked example (A = 0.1% formic acid in water, B = acetonitrile, 5 → 95 %B)
+
+All runs share the range 5 → 95 %B and the same initial hold (0.5 min shown; 0 is fine — keep it identical). Only tG changes. Wash and re-equilibration are part of the instrument method but are **not** entered into the simulator.
+
+**Run 1 — scouting, tG = 15 min**
+
+| Time (min) | %B | Segment |
+|---|---|---|
+| 0.00 | 5 | initial hold |
+| 0.50 | 5 | hold ends |
+| 15.50 | 95 | linear ramp (tG = 15) ← modeled |
+| 18.50 | 95 | wash — not modeled |
+| 18.60 | 5 | return |
+| ~33 | 5 | re-equilibrate ≥ 10 column volumes — not modeled |
+
+- **Run 2 — scouting, tG = 45 min** (β = 3): ramp 0.50 → 45.50 min, 5 → 95 %B; same wash/re-equil pattern.
+- **Run 3 — confirmation, tG = 25 min** (≈ 1.7×, inside the bracket): ramp 0.50 → 25.50 min.
+- **Run 4 — optional, tG = 60 min** (outside the bracket): ramp 0.50 → 60.50 min, probes extrapolation warnings.
+
+Simulator inputs from these tables: %B start = 5, %B end = 95, t_init = 0.5 min, tG = 15 / 45 / 25 (/ 60).
+
+Notes: adding 0.1% FA to the acetonitrile too is your chromatographic choice — the model is indifferent, but use the same bottles for all runs. Re-equilibration: ≥ 10 column volumes ≈ 15 min at 1 mL/min on a 150 × 4.6 mm column (Vm ≈ 1.5 mL); scale to your column and flow. A different shared endpoint (80 or 100 %B) is fine if identical across runs.
