@@ -8,11 +8,11 @@ sample_manager_temp,20,C,provenance only
 percentB_start,,%,phi0 x 100
 percentB_end,,%,phif x 100
 initial_hold,,min,t_init; 0 if none
-dwell_volume,,mL,measured per PROTOCOL step 1
-dwell_time,,min,VD / F
+dwell_volume,0.375,mL,measured per PROTOCOL step 1
+dwell_time,0.9375,min,VD / F
 t0,,min,measured marker time
 t0_marker,,,e.g. uracil
-injection_volume,,uL,keep constant across runs
-instrument,,,make/model
+injection_volume,10,uL,keep constant across runs
+instrument,Waters UPLC Acquity H-Class,,make/model
 column_name,Waters CORTECS UPLC Shield RP18,,vendor + phase
 sample,,,mixture identity
