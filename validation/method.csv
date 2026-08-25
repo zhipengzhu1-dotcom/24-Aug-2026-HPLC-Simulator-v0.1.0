@@ -2,7 +2,7 @@ field,value,units,notes
 column_length,100,mm,
 column_id,2.1,mm,
 particle_size,1.6,um,
-flow,,mL/min,
+flow,0.4,mL/min,
 temperature,,C,metadata only in v0.1
 percentB_start,,%,phi0 x 100
 percentB_end,,%,phif x 100
