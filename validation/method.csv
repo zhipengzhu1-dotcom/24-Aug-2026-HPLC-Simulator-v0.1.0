@@ -5,9 +5,9 @@ particle_size,1.6,um,
 flow,0.4,mL/min,
 temperature,45,C,metadata only in v0.1
 sample_manager_temp,20,C,provenance only
-percentB_start,,%,phi0 x 100
-percentB_end,,%,phif x 100
-initial_hold,,min,t_init; 0 if none
+percentB_start,5,%,phi0 x 100
+percentB_end,95,%,phif x 100
+initial_hold,0.5,min,t_init; 0 if none
 dwell_volume,0.375,mL,measured per PROTOCOL step 1
 dwell_time,0.9375,min,VD / F
 t0,,min,measured marker time
