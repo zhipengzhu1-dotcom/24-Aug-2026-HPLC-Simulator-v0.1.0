@@ -10,7 +10,7 @@ percentB_end,95,%,phif x 100
 initial_hold,0.5,min,t_init; 0 if none
 dwell_volume,0.375,mL,measured per PROTOCOL step 1
 dwell_time,0.9375,min,VD / F
-t0,,min,measured marker time
+t0,0.6,min,measured marker time
 t0_marker,,,e.g. uracil
 injection_volume,10,uL,keep constant across runs
 sample_diluent,50:50 water:ACN,,consider diluting 1:1 with water or 2-3 uL injection; keep identical across runs
