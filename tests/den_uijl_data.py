@@ -4,7 +4,8 @@ M. J. den Uijl et al., *J. Chromatogr. A* **1636** (2021) 461780, CC BY 4.0;
 peak tables from supplementary Section S-2, conditions from article Sections
 2.2–2.3. Every number below is transcribed from
 `docs/research/validation-datasets.md`, which is the citable transcription —
-this module is deliberately a restatement of those tables and nothing else.
+this module is deliberately a restatement of those tables and nothing else, and
+`test_reality.py` asserts that cell-for-cell rather than trusting the eye.
 
 Two independent datasets from the same paper: Set X is "representative for
 common practice", Set Y was acquired for maximum precision. They differ in
@@ -84,7 +85,6 @@ SET_X = ScanningGradientSet(
     phif=0.95,
     t_init=0.25,
     gradient_times=(1.5, 3.0, 3.75, 4.5, 6.0, 7.5, 9.0, 12.0),
-    # fmt: off
     retention={
         # Mean of 10 replicates, min — supplementary Tables S-3 to S-10.
         "Indigotin": (1.657, 2.379, 2.705, 3.018, 3.610, 4.169, 4.706, 5.724),
@@ -115,7 +115,6 @@ SET_X = ScanningGradientSet(
         "Peptide 4": (1.081, 1.343, 1.460, 1.569, 1.774, 1.968, 2.155, 2.514),
         "Peptide 5": (1.122, 1.436, 1.577, 1.711, 1.965, 2.203, 2.428, 2.859),
     },
-    # fmt: on
     unretained=_UNRETAINED,
 )
 
@@ -139,7 +138,6 @@ SET_Y = ScanningGradientSet(
     phif=0.85,
     t_init=0.0,
     gradient_times=(1.0, 1.5, 3.0, 3.75, 4.5, 6.0, 7.5, 9.0, 12.0, 18.0),
-    # fmt: off
     retention={
         # Mean of 10 replicates, min, at 4 decimals as published.
         "Uracil": (0.2299, 0.2299, 0.2294, 0.2289, 0.2289, 0.2292, 0.2289, 0.2290, 0.2288, 0.2286),
@@ -328,6 +326,5 @@ SET_Y = ScanningGradientSet(
             3.6808,
         ),
     },
-    # fmt: on
     unretained=_UNRETAINED,
 )

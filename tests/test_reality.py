@@ -10,6 +10,7 @@ Every target gradient here is held out of the fit that predicts it.
 """
 
 from dataclasses import replace
+from pathlib import Path
 from statistics import fmean, median
 
 import pytest
@@ -64,20 +65,28 @@ def _lab_predictions(
 
 
 @pytest.mark.parametrize(
-    ("target", "measured", "tripwire"),
+    ("target", "measured", "tripwire", "is_extrapolation"),
     [
         # SPEC §10's trust bar is avg ≤ 2%, worst ≤ 5%, order correct. `tripwire` is the
         # tighter regression guard: pre-build validation put these at 0.35% and 0.26%,
         # so a drift to 1.9% would clear the contract without anyone noticing.
-        (LAB_RUN3, LAB_MEASURED_TG25, 0.5),
-        (LAB_RUN4, LAB_MEASURED_TG60, 0.4),
+        (LAB_RUN3, LAB_MEASURED_TG25, 0.5, False),
+        (LAB_RUN4, LAB_MEASURED_TG60, 0.4, True),
     ],
     ids=["tG25-confirmation", "tG60-extrapolation"],
 )
 def test_lab_held_out_runs_are_predicted_within_the_trust_bar(
-    target: Run, measured: dict[str, float], tripwire: float
+    target: Run, measured: dict[str, float], tripwire: float, is_extrapolation: bool
 ) -> None:
     """Fit run1+run2 (tG = 15/45), predict run3 (interpolation) and run4 (extrapolation)."""
+    # The issue asks for tG = 60 "asserted as the extrapolation case" — so assert it,
+    # rather than leaving the word in a test id. tG = 25 sits inside the 15/45 scouting
+    # bracket and tG = 60 outside it, which is the whole reason the two are separate
+    # criteria: one interpolates between measured slopes, the other reaches past them.
+    scouting = (LAB_RUN1.gradient.t_gradient, LAB_RUN2.gradient.t_gradient)
+    within_bracket = min(scouting) <= target.gradient.t_gradient <= max(scouting)
+    assert within_bracket is not is_extrapolation
+
     predicted, measured_times = _lab_predictions(target, measured)
     magnitudes = [abs(error) for error in _signed_percent_errors(predicted, measured_times)]
 
@@ -111,10 +120,11 @@ def test_lab_residual_bias_flips_sign_between_the_two_held_out_conditions() -> N
 
 # --- den Uijl et al. 2021 scanning-gradient sets (research doc §1, §2) ---
 
-# SPEC §10 layer 3's three tolerances.
-_MEDIAN_BAR = 0.5
-_WORST_CASE_BAR = 2.0
-_MEAN_SIGNED_BAR = 0.2
+# SPEC §10 layer 3's three tolerances for the literature sets. The lab dataset upstream
+# has its own, looser pair (_LAB_AVERAGE_BAR / _LAB_WORST_CASE_BAR) — do not cross them.
+_DEN_UIJL_MEDIAN_BAR = 0.5
+_DEN_UIJL_WORST_CASE_BAR = 2.0
+_DEN_UIJL_MEAN_SIGNED_BAR = 0.2
 
 
 def _den_uijl_signed_errors(
@@ -160,9 +170,9 @@ def test_den_uijl_predictions_meet_the_reality_bar(
     # A fixture that quietly loses compounds would otherwise pass every bar below.
     assert len(errors) == n_predictions
 
-    assert median(magnitudes) <= _MEDIAN_BAR
-    assert max(magnitudes) <= _WORST_CASE_BAR
-    assert abs(fmean(errors)) <= _MEAN_SIGNED_BAR
+    assert median(magnitudes) <= _DEN_UIJL_MEDIAN_BAR
+    assert max(magnitudes) <= _DEN_UIJL_WORST_CASE_BAR
+    assert abs(fmean(errors)) <= _DEN_UIJL_MEAN_SIGNED_BAR
 
 
 @pytest.mark.parametrize(
@@ -195,29 +205,56 @@ def test_mean_signed_bar_is_what_catches_a_dropped_time_term(
     errors = _den_uijl_signed_errors(dataset, fit_at=(3.0, 9.0), predict_at=(4.5, 7.5))
 
     assert fmean(errors) == pytest.approx(documented_bias, abs=0.05)
-    assert abs(fmean(errors)) > _MEAN_SIGNED_BAR
+    assert abs(fmean(errors)) > _DEN_UIJL_MEAN_SIGNED_BAR
     # The slip is a systematic shift, not scatter: the per-peak bar never notices it.
-    assert max(abs(error) for error in errors) <= _WORST_CASE_BAR
+    assert max(abs(error) for error in errors) <= _DEN_UIJL_WORST_CASE_BAR
+
+
+_REFUSED = "refused"
+_LOW_CONFIDENCE_FIT = "low-confidence fit"
+
+# The split is pinned per compound because the research doc's amended §1.2 now states it.
+# If the engine's behaviour here changes, this list and that paragraph must move together
+# — a green test alongside a stale doc is exactly what the amendment was fixing.
+_UNRETAINED_CASES = [
+    (SET_X, "Uracil", _REFUSED),
+    (SET_X, "Cytosine", _REFUSED),
+    (SET_X, "Tyramine", _REFUSED),
+    (SET_X, "Peptide 1", _REFUSED),
+    (SET_Y, "Uracil", _REFUSED),
+    (SET_Y, "Cytosine", _REFUSED),
+    # Set Y's t0 + τ is only 0.261 min, so unlike Set X these two clear it and do move
+    # with gradient time — a real if badly-conditioned LSS solution, not an impossibility.
+    (SET_Y, "Tyramine", _LOW_CONFIDENCE_FIT),
+    (SET_Y, "Peptide 1", _LOW_CONFIDENCE_FIT),
+]
+
+
+def test_every_flat_compound_has_a_pinned_expectation() -> None:
+    """The case list above must not drift from the fixtures' own `unretained` tuples."""
+    assert {(dataset.name, compound) for dataset, compound, _ in _UNRETAINED_CASES} == {
+        (dataset.name, compound) for dataset in (SET_X, SET_Y) for compound in dataset.unretained
+    }
 
 
 @pytest.mark.parametrize(
-    ("dataset", "compound"),
-    [(dataset, c) for dataset in (SET_X, SET_Y) for c in dataset.unretained],
+    ("dataset", "compound", "expected"),
+    _UNRETAINED_CASES,
     ids=[
-        f"{dataset.name.rsplit(' ', 1)[-1]}-{c}"
-        for dataset in (SET_X, SET_Y)
-        for c in dataset.unretained
+        f"{dataset.name.rsplit(' ', 1)[-1]}-{compound}"
+        for dataset, compound, _ in _UNRETAINED_CASES
     ],
 )
 def test_unretained_compounds_never_come_back_as_a_confident_fit(
-    dataset: ScanningGradientSet, compound: str
+    dataset: ScanningGradientSet, compound: str, expected: str
 ) -> None:
     """Uracil, Cytosine, Tyramine and Peptide 1 are flat across tG (research doc §1.2).
 
-    The research doc says the engine "should refuse to fit them rather than emit garbage
-    parameters". Six of these eight cases do refuse: the band is already off the column
-    when the gradient arrives, so both runs are literally the same isocratic measurement
-    and there is nothing to fit.
+    An earlier version of §1.2 said the engine "should refuse to fit them rather than
+    emit garbage parameters". This ticket amended that, because it overstates what SPEC
+    permits. Six of these eight cases do refuse: the band is already off the column when
+    the gradient arrives, so both runs are literally the same isocratic measurement and
+    there is nothing to fit.
 
     Set Y's Tyramine and Peptide 1 are not that case. They elute after t0 + τ and do move
     with gradient time (0.3320 → 0.3456 min), so an LSS solution genuinely exists — it is
@@ -225,17 +262,77 @@ def test_unretained_compounds_never_come_back_as_a_confident_fit(
     those two fit and come back low-confidence with log10 k0 ≈ −0.25, i.e. k0 < 1: the
     engine saying "not a retained peak" in the only way the spec permits it to.
 
-    So the invariant is the union of the two, and it is the one a caller can rely on:
-    an unretained compound never returns as a *confident* fit.
+    The invariant that holds across all eight, and the one a caller can rely on: an
+    unretained compound never returns as a *confident* fit.
     """
     peak = dataset.peak(compound, 3.0, 9.0)
     try:
         fit = fit_peak(peak, dataset.method, dataset.run(3.0), dataset.run(9.0))
     except ValueError as refusal:
-        # Refused outright — the stronger of the two acceptable outcomes, and it must be
-        # refused for the documented reason rather than by some unrelated failure.
+        assert expected == _REFUSED, f"expected a {expected}, got refusal: {refusal}"
+        # Refused for the documented reason, not by some unrelated failure.
         assert "before the gradient" in str(refusal)
         return
 
+    assert expected == _LOW_CONFIDENCE_FIT, f"expected {expected}, got a fit"
     assert fit.low_confidence
     assert fit.low_k0
+
+
+# --- the fixtures against their source of record ---
+
+_TRANSCRIPTION_OF_RECORD = (
+    Path(__file__).resolve().parents[1] / "docs/research/validation-datasets.md"
+)
+
+
+def _published_table(
+    heading: str, stop_at: str
+) -> tuple[tuple[float, ...], dict[str, tuple[float, ...]]]:
+    """Re-parse a peak table straight out of the research doc's markdown."""
+    doc = _TRANSCRIPTION_OF_RECORD.read_text(encoding="utf-8")
+    assert heading in doc, f"{_TRANSCRIPTION_OF_RECORD.name} no longer contains {heading!r}"
+    body = doc.split(heading, 1)[1].split(stop_at, 1)[0]
+
+    rows = [
+        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for line in body.splitlines()
+        if line.strip().startswith("|")
+    ]
+    rows = [cells for cells in rows if set("".join(cells)) - set("-: ")]
+
+    gradient_times = tuple(float(head.split("=")[1]) for head in rows[0][1:])
+    # The corrected Set X cell carries a footnote marker in the published table.
+    table = {
+        cells[0]: tuple(float(cell.rstrip("*").strip()) for cell in cells[1:]) for cells in rows[1:]
+    }
+    return gradient_times, table
+
+
+@pytest.mark.parametrize(
+    ("dataset", "heading", "stop_at"),
+    [
+        (SET_X, "### 1.2 Measured retention", "Data-quality correction"),
+        (SET_Y, "### 2.2 Measured retention", "Cytosine's tR"),
+    ],
+    ids=["set-X", "set-Y"],
+)
+def test_fixture_matches_the_transcription_of_record(
+    dataset: ScanningGradientSet, heading: str, stop_at: str
+) -> None:
+    """Every published cell, re-read from the research doc and compared to the fixture.
+
+    `den_uijl_data.py` claims to be nothing but a restatement of the tables in
+    `docs/research/validation-datasets.md`. This is that claim, executed.
+
+    It matters most for the columns the reality bar never touches. The bar fits on
+    tG = 3/9 and predicts 4.5/7.5; a digit lost in the tG = 1.5 or 18 column would sit
+    there silently forever, and no amount of reading the fixture catches what the eye
+    slides over. Comparing against the source does.
+    """
+    gradient_times, published = _published_table(heading, stop_at)
+
+    assert dataset.gradient_times == gradient_times
+    assert list(dataset.retention) == list(published), "compound set or row order drifted"
+    for compound, times in published.items():
+        assert dataset.retention[compound] == pytest.approx(times, abs=0.0), compound

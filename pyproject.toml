@@ -31,13 +31,6 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
-[tool.ruff.lint.per-file-ignores]
-# Transcribed published peak tables: one row per compound, one column per gradient time,
-# laid out to mirror the source table so the transcription can be audited against it by
-# eye. Set Y's ten columns run a couple of characters past the limit; reflowing them
-# would put one retention time per line and make that audit impossible.
-"tests/den_uijl_data.py" = ["E501"]
-
 [tool.mypy]
 python_version = "3.12"
 strict = true
