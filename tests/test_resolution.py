@@ -14,6 +14,7 @@ from hplcsim.model import (
     s_e_from_s_base10,
 )
 from hplcsim.resolution import resolution_table
+from hplcsim.width import FittedPlateCount
 
 METHOD = Method(t0=0.6, t_dwell=0.9375, flow=0.4, column_length_mm=100.0, particle_um=1.6)
 
@@ -166,3 +167,72 @@ class TestCriticalPair:
         # rather than an average.
         other = next(pair for pair in table.pairs if pair is not table.critical_pair)
         assert other.rs > 10.0 * table.critical_pair.rs
+
+
+def _fitted(plate_count: float) -> FittedPlateCount:
+    return FittedPlateCount(
+        plate_count=plate_count,
+        implied_run1=plate_count,
+        implied_run2=plate_count,
+        low_confidence=False,
+    )
+
+
+class TestPlateCountPrecedence:
+    """Measured-first: a peak's fitted N, else the global knob, else the column default.
+
+    The same ordering SPEC §4 gives t0 (marker time primary, geometry estimate as a
+    labelled fallback), extended to N by ticket #23.
+    """
+
+    def test_a_fitted_plate_count_overrides_the_global_knob_for_its_peak_only(self) -> None:
+        table = resolution_table(
+            THREE_PEAKS,
+            METHOD,
+            _gradient(20.0),
+            plate_count=20000.0,
+            plate_counts=[_fitted(12000.0), None, None],
+        )
+
+        assert [peak.width.plate_count for peak in table.peaks] == [12000.0, 20000.0, 20000.0]
+        assert [peak.width.plate_count_source for peak in table.peaks] == [
+            "fitted",
+            "supplied",
+            "supplied",
+        ]
+
+    def test_without_a_knob_the_unfitted_peaks_fall_through_to_the_default(self) -> None:
+        table = resolution_table(
+            THREE_PEAKS, METHOD, _gradient(20.0), plate_counts=[None, _fitted(12000.0), None]
+        )
+
+        assert [peak.width.plate_count_source for peak in table.peaks] == [
+            "default",
+            "fitted",
+            "default",
+        ]
+
+    def test_no_per_peak_plate_counts_means_every_peak_uses_the_knob(self) -> None:
+        table = resolution_table(THREE_PEAKS, METHOD, _gradient(20.0), plate_count=20000.0)
+
+        assert all(peak.width.plate_count_source == "supplied" for peak in table.peaks)
+
+    def test_a_plate_count_per_peak_is_required_when_they_are_supplied(self) -> None:
+        with pytest.raises(ValueError, match="one plate count per peak"):
+            resolution_table(THREE_PEAKS, METHOD, _gradient(20.0), plate_counts=[_fitted(1e4)])
+
+    def test_fitted_plate_counts_travel_with_their_peak_through_the_sort(self) -> None:
+        # Same guard as the names: at tG = 60 FAST elutes first although it is passed
+        # second, and its own N — not SLOW's — must be the one its width rests on.
+        table = resolution_table(
+            [SLOW, FAST],
+            METHOD,
+            _gradient(60.0),
+            names=["slow", "fast"],
+            plate_counts=[_fitted(30000.0), _fitted(10000.0)],
+        )
+
+        assert [(peak.name, peak.width.plate_count) for peak in table.peaks] == [
+            ("fast", 10000.0),
+            ("slow", 30000.0),
+        ]

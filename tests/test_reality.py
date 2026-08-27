@@ -18,11 +18,11 @@ from statistics import fmean, median, stdev
 import pytest
 
 from den_uijl_data import SET_X, SET_Y, ScanningGradientSet
-from hplcsim.fit import fit_peak, fit_peaks
+from hplcsim.fit import FitResult, fit_peak, fit_peaks
 from hplcsim.model import Method, Peak, Run
-from hplcsim.resolution import resolution_table
+from hplcsim.resolution import ResolutionTable, resolution_table
 from hplcsim.retention import gradient_steepness, predict_retention
-from hplcsim.width import band_compression_factor, peak_width
+from hplcsim.width import band_compression_factor, peak_width, plate_count_from_width
 from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
@@ -568,49 +568,172 @@ def test_the_column_based_plate_count_underpredicts_real_widths() -> None:
     assert all(0.6 <= ratio <= 1.0 for ratio in ratios), ratios
 
 
-# --- resolution against the held-out runs (SPEC §10's Rs bar, ticket #17) ---
+# --- the plate count fitted from the scouting widths (ticket #23) ---
+#
+# The §5.4 statistic above already computes the N each measured width implies; #23
+# makes that a function and fits one N per peak from the scouting pair (research doc
+# plate-count-from-widths.md §3). What changes downstream is every absolute width and
+# every Rs — so this block re-asks the held-out questions with the fitted N and keeps
+# the defaulted-N answers alongside, because width-less sessions still get those.
+
+# Held-out W½ with a fitted N: 0.99–1.16× measured (research doc §0.2), against
+# 0.69–0.92× with the geometry default. The band has margin; the sharper claim is
+# per-peak: fitted is closer to measured than the default in every case.
+_FITTED_WIDTH_BAND = (0.9, 1.25)
+
+# Held-out Rs with a fitted N: 0.90–0.96× measured — slightly pessimistic now, where
+# the default was 1.18–1.39× optimistic.
+_FITTED_RS_BAND = (0.85, 1.05)
+
+
+def _lab_fits() -> list[FitResult]:
+    return fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
+
+
+def _lab_table(target: Run, *, fitted: bool) -> ResolutionTable:
+    """The three lab peaks resolved at a held-out condition, with or without fitted N."""
+    fits = _lab_fits()
+    return resolution_table(
+        [fit.params for fit in fits],
+        LAB_METHOD,
+        target.gradient,
+        names=[peak.name for peak in LAB_MEASURED_PEAKS],
+        plate_counts=[fit.plate_count for fit in fits] if fitted else None,
+    )
+
+
+def _width_ratios(target: Run, run_name: str, *, fitted: bool) -> dict[str, float]:
+    """Predicted / measured W½ per peak at a held-out condition."""
+    return {
+        peak.name: peak.width.w_half / LAB_MEASURED_W_HALF[run_name][peak.name]
+        for peak in _lab_table(target, fitted=fitted).peaks
+    }
+
+
+def test_the_production_inverse_agrees_with_the_calibration_statistic() -> None:
+    """`plate_count_from_width` is §5.4's implied-N statistic, written by hand above.
+
+    The by-hand form multiplies G, t0 and (1 + k_e) out explicitly; production inverts
+    `peak_width` at N = 1. Two routes to one number — kept separate on purpose, so the
+    calibration tests stay an oracle for the function rather than a call to it.
+    """
+    peak = next(p for p in LAB_MEASURED_PEAKS if p.name == _CLEAN_COMPOUND)
+    params = fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params
+    for run_name, run in _RUNS_BY_NAME.items():
+        w_half = LAB_MEASURED_W_HALF[run_name][_CLEAN_COMPOUND]
+        production = plate_count_from_width(params, LAB_METHOD, run.gradient, w_half)
+        assert production == pytest.approx(
+            _implied_plate_count(_CLEAN_COMPOUND, run_name, None), rel=1e-12
+        )
+
+
+def test_the_implied_plate_count_ratio_is_the_data_quality_signal_per_peak() -> None:
+    """How far a peak's two scouting widths disagree about N — characterised, not judged.
+
+    Research doc §5.4 showed a correctly modelled peak holds implied N to ~1% across a
+    fourfold range of tG; Unknown-3's two scouting widths disagree by 16%. That is a
+    different number from the one §2.4 of plate-count-from-widths.md discusses — its
+    N being 1.6× the other compounds', read there as intrinsic because its peaks are
+    the narrowest — but it is the same peak and the same question of whether its
+    widths are trustworthy. The engine reports the ratio; the threshold is
+    diagnostics work (ticket #20), and these are the numbers it will be drawn against.
+    """
+    ratios = [fit.plate_count.ratio for fit in _lab_fits() if fit.plate_count is not None]
+
+    assert ratios == pytest.approx([1.011, 1.074, 1.162], abs=0.002)
+
+
+@pytest.mark.parametrize(
+    ("run_name", "target"),
+    [("tG25", LAB_RUN3), ("tG60", LAB_RUN4)],
+    ids=["tG25-confirmation", "tG60-extrapolation"],
+)
+def test_fitted_plate_counts_predict_the_held_out_widths(run_name: str, target: Run) -> None:
+    """Criterion 1's width half: fit N on runs 1–2, predict W½ at a run never seen.
+
+    The default N is a geometry estimate and reads as one (the test above this block
+    pins it at 0.6–1.0× measured, every peak, every run). A fitted N lands the
+    held-out widths at 0.99–1.16× — and, peak by peak, always closer than the default.
+    """
+    fitted = _width_ratios(target, run_name, fitted=True)
+    default = _width_ratios(target, run_name, fitted=False)
+
+    low, high = _FITTED_WIDTH_BAND
+    assert all(low <= ratio <= high for ratio in fitted.values()), fitted
+    for name, ratio in fitted.items():
+        assert abs(ratio - 1.0) < abs(default[name] - 1.0), (name, ratio, default[name])
+
+
+# --- resolution against the held-out runs (SPEC §10's Rs bar, tickets #17 and #23) ---
 #
 # SPEC §10 wanted "Rs ± 0.3 asserted once the G convention is calibrated". It is
-# calibrated (§5.4) and runs 3–4 now carry W½, so measured Rs exists at a held-out
-# condition for the first time. The bar still cannot be met, for a reason that is
-# about N rather than G: the shipped default N is column geometry, not this column's
-# real efficiency, so predicted peaks are too narrow and every Rs comes out
-# optimistic. What *is* assertable — and is what a chromatographer actually acts on —
-# is that the engine picks the right critical pair. Recorded in research doc §6.
+# calibrated (§5.4) and runs 3–4 carry W½, so measured Rs exists at held-out
+# conditions. #17 found the bar unmet for a reason about N, not G: the defaulted N is
+# column geometry, so every Rs came out 18–39% optimistic. #23 closed that obstacle
+# by fitting N — and the bar is *still* unmet, now for the reason that was always
+# second: the sample sits at Rs 30–116, where ±0.3 is a 0.3–1% tolerance, and the
+# fitted-N residual is −4% to −10%. Recorded in research doc §6 and SPEC §10. What is
+# asserted instead: the right critical pair (both paths), the fitted-N bands, and
+# the unmet ±0.3 pinned as a number so the SPEC sentence cannot rot silently.
 
 _RS_OPTIMISM_BAND = (1.1, 1.6)
+_RS_BAR = 0.3
 
 
-def _measured_resolutions(run_name: str, measured_t_r: dict[str, float]) -> list[float]:
-    """Rs from measured tR and measured W½, in elution order."""
+def _measured_resolutions(
+    run_name: str, measured_t_r: dict[str, float], *, width_offset: float = 0.0
+) -> list[float]:
+    """Rs from measured tR and measured W½, in elution order.
+
+    ``width_offset`` is added to every width: 0 gives the point estimate, ±ULP the two
+    edges of the band the recorded precision allows (`_measured_resolution_bands`).
+    """
     ordered = sorted(measured_t_r, key=lambda name: measured_t_r[name])
+    widths = LAB_MEASURED_W_HALF[run_name]
     return [
         _W_HALF_PER_SIGMA
         / 2.0
         * (measured_t_r[later] - measured_t_r[earlier])
-        / (LAB_MEASURED_W_HALF[run_name][earlier] + LAB_MEASURED_W_HALF[run_name][later])
+        / (widths[earlier] + widths[later] + 2.0 * width_offset)
         for earlier, later in zip(ordered, ordered[1:], strict=False)
     ]
 
 
-@pytest.mark.parametrize(
-    ("run_name", "target", "measured_t_r"),
-    [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)],
-    ids=["tG25-confirmation", "tG60-extrapolation"],
-)
-def test_the_critical_pair_is_identified_correctly_at_held_out_conditions(
-    run_name: str, target: Run, measured_t_r: dict[str, float]
-) -> None:
-    """The decision-relevant output survives a badly-scaled plate count.
+def _measured_resolution_bands(
+    run_name: str, measured_t_r: dict[str, float]
+) -> list[tuple[float, float]]:
+    """The interval each measured Rs can occupy, given the precision its widths carry.
 
-    Rs itself is uniformly optimistic here (see the next test), but that error is a
-    near-common factor across pairs, so the *ranking* is preserved: the pair the
+    Both widths in a pair are recorded to a half-ULP of `LAB_W_HALF_ULP`; the band is
+    the Rs at both widths rounded up against both rounded down. Derived from the data's
+    own precision rather than typed in, so a re-measured run 3 moves it automatically.
+    """
+    ulp = LAB_W_HALF_ULP[run_name]
+    return list(
+        zip(
+            _measured_resolutions(run_name, measured_t_r, width_offset=ulp),
+            _measured_resolutions(run_name, measured_t_r, width_offset=-ulp),
+            strict=True,
+        )
+    )
+
+
+_HELD_OUT = [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)]
+_HELD_OUT_IDS = ["tG25-confirmation", "tG60-extrapolation"]
+
+
+@pytest.mark.parametrize(("run_name", "target", "measured_t_r"), _HELD_OUT, ids=_HELD_OUT_IDS)
+@pytest.mark.parametrize("fitted", [False, True], ids=["default-N", "fitted-N"])
+def test_the_critical_pair_is_identified_correctly_at_held_out_conditions(
+    run_name: str, target: Run, measured_t_r: dict[str, float], fitted: bool
+) -> None:
+    """The decision-relevant output survives either plate count.
+
+    With the default N every Rs is optimistic by a near-common factor; with fitted N
+    every Rs is slightly pessimistic. Neither disturbs the *ranking*: the pair the
     engine calls critical is the pair the instrument says is worst.
     """
-    params = [fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params for peak in LAB_MEASURED_PEAKS]
-    names = [peak.name for peak in LAB_MEASURED_PEAKS]
-
-    table = resolution_table(params, LAB_METHOD, target.gradient, names=names)
+    table = _lab_table(target, fitted=fitted)
 
     measured = _measured_resolutions(run_name, measured_t_r)
     assert table.critical_pair is not None
@@ -619,28 +742,92 @@ def test_the_critical_pair_is_identified_correctly_at_held_out_conditions(
     assert predicted_critical == measured_critical
 
 
-@pytest.mark.parametrize(
-    ("run_name", "target", "measured_t_r"),
-    [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)],
-    ids=["tG25-confirmation", "tG60-extrapolation"],
-)
-def test_resolution_is_uniformly_optimistic_with_a_defaulted_plate_count(
+@pytest.mark.parametrize(("run_name", "target", "measured_t_r"), _HELD_OUT, ids=_HELD_OUT_IDS)
+def test_resolution_with_a_defaulted_plate_count_stays_uniformly_optimistic(
     run_name: str, target: Run, measured_t_r: dict[str, float]
 ) -> None:
-    """Why SPEC §10's Rs ± 0.3 bar is still unmet, pinned as a number.
+    """The width-less path, characterised: why a defaulted N is caveated (SPEC §6.5).
 
-    Every predicted Rs runs high by a similar factor, on both held-out runs. That is
-    the h = 2 default N overstating this column's efficiency — not a defect in G, and
-    not scatter. Pinned as a band so the day someone makes N a fitted quantity, this
-    test fails and says the bar is now worth revisiting.
+    Every predicted Rs runs high by a similar factor on both held-out runs — the h = 2
+    default overstating this column's efficiency, not a defect in G and not scatter.
+    Under #17 this band was the deliberately-failing guard that would trip the day N
+    became fitted; it did (the fitted ratios sit at 0.90–0.96, below 1.0, let alone
+    1.1), and the next test is its replacement. This one stays because sessions
+    without widths still get exactly this behaviour, and it must not drift.
     """
-    params = [fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params for peak in LAB_MEASURED_PEAKS]
-    names = [peak.name for peak in LAB_MEASURED_PEAKS]
-
-    table = resolution_table(params, LAB_METHOD, target.gradient, names=names)
+    table = _lab_table(target, fitted=False)
 
     measured = _measured_resolutions(run_name, measured_t_r)
     ratios = [pair.rs / m for pair, m in zip(table.pairs, measured, strict=True)]
     low, high = _RS_OPTIMISM_BAND
     assert all(low <= ratio <= high for ratio in ratios), ratios
     assert all(ratio > 1.0 for ratio in ratios), f"optimism is one-sided: {ratios}"
+
+
+@pytest.mark.parametrize(("run_name", "target", "measured_t_r"), _HELD_OUT, ids=_HELD_OUT_IDS)
+def test_resolution_with_fitted_plate_counts_lands_within_a_tenth_of_measured(
+    run_name: str, target: Run, measured_t_r: dict[str, float]
+) -> None:
+    """Criterion 1's Rs half — the tightened assertion that replaces the optimism band.
+
+    Fit N from runs 1–2, resolve at a run never seen: Rs comes out at 0.90–0.96× measured
+    on both held-out conditions, 1.5–11.6 Rs units low at Rs 30–116, where the default
+    was 13–26 units high. The residual is slightly pessimistic and no longer a common
+    factor — see the two tests below for what each condition can actually resolve.
+    """
+    table = _lab_table(target, fitted=True)
+
+    measured = _measured_resolutions(run_name, measured_t_r)
+    ratios = [pair.rs / m for pair, m in zip(table.pairs, measured, strict=True)]
+    low, high = _FITTED_RS_BAND
+    assert all(low <= ratio <= high for ratio in ratios), ratios
+
+
+def test_at_tg25_the_fitted_resolution_is_inside_the_measurement_band() -> None:
+    """The confirmation run cannot resolve the fitted-N residual at all.
+
+    run3.csv records W½ to two decimals, so its measured Rs is only known to ±9–13%
+    (−9.1..+11.1% and −10.0..+12.5%, pair by pair).
+    Both fitted-N predictions sit inside that band: at tG = 25 the engine and the
+    instrument agree to within what the instrument wrote down.
+    """
+    table = _lab_table(LAB_RUN3, fitted=True)
+
+    bands = _measured_resolution_bands("tG25", LAB_MEASURED_TG25)
+    for pair, (low, high) in zip(table.pairs, bands, strict=True):
+        assert low <= pair.rs <= high, (pair.earlier.name, pair.later.name, pair.rs, low, high)
+
+
+def test_at_tg60_the_fitted_resolution_residual_is_real() -> None:
+    """The extrapolation run does resolve it: −6.5% and −10%, outside a ±0.5% band.
+
+    run4.csv carries three decimals, so this residual is a genuine statement about the
+    model — one N per compound across a fourfold range of tG, and a G that is itself
+    known to ~10% (research doc plate-count-from-widths.md §2.3). Pinned as *outside*
+    the band so that SPEC §10's wording ("real at tG = 60") is tied to the data: if a
+    better width model ever lands inside, this fails and the sentence gets rewritten.
+    """
+    table = _lab_table(LAB_RUN4, fitted=True)
+
+    bands = _measured_resolution_bands("tG60", LAB_MEASURED_TG60)
+    for pair, (low, high) in zip(table.pairs, bands, strict=True):
+        assert pair.rs < low, (pair.earlier.name, pair.later.name, pair.rs, low, high)
+
+
+@pytest.mark.parametrize(("run_name", "target", "measured_t_r"), _HELD_OUT, ids=_HELD_OUT_IDS)
+def test_the_rs_bar_of_spec_10_is_still_unmet_with_fitted_plate_counts(
+    run_name: str, target: Run, measured_t_r: dict[str, float]
+) -> None:
+    """Rs ± 0.3 — recorded as unmet in SPEC §10, and pinned so the record stays true.
+
+    With N fitted the first obstacle (#17's defaulted N) is gone, and what remains is
+    the second: this sample's pairs sit at Rs 30–116, where ±0.3 is a 0.3–1% tolerance
+    the width model cannot meet and no chromatographer needs. Meeting the bar needs a
+    sample with a near-critical pair, not a better fit. The day every held-out pair
+    lands within 0.3, this fails and SPEC §10 gets its status changed on evidence.
+    """
+    table = _lab_table(target, fitted=True)
+
+    measured = _measured_resolutions(run_name, measured_t_r)
+    misses = [abs(pair.rs - m) for pair, m in zip(table.pairs, measured, strict=True)]
+    assert all(miss > _RS_BAR for miss in misses), misses

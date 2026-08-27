@@ -17,6 +17,7 @@ from scipy.optimize import brentq
 
 from hplcsim.model import Method, Peak, RetentionParams, Run, log10_k0_from_ln_k0
 from hplcsim.retention import predict_retention
+from hplcsim.width import FittedPlateCount, fit_plate_count
 
 # Guillarme et al.'s constraint on the closed form: below log10 k0 = 2.1 the large-k0
 # approximation is worth tens of percent in S, so the data are thin even though the
@@ -64,6 +65,9 @@ class FitResult:
     eluted in each run, in the order the runs were passed; their separation is the
     conditioning number of the whole fit (research doc §7.2). ``seed_s_e`` is the
     §3.2 large-k0 closed form — reported for diagnostics only, never the answer.
+    ``plate_count`` is the peak's N fitted from whichever scouting widths it carries
+    (:func:`~hplcsim.width.fit_plate_count`), ``None`` when it carries none — the
+    caller then falls through to the global knob or the column default.
     """
 
     params: RetentionParams
@@ -75,6 +79,7 @@ class FitResult:
     beta_spacing: BetaSpacing
     low_k0: bool
     low_confidence: bool
+    plate_count: FittedPlateCount | None
 
     @property
     def delta_phi_e(self) -> float:
@@ -116,6 +121,7 @@ def fit_peak(peak: Peak, method: Method, run1: Run, run2: Run) -> FitResult:
         beta_spacing=beta_spacing,
         low_k0=low_k0,
         low_confidence=(low_k0 or beta_spacing != "ok" or max_residual > _MAX_RESIDUAL),
+        plate_count=fit_plate_count(peak, params, method, run1, run2),
     )
 
 

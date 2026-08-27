@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from hplcsim.model import Gradient, Method, RetentionParams
 from hplcsim.retention import RetentionResult, predict_retention
-from hplcsim.width import PeakWidth, peak_width
+from hplcsim.width import FittedPlateCount, PeakWidth, peak_width
 
 
 @dataclass(frozen=True)
@@ -58,24 +58,41 @@ def resolution_table(
     *,
     names: Sequence[str] | None = None,
     plate_count: float | None = None,
+    plate_counts: Sequence[FittedPlateCount | None] | None = None,
 ) -> ResolutionTable:
     """Predict every peak under ``gradient`` and resolve the adjacent pairs.
 
     ``names`` defaults to P1…Pn (SPEC §5); when supplied it must carry one name per
     peak, and each name travels with its peak through the re-sort.
+
+    Plate counts are measured-first, the order SPEC §4 gives t0: a peak's own fitted
+    value in ``plate_counts`` (one entry per peak, ``None`` where there is none) wins,
+    then the global knob ``plate_count``, then the column default — and each width
+    is stamped with which one it got (:class:`~hplcsim.width.PeakWidth`).
     """
     if names is None:
         names = [f"P{index}" for index in range(1, len(params) + 1)]
     elif len(names) != len(params):
         raise ValueError(f"one name per peak is required; got {len(names)} for {len(params)} peaks")
+    if plate_counts is None:
+        plate_counts = [None] * len(params)
+    elif len(plate_counts) != len(params):
+        raise ValueError(
+            f"one plate count per peak is required; got {len(plate_counts)} for {len(params)} peaks"
+        )
 
     predicted = [
         PredictedPeak(
             name=name,
             retention=predict_retention(peak_params, method, gradient),
-            width=peak_width(peak_params, method, gradient, plate_count=plate_count),
+            width=peak_width(
+                peak_params,
+                method,
+                gradient,
+                plate_count=plate_count if fitted is None else fitted,
+            ),
         )
-        for name, peak_params in zip(names, params, strict=True)
+        for name, peak_params, fitted in zip(names, params, plate_counts, strict=True)
     ]
     predicted.sort(key=lambda peak: peak.retention.t_r)
 
