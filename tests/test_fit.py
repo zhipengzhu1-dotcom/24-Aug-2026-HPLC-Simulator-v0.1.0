@@ -5,8 +5,6 @@ independent scipy oracle in `numerics.py` and fits them back: nothing but the
 LSS model itself is shared between the generator and the fit under test.
 """
 
-import math
-
 import pytest
 
 from hplcsim.fit import fit_peak, fit_peaks
@@ -16,8 +14,10 @@ from hplcsim.model import (
     Peak,
     RetentionParams,
     Run,
+    ln_k0_from_log10_k0,
     log10_k0_from_ln_k0,
     s_base10_from_s_e,
+    s_e_from_s_base10,
 )
 from hplcsim.retention import predict_retention
 from lab_data import LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2
@@ -44,8 +44,8 @@ ROUND_TRIP_CASES = [
 )
 def test_synthetic_round_trip_recovers_known_parameters(log10_k0: float, s_base10: float) -> None:
     truth = RetentionParams(
-        ln_k0=log10_k0 * math.log(10.0),
-        s_e=s_base10 * math.log(10.0),
+        ln_k0=ln_k0_from_log10_k0(log10_k0),
+        s_e=s_e_from_s_base10(s_base10),
         phi_ref=ROUND_TRIP_RUN1.gradient.phi0,
     )
     peak = Peak(
@@ -77,7 +77,7 @@ GUILLARME_RUN1 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=5.0), name="tG5")
 GUILLARME_RUN2 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=15.0), name="tG15")
 
 GUILLARME_CASES = [
-    # (label, peak, Ce run 1, Ce run 2, two-point S, published regression S)
+    # (label, peak, Ce run 1, Ce run 2, two-point S, published S, published log10 k_i)
     #
     # Ce and the regression S are the spreadsheet's own stored values (§3.2 tables).
     # The two-point S is log10(3)/(Ce1 − Ce2) evaluated on those published Ce — the
@@ -89,6 +89,7 @@ GUILLARME_CASES = [
         0.4517753860498321,
         5.288960992291927,
         5.2693573156076159,
+        2.9192802027110885,
     ),
     (
         "compound-2",
@@ -97,6 +98,7 @@ GUILLARME_CASES = [
         0.1561553860498322,
         14.849355416661352,
         14.849290820729498,
+        1.9328222392003582,
     ),
     (
         "compound-3",
@@ -105,6 +107,7 @@ GUILLARME_CASES = [
         0.2328353860498322,
         16.936747527958115,
         16.975901726974396,
+        3.4048210474814202,
     ),
     (
         "compound-4",
@@ -113,17 +116,23 @@ GUILLARME_CASES = [
         0.3348953860498322,
         24.429205987604647,
         24.461155384269425,
+        7.1100975631839818,
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    ("peak", "ce_run1", "ce_run2", "s_two_point", "s_published"),
+    ("peak", "ce_run1", "ce_run2", "s_two_point", "s_published", "log10_k0_published"),
     [case[1:] for case in GUILLARME_CASES],
     ids=[case[0] for case in GUILLARME_CASES],
 )
 def test_reproduces_guillarme_reference_spreadsheet(
-    peak: Peak, ce_run1: float, ce_run2: float, s_two_point: float, s_published: float
+    peak: Peak,
+    ce_run1: float,
+    ce_run2: float,
+    s_two_point: float,
+    s_published: float,
+    log10_k0_published: float,
 ) -> None:
     fit = fit_peak(peak, GUILLARME_METHOD, GUILLARME_RUN1, GUILLARME_RUN2)
 
@@ -135,8 +144,15 @@ def test_reproduces_guillarme_reference_spreadsheet(
     # off by a factor of ln 10, not a fraction of a percent.
     assert s_base10_from_s_e(fit.seed_s_e) == pytest.approx(s_published, rel=0.005)
     # The exact root-find is a different (better) estimator, so it lands near but not
-    # on the published value — research doc §3.2.
+    # on the published value — research doc §3.2. Both halves of the answer are pinned:
+    # a log-base slip in the k0 recovery would move log10 k0 by a factor of ln 10, not
+    # by the couple of percent the estimator difference costs.
     assert s_base10_from_s_e(fit.params.s_e) == pytest.approx(s_published, rel=0.02)
+    assert log10_k0_from_ln_k0(fit.params.ln_k0) == pytest.approx(log10_k0_published, rel=0.02)
+
+    # Tighter than the ticket's 1e-6, and it pins S_e and ln_k0 jointly: the fitted pair
+    # must reproduce the spreadsheet's own input retention times.
+    assert fit.max_residual < 1e-8
 
 
 # --- conditioning facts the later diagnostics tickets consume (research doc §7.2) ---
@@ -158,6 +174,7 @@ def test_reports_run_spacing_ratio_independent_of_argument_order() -> None:
 
     assert forward.beta == pytest.approx(3.0)  # tG 45 / 15
     assert swapped.beta == pytest.approx(3.0)
+    assert forward.beta_spacing == "ok"
     assert swapped.params.s_e == pytest.approx(forward.params.s_e, abs=1e-10)
     assert swapped.phi_e_run1 == pytest.approx(forward.phi_e_run2, abs=1e-12)
 
@@ -171,7 +188,7 @@ def test_elution_composition_separation_is_the_conditioning_number() -> None:
 def test_low_k0_territory_is_flagged_where_the_closed_form_would_have_failed() -> None:
     # Guillarme's log k_i > 2.1 threshold (research doc §3.2): below it the seed is
     # worth tens of percent in S, so the fit stays exact but says the data are thin.
-    low = RetentionParams(ln_k0=0.9 * math.log(10.0), s_e=4.0 * math.log(10.0), phi_ref=0.05)
+    low = RetentionParams(ln_k0=ln_k0_from_log10_k0(0.9), s_e=s_e_from_s_base10(4.0), phi_ref=0.05)
     fit_low = fit_peak(
         _synthetic_peak(low, ROUND_TRIP_METHOD, ROUND_TRIP_RUN1, ROUND_TRIP_RUN2),
         ROUND_TRIP_METHOD,
@@ -185,7 +202,9 @@ def test_low_k0_territory_is_flagged_where_the_closed_form_would_have_failed() -
     assert s_base10_from_s_e(fit_low.seed_s_e) > 1.5 * 4.0
     assert fit_low.params.s_e == pytest.approx(low.s_e, abs=1e-8)
 
-    high = RetentionParams(ln_k0=3.24 * math.log(10.0), s_e=4.99 * math.log(10.0), phi_ref=0.05)
+    high = RetentionParams(
+        ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05
+    )
     fit_high = fit_peak(
         _synthetic_peak(high, ROUND_TRIP_METHOD, ROUND_TRIP_RUN1, ROUND_TRIP_RUN2),
         ROUND_TRIP_METHOD,
@@ -196,18 +215,35 @@ def test_low_k0_territory_is_flagged_where_the_closed_form_would_have_failed() -
     assert not fit_high.low_confidence
 
 
-def test_narrowly_spaced_runs_are_low_confidence_but_still_fit() -> None:
-    # β = 1.5 fits, but §7.2 puts ordinary timing noise at ~0.7% error in S there.
-    close_run2 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=22.5, t_init=0.5))
-    truth = RetentionParams(ln_k0=3.24 * math.log(10.0), s_e=4.99 * math.log(10.0), phi_ref=0.05)
+@pytest.mark.parametrize(
+    ("t_gradient_2", "beta", "spacing"),
+    [
+        # SPEC §4: "spacing-ratio warning < 2.5, strong < 1.2, never a hard block".
+        (45.0, 3.0, "ok"),
+        (37.5, 2.5, "ok"),
+        (22.5, 1.5, "warning"),
+        (16.5, 1.1, "strong"),
+    ],
+)
+def test_narrowly_spaced_runs_escalate_but_still_fit(
+    t_gradient_2: float, beta: float, spacing: str
+) -> None:
+    # §7.2's table is the evidence: at β = 1.5 a 0.6 s timing error is worth 0.7% in S,
+    # at β = 1.2 nearly 2%. None of that makes the fit impossible, so none of it blocks.
+    run2 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=t_gradient_2, t_init=0.5))
+    truth = RetentionParams(
+        ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05
+    )
     fit = fit_peak(
-        _synthetic_peak(truth, ROUND_TRIP_METHOD, ROUND_TRIP_RUN1, close_run2),
+        _synthetic_peak(truth, ROUND_TRIP_METHOD, ROUND_TRIP_RUN1, run2),
         ROUND_TRIP_METHOD,
         ROUND_TRIP_RUN1,
-        close_run2,
+        run2,
     )
-    assert fit.beta == pytest.approx(1.5)
-    assert fit.low_confidence
+    assert fit.beta == pytest.approx(beta)
+    assert fit.beta_spacing == spacing
+    assert fit.low_confidence == (spacing != "ok")
+    # Conditioning is not correctness: the root-find stays exact at every spacing.
     assert fit.params.s_e == pytest.approx(truth.s_e, abs=1e-8)
 
 

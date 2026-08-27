@@ -436,6 +436,14 @@ exercises more of the engine than a tG-only change.
 | compound 3 | 1.0278156533983409 | 0.2799020328358290 | 1.3670496263003267 |
 | compound 4 | 1.2614541701542286 | 0.3675164766192868 | 1.9698283993836279 |
 
+**The spreadsheet hard-codes 2.303 where ln 10 belongs.** Verified while building
+the two-run fit (#15): reproducing the predicted tR above to ~1e-16 requires using
+the literal `2.303`, and substituting the exact `ln 10` moves them by 0.9–4.0e-5 min.
+So a *correct* engine cannot match this table to 1e-6, and must not be made to — the
+gap is the reference's rounding, not the engine's error. The fitted intermediates
+(S, log k_w, log k_i, Ce) carry no such rounding and remain exact-assertion material;
+that is what `tests/test_fit.py` asserts against.
+
 The exact prediction formula (spreadsheet cell `C29`, generalised):
 
 ```
