@@ -146,8 +146,18 @@ deviating >5% from their row median found exactly this one cell.
 **Do not use for LSS tests:** Uracil, Cytosine, Tyramine and Peptide 1 elute at
 or near t0 at every gradient time (their tR is flat across tG). They carry no
 gradient information and the LSS fit is undefined for them. They *are* useful
-as a negative test: the engine should refuse to fit them rather than emit
-garbage parameters.
+as a negative test: the engine must never return them as a *confident* fit.
+
+**Amended 2026-08-27 (ticket #16).** An earlier version of this paragraph said
+the engine "should refuse to fit them". That overstates what SPEC permits, and
+the fixtures now prove it: six of the eight cases (both sets' Uracil and
+Cytosine, Set X's Tyramine and Peptide 1) do refuse, because the band leaves the
+column before the gradient reaches it and the two runs are the same isocratic
+measurement. But Set Y's Tyramine and Peptide 1 elute *after* t0 + τ and do move
+with tG (0.3320 → 0.3456 min), so an LSS solution genuinely exists and is merely
+badly conditioned. CLAUDE.md's warnings-over-blocks rule reserves hard failure
+for impossibilities, so those two fit and return low-confidence with
+log10 k0 ≈ −0.25 (k0 < 1). See `tests/test_reality.py`.
 
 Replicate precision (sd of the 10 replicates) ranges from 0.0005 min for the
 best-behaved peaks to 0.053 min for Fast Red B at tG = 12; the charged dyes

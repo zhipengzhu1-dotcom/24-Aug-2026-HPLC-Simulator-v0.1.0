@@ -33,3 +33,20 @@ LAB_PEAKS = [
     RetentionParams(ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05),
     RetentionParams(ln_k0=ln_k0_from_log10_k0(4.76), s_e=s_e_from_s_base10(5.18), phi_ref=0.05),
 ]
+
+# validation/run3.csv: the tG = 25 confirmation run, held out of the fit. Keyed by
+# compound rather than positioned, so a fixture edit cannot silently transpose peaks.
+LAB_RUN3 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5), name="tG25")
+LAB_MEASURED_TG25 = {
+    "Unknown-1": 13.787,
+    "Unknown-2": 16.658,
+    "Unknown-3": 24.358,
+}
+
+# validation/run4.csv: tG = 60, outside the 15–45 scouting pair — the extrapolation case.
+LAB_RUN4 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=60.0, t_init=0.5), name="tG60")
+LAB_MEASURED_TG60 = {
+    "Unknown-1": 25.587,
+    "Unknown-2": 32.320,
+    "Unknown-3": 50.821,
+}
