@@ -135,6 +135,34 @@ class TestPeakWidth:
             1.0 + width.k_e
         ) / math.sqrt(width.plate_count)
 
+    def test_a_defaulted_plate_count_is_stamped_as_an_estimate(self) -> None:
+        # SPEC §4 takes this posture on an estimated t0 — "labeled fallback that
+        # stamps predictions lower-confidence". A defaulted N earns the same stamp:
+        # it is column geometry, not the column's measured efficiency, and against
+        # the lab data it is the larger of the two error sources in a width.
+        gradient = Gradient(phi0=0.0, phif=0.5, t_gradient=20.0)
+
+        assert peak_width(self._well_retained(), self.METHOD, gradient).plate_count_is_default
+
+    def test_a_supplied_plate_count_is_not_stamped(self) -> None:
+        gradient = Gradient(phi0=0.0, phif=0.5, t_gradient=20.0)
+        width = peak_width(self._well_retained(), self.METHOD, gradient, plate_count=20000.0)
+
+        assert not width.plate_count_is_default
+
+    def test_supplying_the_default_value_explicitly_still_counts_as_supplied(self) -> None:
+        # The stamp records provenance, not the number: a user who types in the
+        # geometry estimate has made a choice the engine should not overwrite.
+        gradient = Gradient(phi0=0.0, phif=0.5, t_gradient=20.0)
+        width = peak_width(
+            self._well_retained(),
+            self.METHOD,
+            gradient,
+            plate_count=default_plate_count(self.METHOD),
+        )
+
+        assert not width.plate_count_is_default
+
     def test_a_non_positive_plate_count_is_refused(self) -> None:
         gradient = Gradient(phi0=0.0, phif=0.5, t_gradient=20.0)
         with pytest.raises(ValueError, match="plate count"):

@@ -3,8 +3,8 @@
 σ_t = G·t0·(1 + k_e)/√N, with N a global plate-count knob and G the band
 compression factor of §5.2. All steepness math is in the natural-log convention
 (b_e), which is also the convention G's ``p`` is written in — see
-:func:`band_compression_factor` for why, and §5.2 of the research doc for the
-calibration evidence.
+:func:`band_compression_factor` for why, and §5.4 of the research doc for the
+calibration evidence against measured widths.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import math
 from dataclasses import dataclass
 
 from hplcsim.model import Gradient, Method, RetentionParams
-from hplcsim.retention import predict_retention
+from hplcsim.retention import gradient_steepness, predict_retention
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
 # A documented textbook basis for the default, not a fit to any one instrument —
@@ -69,6 +69,12 @@ class PeakWidth:
     actually applied (1.0 outside the gradient regime), and N is the global knob.
     ``k_e`` is the retention factor at elution, carried through from the retention
     prediction so callers need not recompute it.
+
+    ``plate_count_is_default`` stamps a width that rests on the column-geometry
+    estimate rather than a user-supplied N — the same posture SPEC §4 takes on an
+    estimated t0 ("labeled fallback that stamps predictions lower-confidence").
+    It matters: against the lab dataset the h = 2 default lands widths at
+    0.67–0.91× measured and Rs 28–47% high (research doc §5.4, §6).
     """
 
     sigma: float
@@ -77,6 +83,7 @@ class PeakWidth:
     g: float
     plate_count: float
     k_e: float
+    plate_count_is_default: bool
 
 
 def peak_width(
@@ -90,7 +97,9 @@ def peak_width(
 
     ``plate_count`` defaults to :func:`default_plate_count` for the column.
     """
-    n = default_plate_count(method) if plate_count is None else plate_count
+    plate_count_is_default = plate_count is None
+    n = default_plate_count(method) if plate_count_is_default else plate_count
+    assert n is not None
     if n <= 0.0:
         raise ValueError(f"plate count must be positive, got {n}")
 
@@ -100,7 +109,7 @@ def peak_width(
     # A band that left before the ramp arrived, or that finishes isocratically at
     # φf after it ends, never experiences one — G = 1 for both (§4.1, §4.2).
     if retention.regime == "gradient":
-        b_e = method.t0 * gradient.delta_phi * params.s_e / gradient.t_gradient
+        b_e = gradient_steepness(method, gradient, params.s_e)
         g = band_compression_factor(b_e, k0=params.k_at(gradient.phi0))
     else:
         g = 1.0
@@ -113,4 +122,5 @@ def peak_width(
         g=g,
         plate_count=n,
         k_e=retention.k_e,
+        plate_count_is_default=plate_count_is_default,
     )

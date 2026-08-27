@@ -566,9 +566,13 @@ the same pair. Measured ratios: 2.6364, 2.7353, 2.8400.
    than the measurement can excuse, all in one direction. This is the firm result, and
    it is the measurement behind §5.2's "do not hard-code $G$ as a ~10% correction or
    drop it as negligible".
-2. **The under-compressing slip is excluded.** Reading the engine's natural-log $b_e$
-   as if it were Snyder's base-10 $b$ — dividing $p$ by 2.303 — misses by up to 11.1%,
-   again one-sided. So the *direction* of the convention is confirmed by measurement.
+2. **The under-compressing slip is excluded — but more weakly, and the distinction
+   matters.** Reading the engine's natural-log $b_e$ as if it were Snyder's base-10
+   $b$ — dividing $p$ by 2.303 — misses by up to 11.1%. Only its *worst* peak clears
+   the 9% bar outright: the other two (−4.68%, −7.46%) sit inside the same band that
+   admits the shipped convention (worst −7.23%). What carries the exclusion is that
+   all three miss in the same direction, on top of the worst case. So the *direction*
+   of the convention is supported by measurement; it is not proven peak by peak.
 
 **What this does not settle.** The mirror slip, $p$ multiplied by $\ln 10$, lands
 *inside* the residual at 4.07% — nominally better than the shipped convention. It is
@@ -635,13 +639,25 @@ predicted $t_R$ at those conditions. Re-sort at every grid point: elution order
 changes (§7.4).
 
 **Note on validating $R_s$ (ticket #17).** SPEC §10 wanted an $R_s \pm 0.3$ bar once
-§5.4's calibration landed. The lab dataset cannot carry one: `run3.csv` and `run4.csv`
-record no $W_{1/2}$, so no held-out condition has a measured width, and the three
-peaks of runs 1–2 are separated at $R_s$ = 30.5 / 91.1 (run 1) and 33.4 / 99.5
-(run 2). At $R_s = 33$, ±0.3 is a 0.9% tolerance — an order of magnitude tighter than
-the ~5% the width model is good to (§5.4). An $R_s$ bar only bites near the critical
-region ($R_s \approx 1$–3), which this dataset never enters. Validating it needs a
-sample with a genuinely difficult pair.
+§5.4's calibration landed. Three separate obstacles, and the first is the one that
+actually bites:
+
+1. **With a defaulted $N$ the engine does not meet it, in-sample.** Predicted vs.
+   measured $R_s$ on the scouting runs is 44.0 / 116.5 vs. 30.5 / 91.1 (run 1) and
+   49.1 / 134.1 vs. 33.4 / 99.5 (run 2) — **28–47% high**. This is a statement about
+   $N$, not about $G$: $h = 2$ overstates the real efficiency of this column plus its
+   extra-column volume, so predicted peaks are too narrow and $R_s$ too good. Note
+   this does *not* contradict §5.4's ~5% figure, which is the accuracy of the
+   deliberately $N$-free width **ratio**; $R_s$ is not $N$-free.
+2. **It cannot be tested held-out.** `run3.csv` and `run4.csv` record no $W_{1/2}$ at
+   all, so no held-out condition has a measured width to compare against.
+3. **Even with a fitted $N$, this sample would not exercise the bar.** Its peaks sit
+   at $R_s$ = 30–100, where ±0.3 is a ~1% tolerance. An $R_s$ bar only bites near the
+   critical region ($R_s \approx 1$–3), which this dataset never enters.
+
+Obstacle 1 is fixable inside v0.1 by making $N$ a fitted quantity rather than a
+geometry estimate (§5.1 notes DryLab took exactly that route); obstacles 2 and 3 need
+different data — a sample with a genuinely difficult pair, with widths recorded.
 
 ---
 

@@ -10,6 +10,7 @@ Every target gradient here is held out of the fit that predicts it.
 """
 
 import math
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from statistics import fmean, median
@@ -19,7 +20,7 @@ import pytest
 from den_uijl_data import SET_X, SET_Y, ScanningGradientSet
 from hplcsim.fit import fit_peak, fit_peaks
 from hplcsim.model import Method, Peak, Run
-from hplcsim.retention import predict_retention
+from hplcsim.retention import gradient_steepness, predict_retention
 from hplcsim.width import band_compression_factor, peak_width
 from lab_data import (
     LAB_MEASURED_PEAKS,
@@ -30,6 +31,7 @@ from lab_data import (
     LAB_RUN2,
     LAB_RUN3,
     LAB_RUN4,
+    LAB_W_HALF_ULP,
 )
 
 
@@ -372,14 +374,13 @@ def _measured_width_ratios() -> list[float]:
     return ratios
 
 
-def _ratio_errors(b_e_scale: float | None) -> list[float]:
+def _width_ratio_errors(compression: Callable[[float, float], float] | None) -> list[float]:
     """Signed % error of the predicted W½ ratio against the measured one, per peak.
 
-    ``b_e_scale`` scales the steepness fed to G: 1.0 is the shipped natural-log
-    convention, ln 10 and 1/ln 10 are the two directions the 2.303 factor can slip,
-    and ``None`` is the no-compression null (G = 1). Only the shipped case goes
-    through :func:`peak_width`; the alternatives are reconstructed here because they
-    are counterfactuals, not behaviour the engine offers.
+    ``compression`` maps (b_e, k0) to the G a candidate convention would apply;
+    ``None`` means route through :func:`peak_width` and use the G the engine
+    actually ships, so the shipped row of the table exercises production code
+    rather than a reimplementation of it.
     """
     errors = []
     for peak, measured in zip(LAB_MEASURED_PEAKS, _measured_width_ratios(), strict=True):
@@ -388,17 +389,47 @@ def _ratio_errors(b_e_scale: float | None) -> list[float]:
         for run in (LAB_RUN1, LAB_RUN2):
             width = peak_width(params, LAB_METHOD, run.gradient)
             assert width.g < 1.0, "both lab runs must elute in the compressed regime"
-            if b_e_scale is None:
-                g = 1.0
-            elif b_e_scale == 1.0:
+            if compression is None:
                 g = width.g
             else:
-                gradient = run.gradient
-                b_e = LAB_METHOD.t0 * gradient.delta_phi * params.s_e / gradient.t_gradient
-                g = band_compression_factor(b_e * b_e_scale, k0=params.k_at(gradient.phi0))
+                b_e = gradient_steepness(LAB_METHOD, run.gradient, params.s_e)
+                g = compression(b_e, params.k_at(run.gradient.phi0))
             per_run.append(g * (1.0 + width.k_e))
         errors.append((per_run[1] / per_run[0] / measured - 1.0) * 100.0)
     return errors
+
+
+def _shipped_errors() -> list[float]:
+    """The convention the engine ships: p = b_e·k0/(1 + k0)."""
+    return _width_ratio_errors(None)
+
+
+def _no_compression_errors() -> list[float]:
+    """The null model: no band compression at all."""
+    return _width_ratio_errors(lambda _b_e, _k0: 1.0)
+
+
+def _slipped_errors(b_e_scale: float) -> list[float]:
+    """A 2.303 slip: the steepness fed to G scaled by ln 10 or its reciprocal."""
+    return _width_ratio_errors(lambda b_e, k0: band_compression_factor(b_e * b_e_scale, k0=k0))
+
+
+def test_the_calibration_bar_clears_the_measurement_quantisation() -> None:
+    """The bar has to be wider than the noise floor it is drawn against.
+
+    W½ is recorded to 0.001 min, which is a real uncertainty band on the ratio
+    statistic. If that band ever grew past the bar, every verdict below would be
+    reading quantisation rather than chromatography.
+    """
+    worst_band = 0.0
+    for peak in LAB_MEASURED_PEAKS:
+        assert peak.w_half_run1 is not None and peak.w_half_run2 is not None
+        low = (peak.w_half_run2 - LAB_W_HALF_ULP) / (peak.w_half_run1 + LAB_W_HALF_ULP)
+        high = (peak.w_half_run2 + LAB_W_HALF_ULP) / (peak.w_half_run1 - LAB_W_HALF_ULP)
+        ratio = peak.w_half_run2 / peak.w_half_run1
+        worst_band = max(worst_band, (high - low) / 2.0 / ratio * 100.0)
+
+    assert worst_band < _G_CALIBRATION_BAR, worst_band
 
 
 def test_lab_widths_exclude_the_no_compression_model() -> None:
@@ -409,7 +440,7 @@ def test_lab_widths_exclude_the_no_compression_model() -> None:
     lab peak's width ratio falls short, and by more than the quantisation band — a
     bias, not scatter. The strongest statement this dataset supports.
     """
-    errors = _ratio_errors(None)
+    errors = _no_compression_errors()
 
     assert all(error < -_G_CALIBRATION_BAR for error in errors), errors
 
@@ -422,7 +453,7 @@ def test_lab_widths_exclude_the_base10_steepness_slip() -> None:
     the finding is that all three miss in the same direction. The opposite direction
     (b_e × ln 10) survives — see the test below.
     """
-    errors = _ratio_errors(1.0 / _LN10)
+    errors = _slipped_errors(1.0 / _LN10)
 
     assert max(abs(error) for error in errors) > _G_CALIBRATION_BAR, errors
     assert all(error < 0.0 for error in errors), f"not a one-sided bias: {errors}"
@@ -430,7 +461,7 @@ def test_lab_widths_exclude_the_base10_steepness_slip() -> None:
 
 def test_the_calibrated_convention_reproduces_the_lab_width_ratios() -> None:
     """The shipped natural-log G is consistent with every measured lab width."""
-    errors = _ratio_errors(1.0)
+    errors = _shipped_errors()
 
     assert max(abs(error) for error in errors) <= _G_CALIBRATION_BAR, errors
 
@@ -449,11 +480,14 @@ def test_the_lab_widths_do_not_by_themselves_settle_the_2303_factor() -> None:
     fails — the signal to tighten §5.4 and promote it from "consistent with" to
     "confirms".
     """
-    errors = _ratio_errors(_LN10)
+    errors = _slipped_errors(_LN10)
 
     assert max(abs(error) for error in errors) <= _G_CALIBRATION_BAR, (
-        "the over-compressed variant is now distinguishable from the shipped one — "
-        f"research doc §5.4 understates this dataset and must be revisited: {errors}"
+        "the over-compressed variant is now distinguishable from the shipped one. "
+        "This test does not know which change did that — a fitted N, an "
+        "extra-column term, a better fit, or richer width data would each do it. "
+        "Whichever it was, research doc §5.4 now understates the evidence and must "
+        f"be re-derived rather than this bar widened: {errors}"
     )
 
 
