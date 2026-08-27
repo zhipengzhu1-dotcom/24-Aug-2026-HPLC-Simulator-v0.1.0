@@ -20,3 +20,4 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 ## Process
 
 - One build ticket per branch (`build/NN-slug`); run `/code-review` before merging to main.
+- Parallel ticket sessions get separate `git worktree`s from the start — never share one checkout (learned the hard way during #16/#18).
