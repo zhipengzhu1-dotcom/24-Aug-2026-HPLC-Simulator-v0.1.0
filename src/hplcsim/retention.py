@@ -21,9 +21,10 @@ class RetentionResult:
     """Predicted retention for one peak under one gradient.
 
     ``k_e`` is the retention factor at the instant the band leaves the column.
-    ``low_confidence`` marks the very-early-eluter territory of research doc
-    §4.3 (k_e below 1, or less than one column volume of gradient migration),
-    where the k >> 1 approximation behind the model degrades.
+    ``low_confidence`` is set when the k >> 1 approximation behind the model
+    degrades (research doc §4.3: k_e below ~1, or t'_R = tR − t0 − τ below t0,
+    with t'_R as defined in the doc's symbol table) or when the band does not
+    elute during the ramp (§4.1/§4.2: "flag them").
     """
 
     t_r: float
@@ -43,13 +44,13 @@ def predict_retention(
 
     t0 = method.t0
     tau = method.t_dwell + gradient.t_init
-    k0 = math.exp(params.ln_k0 - params.s_e * (gradient.phi0 - params.phi_ref))
+    k0 = params.k_at(gradient.phi0)
 
     # §4.1: test the pre-gradient migration first — the closed form's log argument
     # goes non-positive exactly when the band has already left the column. A flat
     # gradient (Δφ = 0) is the same isocratic case for every peak.
     if k0 <= tau / t0 or gradient.delta_phi == 0.0:
-        return _finish(t_r=t0 * (1.0 + k0), k_e=k0, regime="isocratic_hold", t0=t0, tau=tau)
+        return _classify(t_r=t0 * (1.0 + k0), k_e=k0, regime="isocratic_hold", t0=t0, tau=tau)
 
     b_e = t0 * gradient.delta_phi * params.s_e / gradient.t_gradient
 
@@ -59,15 +60,16 @@ def predict_retention(
     x_gradient_end = tau / (t0 * k0) + (k0 / k_f - 1.0) / (k0 * b_e)
     if x_gradient_end < 1.0:
         t_r = tau + gradient.t_gradient + t0 + (1.0 - x_gradient_end) * t0 * k_f
-        return _finish(t_r=t_r, k_e=k_f, regime="post_gradient", t0=t0, tau=tau)
+        return _classify(t_r=t_r, k_e=k_f, regime="post_gradient", t0=t0, tau=tau)
 
     # §2.2: the LSS closed form, valid while the band exits during the ramp.
     log_arg = b_e * (k0 - tau / t0) + 1.0
     t_r = tau + t0 + (t0 / b_e) * math.log(log_arg)
-    return _finish(t_r=t_r, k_e=k0 / log_arg, regime="gradient", t0=t0, tau=tau)
+    return _classify(t_r=t_r, k_e=k0 / log_arg, regime="gradient", t0=t0, tau=tau)
 
 
-def _finish(*, t_r: float, k_e: float, regime: Regime, t0: float, tau: float) -> RetentionResult:
-    gradient_corrected_t_r = t_r - t0 - tau
-    low_confidence = k_e < 1.0 or gradient_corrected_t_r < t0
+def _classify(*, t_r: float, k_e: float, regime: Regime, t0: float, tau: float) -> RetentionResult:
+    """Attach the §4.3 / §4.1–4.2 low-confidence classification to a prediction."""
+    t_r_prime = t_r - t0 - tau
+    low_confidence = regime != "gradient" or k_e < 1.0 or t_r_prime < t0
     return RetentionResult(t_r=t_r, k_e=k_e, regime=regime, low_confidence=low_confidence)

@@ -4,7 +4,13 @@ import math
 
 import pytest
 
-from hplcsim.model import Gradient, Method, RetentionParams, s_e_from_s_base10
+from hplcsim.model import (
+    Gradient,
+    Method,
+    RetentionParams,
+    ln_k0_from_log10_k0,
+    s_e_from_s_base10,
+)
 from hplcsim.retention import predict_retention
 
 # Lab method (validation/method.csv): t0 measured 0.6 min, dwell 0.375 mL @ 0.4 mL/min.
@@ -13,9 +19,9 @@ LAB_METHOD = Method(t0=0.6, t_dwell=0.9375, flow=0.4)
 # Per-peak parameters fitted pre-build from runs at tG = 15 / 45 min (handoff, 2026-08-27),
 # quoted in the base-10 display convention and converted at the boundary.
 LAB_PEAKS = [
-    RetentionParams(ln_k0=2.76 * math.log(10), s_e=s_e_from_s_base10(5.08), phi_ref=0.05),
-    RetentionParams(ln_k0=3.24 * math.log(10), s_e=s_e_from_s_base10(4.99), phi_ref=0.05),
-    RetentionParams(ln_k0=4.76 * math.log(10), s_e=s_e_from_s_base10(5.18), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(2.76), s_e=s_e_from_s_base10(5.08), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(4.76), s_e=s_e_from_s_base10(5.18), phi_ref=0.05),
 ]
 
 
@@ -145,6 +151,7 @@ def test_peak_still_on_column_at_gradient_end_finishes_isocratically() -> None:
     assert result.t_r == pytest.approx(8.035, abs=0.005)
     assert result.k_e == pytest.approx(8.131, abs=0.005)
     assert result.regime == "post_gradient"
+    assert result.low_confidence  # §4.2: least trustworthy regime, flag it
 
 
 def test_gradient_and_post_gradient_branches_join_continuously() -> None:

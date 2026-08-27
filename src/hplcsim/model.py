@@ -5,9 +5,9 @@ Unit conventions: minutes, mL, mm, µm, °C. The strong-solvent fraction φ is a
 and display boundaries via :func:`phi_from_percent_b` / :func:`percent_b_from_phi`.
 
 Retention parameters are held in the natural-log convention (ln k0, S_e). The
-base-10 solvent-strength S that chromatographers quote is a display quantity,
-and :func:`s_base10_from_s_e` / :func:`s_e_from_s_base10` are the only place
-the ln(10) factor appears.
+base-10 quantities chromatographers quote (S, log10 k0) are display values;
+:func:`_to_base10` / :func:`_from_base10` are the only place the ln(10) factor
+appears, and the four public converters below are thin names over them.
 """
 
 from __future__ import annotations
@@ -28,14 +28,34 @@ def percent_b_from_phi(phi: float) -> float:
     return phi * 100.0
 
 
+def _to_base10(natural: float) -> float:
+    """The log-convention boundary (display side): divide by ln 10."""
+    return natural / _LN10
+
+
+def _from_base10(base10: float) -> float:
+    """The log-convention boundary (entry side): multiply by ln 10."""
+    return base10 * _LN10
+
+
 def s_base10_from_s_e(s_e: float) -> float:
-    """Display boundary: natural-log S_e -> base-10 S (the only ln(10) in the engine)."""
-    return s_e / _LN10
+    """Display boundary: natural-log S_e -> base-10 S."""
+    return _to_base10(s_e)
 
 
 def s_e_from_s_base10(s: float) -> float:
     """Entry boundary: base-10 S -> natural-log S_e."""
-    return s * _LN10
+    return _from_base10(s)
+
+
+def log10_k0_from_ln_k0(ln_k0: float) -> float:
+    """Display boundary: ln k0 -> log10 k0."""
+    return _to_base10(ln_k0)
+
+
+def ln_k0_from_log10_k0(log10_k0: float) -> float:
+    """Entry boundary: log10 k0 -> ln k0."""
+    return _from_base10(log10_k0)
 
 
 @dataclass(frozen=True)
@@ -75,6 +95,19 @@ class Gradient:
 
 
 @dataclass(frozen=True)
+class Run:
+    """One scouting run: the gradient it was acquired with (SPEC §4).
+
+    The two scouting runs share a :class:`Method` and differ only in
+    ``gradient.t_gradient``. Per-peak measurements live on :class:`Peak`,
+    one row per compound with both runs side by side (SPEC §5).
+    """
+
+    gradient: Gradient
+    name: str = ""
+
+
+@dataclass(frozen=True)
 class Peak:
     """One compound as entered: its retention time in each scouting run.
 
@@ -101,3 +134,7 @@ class RetentionParams:
     ln_k0: float
     s_e: float
     phi_ref: float
+
+    def k_at(self, phi: float) -> float:
+        """Retention factor at composition ``phi`` under the LSS model."""
+        return math.exp(self.ln_k0 - self.s_e * (phi - self.phi_ref))

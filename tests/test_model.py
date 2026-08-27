@@ -5,6 +5,8 @@ import math
 import pytest
 
 from hplcsim.model import (
+    ln_k0_from_log10_k0,
+    log10_k0_from_ln_k0,
     percent_b_from_phi,
     phi_from_percent_b,
     s_base10_from_s_e,
@@ -25,3 +27,8 @@ def test_s_base10_is_natural_log_s_over_ln10() -> None:
     # S = 4 means one decade of k per 0.25 phi -> S_e = 4 * ln 10
     assert s_e_from_s_base10(4.0) == pytest.approx(4.0 * math.log(10))
     assert s_base10_from_s_e(4.0 * math.log(10)) == pytest.approx(4.0)
+
+
+def test_log10_k0_converts_through_the_same_boundary() -> None:
+    assert ln_k0_from_log10_k0(2.0) == pytest.approx(math.log(100.0))
+    assert log10_k0_from_ln_k0(math.log(100.0)) == pytest.approx(2.0)
