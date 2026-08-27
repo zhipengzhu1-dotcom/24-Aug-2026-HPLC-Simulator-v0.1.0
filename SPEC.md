@@ -92,7 +92,7 @@ Single human-readable JSON, **inputs only** — the fit recomputes on load. Save
 
 ## 9. Architecture and stack ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6))
 
-Python ≥ 3.12 · uv · ruff · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
+Python ≥ 3.12 · uv · ruff · mypy (strict on the engine) · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
 
 ```
 src/hplcsim/

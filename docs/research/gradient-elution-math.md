@@ -1,7 +1,7 @@
 # Gradient-Elution Math and the Two-Run Fit
 
 Research notes for the v0.1 engine (gradient two-run fit-and-predict).
-Resolves issue #2. Audience: whoever implements `engine/` and anyone auditing its numbers.
+Resolves issue #2. Audience: whoever implements the engine (`src/hplcsim`) and anyone auditing its numbers.
 
 Every equation below is tagged with the source that owns it. Equations I derived
 myself (because no fetchable source stated them in the form the engine needs) are
