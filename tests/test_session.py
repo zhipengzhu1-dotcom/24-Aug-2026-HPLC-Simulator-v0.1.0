@@ -133,7 +133,7 @@ def test_file_speaks_user_units_not_engine_units() -> None:
 
 def test_file_holds_no_fitted_results() -> None:
     text = save_session(FULL_SESSION)
-    for fitted in ("s_e", "ln_k0", "log10_k0", "phi_ref", "beta", "residual"):
+    for fitted in ("s_e", "ln_k0", "log10_k0", "phi_ref", "beta", "residual", "implied_run"):
         assert fitted not in text
 
 

@@ -338,3 +338,39 @@ def test_fitting_the_lab_scouting_pair_reproduces_the_pre_build_parameters(
     predicted = predict_retention(fit.params, LAB_METHOD, held_out)
     assert predicted.t_r == pytest.approx(t_r_predicted, abs=0.005)
     assert predicted.t_r == pytest.approx(t_r_measured, rel=0.01)
+
+
+# --- the plate count fitted from the scouting widths (ticket #23) ---
+
+
+def test_lab_peaks_get_a_plate_count_fitted_from_their_scouting_widths() -> None:
+    """The fit is everything the two runs say about a peak — retention *and* N.
+
+    Characterisation against the numbers in docs/handoffs/2026-08-27-tdd-ticket-23.md.
+    Unknown-1's per-run values are the ones research doc §5.4 tabulated by hand (15299
+    at tG = 15, 15126 at tG = 45) before the inverse existed as a function, so they are
+    an independent check of it; the fitted value is their geometric mean. Against the
+    h = 2 geometry default of 31250, every peak lands at 14–24 k plates.
+    """
+    fits = fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
+
+    fitted = [fit.plate_count for fit in fits]
+    assert all(value is not None for value in fitted)
+    assert [value.plate_count for value in fitted if value is not None] == pytest.approx(
+        [15212.0, 14327.0, 23968.0], rel=1e-3
+    )
+
+    unknown_1 = fitted[0]
+    assert unknown_1 is not None
+    assert unknown_1.implied_run1 == pytest.approx(15299.0, abs=1.0)
+    assert unknown_1.implied_run2 == pytest.approx(15126.0, abs=1.0)
+    assert not unknown_1.low_confidence
+
+
+def test_a_peak_without_widths_is_fitted_for_retention_only() -> None:
+    bare = Peak(t_r_run1=9.855, t_r_run2=20.831)
+
+    fit = fit_peak(bare, LAB_METHOD, LAB_RUN1, LAB_RUN2)
+
+    assert fit.plate_count is None
+    assert log10_k0_from_ln_k0(fit.params.ln_k0) == pytest.approx(2.76, abs=0.01)
