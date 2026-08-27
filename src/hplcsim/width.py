@@ -4,7 +4,7 @@
 compression factor of §5.2. All steepness math is in the natural-log convention
 (b_e), which is also the convention G's ``p`` is written in — see
 :func:`band_compression_factor` for why, and §5.4 of the research doc for the
-calibration evidence against measured widths.
+calibration that settled it against measured widths.
 """
 
 from __future__ import annotations
@@ -51,8 +51,12 @@ def band_compression_factor(b_e: float, k0: float) -> float:
     ``p`` is in the **natural-log convention**: neither source writes a 2.303
     beside b, and Snyder's base-10 form p = 2.303·b·k0/(1 + k0) is the same
     number because b = b_e/ln 10. Slipping that factor either way moves G by
-    ~10–15% at typical steepness — the project's #1 named hazard. The lab
-    calibration that bounds it empirically is recorded in research doc §5.4.
+    ~10–15% at typical steepness — the project's #1 named hazard.
+
+    Settled empirically as well as textually: this convention holds a real
+    column's plate count constant to 0.92% across a fourfold range of gradient
+    steepness, where every alternative scatters by 5–13% (research doc §5.4,
+    on held-out lab runs).
     """
     if b_e < 0.0:
         raise ValueError(f"b_e must be non-negative, got {b_e}")

@@ -40,8 +40,31 @@ LAB_MEASURED_PEAKS = [
     Peak(t_r_run1=16.159, t_r_run2=39.796, name="Unknown-3", w_half_run1=0.025, w_half_run2=0.071),
 ]
 
-# W½ is recorded to 0.001 min in validation/run1.csv and run2.csv.
-LAB_W_HALF_ULP = 0.0005
+# Measured W½ (min) for all four runs, keyed by run name then compound. run1/run2
+# duplicate what LAB_MEASURED_PEAKS carries above (a consistency test pins them
+# together); the held-out runs 3 and 4 are what turned the G calibration from
+# "cannot separate the 2.303 factor" into a settled question — research doc §5.4.
+LAB_MEASURED_W_HALF = {
+    "tG15": {"Unknown-1": 0.033, "Unknown-2": 0.034, "Unknown-3": 0.025},
+    "tG25": {"Unknown-1": 0.05, "Unknown-2": 0.05, "Unknown-3": 0.04},
+    "tG45": {"Unknown-1": 0.087, "Unknown-2": 0.093, "Unknown-3": 0.071},
+    "tG60": {"Unknown-1": 0.114, "Unknown-2": 0.103, "Unknown-3": 0.085},
+}
+
+# Half-ULP of the recorded W½, per run — the runs are NOT recorded alike. run3 carries
+# two decimals, so its quantisation band is ±10% on a 0.05 min peak against ±1.5% for
+# the three-decimal runs. That is why run3 carries almost no weight in §5.4.
+LAB_W_HALF_ULP = {"tG15": 0.0005, "tG25": 0.005, "tG45": 0.0005, "tG60": 0.0005}
+
+# Measured peak areas, same keying. Not yet consumed by the engine (SPEC §5's
+# area-share tracking is a later ticket), but load-bearing in §5.4 as the
+# outcome-independent evidence that Unknown-2 is an unreliable width measurement.
+LAB_MEASURED_AREA = {
+    "tG15": {"Unknown-1": 13352.0, "Unknown-2": 4829.0, "Unknown-3": 4013.0},
+    "tG25": {"Unknown-1": 13648.0, "Unknown-2": 5642.0, "Unknown-3": 4441.0},
+    "tG45": {"Unknown-1": 14299.0, "Unknown-2": 9437.0, "Unknown-3": 7057.0},
+    "tG60": {"Unknown-1": 14412.0, "Unknown-2": 4872.0, "Unknown-3": 4573.0},
+}
 
 # Parameters fitted pre-build from that pair (handoff, 2026-08-27), quoted in the
 # base-10 display convention and converted at the boundary.
