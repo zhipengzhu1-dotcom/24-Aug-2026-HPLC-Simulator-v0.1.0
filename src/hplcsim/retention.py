@@ -16,6 +16,18 @@ from hplcsim.model import Gradient, Method, RetentionParams
 Regime = Literal["isocratic_hold", "gradient", "post_gradient"]
 
 
+def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
+    """b_e = t0·Δφ·S_e/tG — the natural-log gradient steepness (research doc §1.3).
+
+    The single home for this expression, and deliberately so: it is the most
+    exposed surface of the natural-log convention CLAUDE.md names as the project's
+    #1 hazard. Retention, band compression (§5.2) and the tests that reconstruct
+    counterfactual G conventions must all read the same b_e — a correction applied
+    here to one of them and not the others would desync them silently.
+    """
+    return method.t0 * gradient.delta_phi * s_e / gradient.t_gradient
+
+
 @dataclass(frozen=True)
 class RetentionResult:
     """Predicted retention for one peak under one gradient.
@@ -52,7 +64,7 @@ def predict_retention(
     if k0 <= tau / t0 or gradient.delta_phi == 0.0:
         return _classify(t_r=t0 * (1.0 + k0), k_e=k0, regime="isocratic_hold", t0=t0, tau=tau)
 
-    b_e = t0 * gradient.delta_phi * params.s_e / gradient.t_gradient
+    b_e = gradient_steepness(method, gradient, params.s_e)
 
     # §4.2: fraction of the column traversed when the ramp ends. If the band is
     # still on-column it finishes isocratically at phif with k_f.

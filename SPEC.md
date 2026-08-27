@@ -25,7 +25,7 @@ Normative detail with derivations, symbol table, and citations: `docs/research/g
   tR = τ + t0 + (t0 / b_e) · ln[b_e·(k0 − τ/t0) + 1], with b_e = t0·Δφ·S_e / tG.
 - **Two-run fit** (per peak, independent): no exact closed form exists. Algorithm: closed-form large-k0 seed, then 1-D root-find (Brent) on the run-2 residual; round-trip the fitted (k0, S_e) against both input tR to ≤1e-8 as a self-check. The closed form alone is forbidden as a final answer (138% S error at k0 = 8).
 - **Edge cases** get explicit branches, not one formula: elution during dwell/hold; elution after gradient end (G = 1 there, no band compression); very early eluters (k ≈ 1 territory → low-confidence badge); degenerate inputs (tG1 = tG2 → refuse).
-- **Peak width**: σ_t = (t0 / √N)·(1 + k_e)·G, N a global user knob with a column-based default; band-compression factor G per the research doc. **Open hazard**: G's internal log-base convention is unverified against primary text (10–15% width effect). Build task: calibrate the convention against the measured W½ values in `validation/run1.csv`/`run2.csv`, record the outcome in the research doc.
+- **Peak width**: σ_t = (t0 / √N)·(1 + k_e)·G, N a global user knob with a column-based default; band-compression factor G per the research doc. **Hazard status — RESOLVED** (#17; evidence in research doc §5.4): the convention was calibrated against the measured W½ in `validation/run1–4.csv`. Holding one column's plate count constant across a fourfold range of gradient steepness works to 0.92% under the natural-log reading and to 5–13% under every alternative, including the ×ln 10 mirror; confirmed on runs 3–4, which are held out of the fit. Widths still carry a second and now larger uncertainty: a defaulted N is column geometry, not the column's real efficiency.
 - **Resolution**: Rs = (tR₂ − tR₁) / (2·(σ₁ + σ₂)) per adjacent pair; critical pair = minimum Rs.
 
 ## 4. Input contract ([#4](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/4))
@@ -62,7 +62,7 @@ All six ship in v0.1:
 2. **Early-eluter badge** (elutes near t0 + dwell + hold).
 3. **β-spacing escalation** on fit results.
 4. **Prediction crossing flags** (order at candidate differs from scouting runs).
-5. **Width/Rs caveat banner** until the G convention is calibrated (§3).
+5. **Width/Rs caveat banner**. The G convention is now settled (§3, #17), so the banner is re-based on the one thing that remains open: widths resting on a defaulted N, which runs 0.67–0.91× on measured lab widths and 18–39% optimistic on Rs at held-out conditions. The engine stamps this via `PeakWidth.plate_count_is_default`; wording is ticket #19's. Absolute widths and Rs are caveated; the critical *pair* is not — it is identified correctly at both held-out conditions.
 6. **Estimated-t0 stamp** on all outputs when the geometry fallback was used.
 
 Presentation: per-peak badges (2, 4), fit-page notices (3), result banners (5), output stamps (6), candidate-control inline warnings (1).
@@ -132,7 +132,7 @@ Automated three-layer bar (pytest, red until met):
 2. **Reference**: reproduce the Guillarme 2022 worked spreadsheet ≤ 1e-6 (catches convention slips).
 3. **Reality**: den Uijl Sets X and Y (`docs/research/validation-datasets.md`, incl. the corrected Set X cell): median |ΔtR| ≤ 0.5%, worst ≤ 2%, **mean signed error ≤ 0.2%**.
 
-End-to-end trust bar — **already passed pre-build** on the lab dataset and re-asserted as a test: predict `run3.csv` from runs 1–2 within avg |ΔtR| ≤ 2%, worst ≤ 5%, order correct (measured: 0.35% / 0.53% / ✓); `run4.csv` as the extrapolation case (measured: 0.26%). Rs ± 0.3 asserted once the G convention is calibrated (§3). Residual note: signed bias flips between conditions (+0.35% / −0.26%) — mild LSS curvature, chromatographically negligible.
+End-to-end trust bar — **already passed pre-build** on the lab dataset and re-asserted as a test: predict `run3.csv` from runs 1–2 within avg |ΔtR| ≤ 2%, worst ≤ 5%, order correct (measured: 0.35% / 0.53% / ✓); `run4.csv` as the extrapolation case (measured: 0.26%). Rs ± 0.3 **is not met** (#17). Runs 3–4 now carry W½, so measured Rs at a held-out condition exists and the comparison was made — the obstacle is no longer missing data. Two remain, detailed in research doc §6: (1) with a defaulted N the engine is **18–39% optimistic on Rs** at both held-out conditions, because h = 2 overstates this column's efficiency — a statement about N, not about G; (2) the sample's peaks sit at Rs 30–116, where ±0.3 is a ~0.3–1% tolerance the bar would never discriminate at. Obstacle 1 is closable inside v0.1 by fitting N instead of estimating it from geometry (held-out Rs error falls to 1.5–11.7 absolute when N is fitted from the scouting pair); obstacle 2 needs a sample containing a near-critical pair. **What is asserted instead**: the critical pair is identified correctly at both held-out conditions, and the Rs optimism is pinned as a one-sided band that fails the day N becomes fitted. Residual note: signed bias flips between conditions (+0.35% / −0.26%) — mild LSS curvature, chromatographically negligible.
 
 ## 11. Roadmap ([#10](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/10))
 

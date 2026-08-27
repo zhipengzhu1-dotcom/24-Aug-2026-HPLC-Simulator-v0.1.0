@@ -9,25 +9,32 @@ instrument actually did.
 Every target gradient here is held out of the fit that predicts it.
 """
 
+import math
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from statistics import fmean, median
+from statistics import fmean, median, stdev
 
 import pytest
 
 from den_uijl_data import SET_X, SET_Y, ScanningGradientSet
 from hplcsim.fit import fit_peak, fit_peaks
 from hplcsim.model import Method, Peak, Run
-from hplcsim.retention import predict_retention
+from hplcsim.resolution import resolution_table
+from hplcsim.retention import gradient_steepness, predict_retention
+from hplcsim.width import band_compression_factor, peak_width
 from lab_data import (
+    LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
     LAB_MEASURED_TG25,
     LAB_MEASURED_TG60,
+    LAB_MEASURED_W_HALF,
     LAB_METHOD,
     LAB_RUN1,
     LAB_RUN2,
     LAB_RUN3,
     LAB_RUN4,
+    LAB_W_HALF_ULP,
 )
 
 
@@ -48,6 +55,9 @@ def _signed_percent_errors(predicted: list[float], measured: list[float]) -> lis
 def _elution_order(retention_times: list[float]) -> list[int]:
     return sorted(range(len(retention_times)), key=retention_times.__getitem__)
 
+
+_LN10 = math.log(10.0)
+_W_HALF_PER_SIGMA = math.sqrt(8.0 * math.log(2.0))
 
 # --- the lab dataset in validation/ (SPEC §10's end-to-end trust bar) ---
 
@@ -336,3 +346,301 @@ def test_fixture_matches_the_transcription_of_record(
     assert list(dataset.retention) == list(published), "compound set or row order drifted"
     for compound, times in published.items():
         assert dataset.retention[compound] == pytest.approx(times, abs=0.0), compound
+
+
+# --- the G-convention calibration against the measured lab widths (SPEC §3) ---
+#
+# A measured W½ cannot test G on its own: the width model carries an unknown plate
+# count N per compound, and any single width can be matched by moving N. But N is a
+# property of the *column*, not of the run — so for the right convention, the N implied
+# by each of a compound's measured widths must agree across every gradient time. The
+# scatter of implied N within a compound is therefore the discriminator, and it uses
+# all four runs rather than a single ratio.
+#
+# Runs 3 and 4 are held out of the fit that supplies (k0, S_e), so this is a prediction
+# test. Run 4 is what settled the question: at tG = 60 against run 1's tG = 15 it gives
+# a fourfold lever on b_e, where the original scouting pair gave threefold.
+#
+# Outcome recorded in research doc §5.4; these tests and that section move together.
+
+# The three runs whose W½ is recorded to three decimals. run3 (tG25) carries two, a
+# ±10% band on a 0.05 min peak, so it cannot discriminate a ~5% effect — it is included
+# only in the robustness test below, never in the primary verdict.
+_CALIBRATION_RUNS = ("tG15", "tG45", "tG60")
+_RUNS_BY_NAME = {"tG15": LAB_RUN1, "tG25": LAB_RUN3, "tG45": LAB_RUN2, "tG60": LAB_RUN4}
+
+# Unknown-1 is the only compound whose area follows the expected run-time trend
+# without a break, so it is the only one whose widths are trustworthy peak by peak.
+# SPEC §5 names the other two independently — "the lab dataset's peaks 2–3 exceed it".
+_CLEAN_COMPOUND = "Unknown-1"
+
+# SPEC §5's area-share warning threshold, "~30% relative change", as a max/min ratio.
+_AREA_SHARE_THRESHOLD = 1.3
+
+# Under the shipped convention Unknown-1's implied N is constant to 0.92% across a
+# fourfold steepness range — at or below the ±1.5% quantisation floor of its own
+# widths, i.e. as tight as this data can resolve. 2% is that floor with a little room;
+# every rival convention scatters by more than 5%.
+_PLATE_COUNT_CONSTANCY_BAR = 2.0
+_RIVAL_SCATTER_FLOOR = 4.0
+
+Compression = Callable[[float, float], float]
+
+
+def _scaled_compression(b_e_scale: float) -> Compression:
+    """A 2.303 slip: the steepness fed to G scaled by ln 10 or its reciprocal."""
+    return lambda b_e, k0: band_compression_factor(b_e * b_e_scale, k0=k0)
+
+
+def _no_compression(_b_e: float, _k0: float) -> float:
+    """The null model: no band compression at all."""
+    return 1.0
+
+
+_RIVAL_CONVENTIONS = {
+    "no-compression": _no_compression,
+    "base10-steepness-slip": _scaled_compression(1.0 / _LN10),
+    "over-compressed-mirror": _scaled_compression(_LN10),
+}
+
+
+def _implied_plate_count(name: str, run_name: str, compression: Compression | None) -> float:
+    """N that one measured width implies, under a candidate G convention.
+
+    ``compression`` of ``None`` routes through :func:`peak_width` and uses the G the
+    engine actually ships, so the shipped verdict exercises production code rather
+    than a reimplementation of it.
+    """
+    peak = next(p for p in LAB_MEASURED_PEAKS if p.name == name)
+    params = fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params
+    gradient = _RUNS_BY_NAME[run_name].gradient
+    width = peak_width(params, LAB_METHOD, gradient)
+    assert width.g < 1.0, "every lab run must elute this peak in the compressed regime"
+    if compression is None:
+        g = width.g
+    else:
+        b_e = gradient_steepness(LAB_METHOD, gradient, params.s_e)
+        g = compression(b_e, params.k_at(gradient.phi0))
+    sigma = LAB_MEASURED_W_HALF[run_name][name] / _W_HALF_PER_SIGMA
+    return (g * LAB_METHOD.t0 * (1.0 + width.k_e) / sigma) ** 2
+
+
+def _plate_count_scatter(
+    name: str, compression: Compression | None, runs: tuple[str, ...] = _CALIBRATION_RUNS
+) -> float:
+    """Coefficient of variation (%) of one compound's implied N across runs."""
+    counts = [_implied_plate_count(name, run_name, compression) for run_name in runs]
+    return stdev(counts) / fmean(counts) * 100.0
+
+
+def _mean_scatter(compression: Compression | None, runs: tuple[str, ...]) -> float:
+    """Mean scatter over every compound — the verdict without any exclusions."""
+    return fmean(_plate_count_scatter(peak.name, compression, runs) for peak in LAB_MEASURED_PEAKS)
+
+
+def test_the_shipped_convention_holds_plate_count_constant_across_steepness() -> None:
+    """The primary calibration result (research doc §5.4).
+
+    One column has one plate count. Under the shipped natural-log convention the
+    clean compound's implied N agrees across a fourfold range of gradient steepness
+    to within the precision its own widths were recorded at. That is what a correct
+    band-compression factor looks like.
+    """
+    assert _plate_count_scatter(_CLEAN_COMPOUND, None) <= _PLATE_COUNT_CONSTANCY_BAR
+
+
+@pytest.mark.parametrize("rival", sorted(_RIVAL_CONVENTIONS), ids=sorted(_RIVAL_CONVENTIONS))
+def test_every_rival_convention_scatters_the_plate_count(rival: str) -> None:
+    """Each rival makes the same column look like a different column per run.
+
+    This covers all three: dropping compression entirely, and both directions of the
+    2.303 slip — including the over-compressed mirror, which the scouting pair alone
+    could not separate from the shipped convention. Run 4's fourfold lever is what
+    separates it.
+    """
+    scatter = _plate_count_scatter(_CLEAN_COMPOUND, _RIVAL_CONVENTIONS[rival])
+
+    assert scatter > _RIVAL_SCATTER_FLOOR
+    assert scatter > 2.0 * _plate_count_scatter(_CLEAN_COMPOUND, None)
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [_CALIBRATION_RUNS, ("tG15", "tG25", "tG45", "tG60")],
+    ids=["three-decimal-runs", "including-the-coarse-run3"],
+)
+def test_the_verdict_survives_every_compound_and_every_run(runs: tuple[str, ...]) -> None:
+    """No exclusion is doing the work.
+
+    §5.4 sets Unknown-2 aside as an unreliable measurement and down-weights run 3 for
+    being recorded to two decimals. Neither choice is load-bearing: averaged over all
+    three compounds, with and without run 3, the shipped convention still scatters N
+    least of the four candidates. A verdict that needed the exclusions would be a
+    verdict about the exclusions.
+    """
+    shipped = _mean_scatter(None, runs)
+
+    for name, rival in _RIVAL_CONVENTIONS.items():
+        assert shipped < _mean_scatter(rival, runs), name
+
+
+def test_only_the_clean_compound_tracks_the_expected_area_trend() -> None:
+    """The outcome-independent grounds for resting the verdict on Unknown-1.
+
+    Peak area is *expected* to grow slowly with run time — a longer gradient keeps the
+    band in the flow cell longer — so growth on its own says nothing. All three
+    compounds do show it, mildly: 1.08×, 1.01× and 1.14× end to end across a fourfold
+    range of gradient time. What separates them is the *shape* of the trend.
+
+    Unknown-1 tracks it monotonically. Unknown-2 and Unknown-3 do not: both spike by
+    1.54–1.67× at tG = 45 specifically and then fall back, which a run-time trend
+    cannot produce. That localises the problem to one run's integration of those two
+    peaks, and SPEC §5 already names them — "the lab dataset's peaks 2–3 exceed it",
+    of its ~30% area-share threshold. If the integrator is not measuring the same
+    thing there, those compounds' widths in that run are not trustworthy either.
+
+    Pinned so §5.4's choice rests on something a reader can check independently of the
+    conclusion it supports.
+    """
+    by_gradient_time = sorted(
+        LAB_MEASURED_AREA, key=lambda run: _RUNS_BY_NAME[run].gradient.t_gradient
+    )
+
+    def areas(name: str) -> list[float]:
+        return [LAB_MEASURED_AREA[run][name] for run in by_gradient_time]
+
+    def rises_monotonically(name: str) -> bool:
+        return all(a <= b for a, b in zip(areas(name), areas(name)[1:], strict=False))
+
+    assert rises_monotonically(_CLEAN_COMPOUND)
+    for peak in LAB_MEASURED_PEAKS:
+        if peak.name == _CLEAN_COMPOUND:
+            continue
+        assert not rises_monotonically(peak.name), peak.name
+        # And the break is a spike at one run, not drift: tG = 45 stands well above
+        # both of its neighbours in gradient time.
+        spike = LAB_MEASURED_AREA["tG45"][peak.name] / max(
+            LAB_MEASURED_AREA["tG25"][peak.name], LAB_MEASURED_AREA["tG60"][peak.name]
+        )
+        assert spike > _AREA_SHARE_THRESHOLD, (peak.name, spike)
+
+
+def test_the_calibration_statistic_clears_the_measurement_quantisation() -> None:
+    """The bar has to be tighter than nothing and wider than the noise floor.
+
+    W½ is recorded to three decimals in the runs the verdict rests on, giving a ±1.5%
+    band on the clean compound's narrowest peak. The constancy bar sits just above it,
+    so the 0.92% the shipped convention achieves is at the floor of what these widths
+    can resolve — it cannot be beaten, only matched. If the recorded precision ever
+    coarsened, this test says so before the verdict silently softens.
+    """
+    worst_band = max(
+        LAB_W_HALF_ULP[run_name] / LAB_MEASURED_W_HALF[run_name][_CLEAN_COMPOUND] * 100.0
+        for run_name in _CALIBRATION_RUNS
+    )
+
+    assert worst_band < _PLATE_COUNT_CONSTANCY_BAR
+
+
+def test_width_fixtures_agree_with_the_peak_fixtures() -> None:
+    """LAB_MEASURED_W_HALF restates runs 1–2, which LAB_MEASURED_PEAKS also carries."""
+    for peak in LAB_MEASURED_PEAKS:
+        assert LAB_MEASURED_W_HALF["tG15"][peak.name] == peak.w_half_run1
+        assert LAB_MEASURED_W_HALF["tG45"][peak.name] == peak.w_half_run2
+
+
+def test_the_column_based_plate_count_underpredicts_real_widths() -> None:
+    """The h = 2 default is a textbook estimate, not a fit — and reads as one.
+
+    Real widths carry extra-column broadening and a real reduced plate height above
+    2, so the default N over-estimates efficiency and predicted widths come out
+    narrow, across every run including the two held out. Pinned as a band so that a
+    units slip or a dropped √N (research doc §5.1's reconstruction caveat) cannot
+    hide inside "the default is only an estimate".
+    """
+    ratios = []
+    for peak in LAB_MEASURED_PEAKS:
+        params = fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params
+        for run_name, run in _RUNS_BY_NAME.items():
+            predicted = peak_width(params, LAB_METHOD, run.gradient).w_half
+            ratios.append(predicted / LAB_MEASURED_W_HALF[run_name][peak.name])
+
+    assert all(0.6 <= ratio <= 1.0 for ratio in ratios), ratios
+
+
+# --- resolution against the held-out runs (SPEC §10's Rs bar, ticket #17) ---
+#
+# SPEC §10 wanted "Rs ± 0.3 asserted once the G convention is calibrated". It is
+# calibrated (§5.4) and runs 3–4 now carry W½, so measured Rs exists at a held-out
+# condition for the first time. The bar still cannot be met, for a reason that is
+# about N rather than G: the shipped default N is column geometry, not this column's
+# real efficiency, so predicted peaks are too narrow and every Rs comes out
+# optimistic. What *is* assertable — and is what a chromatographer actually acts on —
+# is that the engine picks the right critical pair. Recorded in research doc §6.
+
+_RS_OPTIMISM_BAND = (1.1, 1.6)
+
+
+def _measured_resolutions(run_name: str, measured_t_r: dict[str, float]) -> list[float]:
+    """Rs from measured tR and measured W½, in elution order."""
+    ordered = sorted(measured_t_r, key=lambda name: measured_t_r[name])
+    return [
+        _W_HALF_PER_SIGMA
+        / 2.0
+        * (measured_t_r[later] - measured_t_r[earlier])
+        / (LAB_MEASURED_W_HALF[run_name][earlier] + LAB_MEASURED_W_HALF[run_name][later])
+        for earlier, later in zip(ordered, ordered[1:], strict=False)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("run_name", "target", "measured_t_r"),
+    [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)],
+    ids=["tG25-confirmation", "tG60-extrapolation"],
+)
+def test_the_critical_pair_is_identified_correctly_at_held_out_conditions(
+    run_name: str, target: Run, measured_t_r: dict[str, float]
+) -> None:
+    """The decision-relevant output survives a badly-scaled plate count.
+
+    Rs itself is uniformly optimistic here (see the next test), but that error is a
+    near-common factor across pairs, so the *ranking* is preserved: the pair the
+    engine calls critical is the pair the instrument says is worst.
+    """
+    params = [fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params for peak in LAB_MEASURED_PEAKS]
+    names = [peak.name for peak in LAB_MEASURED_PEAKS]
+
+    table = resolution_table(params, LAB_METHOD, target.gradient, names=names)
+
+    measured = _measured_resolutions(run_name, measured_t_r)
+    assert table.critical_pair is not None
+    predicted_critical = min(range(len(table.pairs)), key=lambda i: table.pairs[i].rs)
+    measured_critical = min(range(len(measured)), key=lambda i: measured[i])
+    assert predicted_critical == measured_critical
+
+
+@pytest.mark.parametrize(
+    ("run_name", "target", "measured_t_r"),
+    [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)],
+    ids=["tG25-confirmation", "tG60-extrapolation"],
+)
+def test_resolution_is_uniformly_optimistic_with_a_defaulted_plate_count(
+    run_name: str, target: Run, measured_t_r: dict[str, float]
+) -> None:
+    """Why SPEC §10's Rs ± 0.3 bar is still unmet, pinned as a number.
+
+    Every predicted Rs runs high by a similar factor, on both held-out runs. That is
+    the h = 2 default N overstating this column's efficiency — not a defect in G, and
+    not scatter. Pinned as a band so the day someone makes N a fitted quantity, this
+    test fails and says the bar is now worth revisiting.
+    """
+    params = [fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params for peak in LAB_MEASURED_PEAKS]
+    names = [peak.name for peak in LAB_MEASURED_PEAKS]
+
+    table = resolution_table(params, LAB_METHOD, target.gradient, names=names)
+
+    measured = _measured_resolutions(run_name, measured_t_r)
+    ratios = [pair.rs / m for pair, m in zip(table.pairs, measured, strict=True)]
+    low, high = _RS_OPTIMISM_BAND
+    assert all(low <= ratio <= high for ratio in ratios), ratios
+    assert all(ratio > 1.0 for ratio in ratios), f"optimism is one-sided: {ratios}"
