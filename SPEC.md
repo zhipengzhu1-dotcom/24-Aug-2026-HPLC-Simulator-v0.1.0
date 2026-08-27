@@ -82,13 +82,31 @@ Single human-readable JSON, **inputs only** — the fit recomputes on load. Save
   "session_name": "…",
   "method": { "column_length_mm": 100, "column_id_mm": 2.1, "particle_um": 1.6,
               "flow_ml_min": 0.4, "temperature_c": 45, "t0_min": 0.6,
-              "t0_source": "measured|estimated", "dwell_ml": 0.375,
+              "t0_source": "measured|estimated", "dwell_min": 0.9375,
               "pct_b_start": 5, "pct_b_end": 95, "hold_min": 0.5, "plate_count": 12000 },
-  "runs": [ { "tg_min": 15, "peaks": [ { "name": "…", "tr_min": 9.855,
-              "area": 13352, "w_half_min": 0.033 } ] }, { "tg_min": 45, "peaks": [] } ],
+  "runs": [ { "tg_min": 15, "name": "…" }, { "tg_min": 45 } ],
+  "peaks": [ { "name": "…", "tr_run1_min": 9.855, "tr_run2_min": 20.831,
+               "area_run1": 13352, "area_run2": 13401,
+               "w_half_run1_min": 0.033, "w_half_run2_min": 0.061 } ],
   "candidate": { "tg_min": 25, "hold_min": 0.5 }
 }
 ```
+
+Mandatory: `schema_version` (exact match, else the file is rejected), `app_version`, and per
+block `flow_ml_min`, `t0_min`, `dwell_min`, `pct_b_start`, `pct_b_end`, each run's `tg_min`,
+each peak's two retention times, and the candidate's `tg_min`. Everything else is optional and
+simply absent when unset. `runs` holds exactly two; the gradient they share is stored once, in
+`method`. Rejection is hard and names the field — a corrupt or unknown-schema *file* has no
+usable reading, which is separate from §4's warnings-over-blocks posture on user entry.
+
+Two decisions taken while building ([#18](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/18)), reflected above:
+
+- **`peaks` is a top-level table, one row per compound**, both runs side by side — not nested
+  inside each run. That is what peak tracking produces (§5); nesting would force name-based
+  re-matching on load, and names are optional.
+- **Dwell is stored as `dwell_min`**, not a volume. V_D ÷ F is an entry-boundary conversion
+  (§4); keeping it out of the file makes the stored dwell independent of a later flow edit and
+  the round trip exact.
 
 ## 9. Architecture and stack ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6))
 
