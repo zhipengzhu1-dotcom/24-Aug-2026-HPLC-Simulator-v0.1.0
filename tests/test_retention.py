@@ -4,25 +4,10 @@ import math
 
 import pytest
 
-from hplcsim.model import (
-    Gradient,
-    Method,
-    RetentionParams,
-    ln_k0_from_log10_k0,
-    s_e_from_s_base10,
-)
+from hplcsim.model import Gradient, Method, RetentionParams
 from hplcsim.retention import predict_retention
-
-# Lab method (validation/method.csv): t0 measured 0.6 min, dwell 0.375 mL @ 0.4 mL/min.
-LAB_METHOD = Method(t0=0.6, t_dwell=0.9375, flow=0.4)
-
-# Per-peak parameters fitted pre-build from runs at tG = 15 / 45 min (handoff, 2026-08-27),
-# quoted in the base-10 display convention and converted at the boundary.
-LAB_PEAKS = [
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(2.76), s_e=s_e_from_s_base10(5.08), phi_ref=0.05),
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05),
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(4.76), s_e=s_e_from_s_base10(5.18), phi_ref=0.05),
-]
+from lab_data import LAB_METHOD, LAB_PEAKS
+from numerics import integrate_fundamental_equation
 
 
 @pytest.mark.parametrize(
@@ -43,47 +28,6 @@ def test_predicts_lab_retention_times_within_one_percent(
 
 
 # --- SPEC §10 layer 1: closed form vs numerical integration of the fundamental equation ---
-
-
-def _integrate_fundamental_equation(
-    params: RetentionParams, method: Method, gradient: Gradient
-) -> float:
-    """Solve ∫0^(tR−t0) dt / (t0·k(φ_in(t))) = 1 numerically (research doc §2.1).
-
-    φ_in(t) is the programmed profile delayed by the dwell: φ0 during the dwell and
-    initial hold, the linear ramp, then φf after the ramp ends. Independent of any
-    closed form: it only knows the LSS model and the inlet profile.
-    """
-    from scipy.integrate import quad
-    from scipy.optimize import brentq
-
-    t0 = method.t0
-    tau = method.t_dwell + gradient.t_init
-    slope = gradient.delta_phi / gradient.t_gradient
-
-    def phi_in(t: float) -> float:
-        if t <= tau:
-            return gradient.phi0
-        if t >= tau + gradient.t_gradient:
-            return gradient.phif
-        return gradient.phi0 + slope * (t - tau)
-
-    def rate(t: float) -> float:
-        k = math.exp(params.ln_k0 - params.s_e * (phi_in(t) - params.phi_ref))
-        return 1.0 / (t0 * k)
-
-    def migrated(t: float) -> float:
-        breakpoints = [b for b in (tau, tau + gradient.t_gradient) if 0.0 < b < t]
-        value, _ = quad(
-            rate, 0.0, t, points=breakpoints or None, epsabs=1e-13, epsrel=1e-13, limit=500
-        )
-        return float(value)
-
-    t_upper = 10.0
-    while migrated(t_upper) < 1.0:
-        t_upper *= 2.0
-    t_exit: float = brentq(lambda t: migrated(t) - 1.0, 0.0, t_upper, xtol=1e-14, rtol=1e-15)
-    return t_exit + t0
 
 
 INTEGRATION_CASES = [
@@ -126,7 +70,7 @@ INTEGRATION_CASES = [
 def test_closed_form_matches_numerical_integration(
     params: RetentionParams, method: Method, gradient: Gradient
 ) -> None:
-    expected = _integrate_fundamental_equation(params, method, gradient)
+    expected = integrate_fundamental_equation(params, method, gradient)
     assert predict_retention(params, method, gradient).t_r == pytest.approx(expected, abs=1e-10)
 
 

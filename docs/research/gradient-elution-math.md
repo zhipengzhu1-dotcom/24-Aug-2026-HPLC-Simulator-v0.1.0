@@ -606,7 +606,11 @@ extra separation of the two runs stops buying much conditioning, while $\beta<2$
 starts amplifying ordinary timing noise into visible parameter error.
 
 Guards to implement:
-- Refuse $\beta < 2$ with an explicit error naming the reason.
+- ~~Refuse $\beta < 2$ with an explicit error naming the reason.~~ **Amended during
+  #15**: SPEC §4 is normative here and says "spacing-ratio warning < 2.5, strong < 1.2,
+  **never a hard block**", which CLAUDE.md's warnings-over-blocks rule seconds. A
+  $\beta$ of 1.9 is noisy, not impossible. The engine escalates through those two tiers
+  (`FitResult.beta_spacing`) and fits anyway.
 - Compute $\Delta\varphi_e = \varphi_{e,1}-\varphi_{e,2}$ per peak; if it is smaller
   than a few times the composition-equivalent of retention-time noise, mark the fit
   as low confidence rather than reporting a spuriously precise $S$.
