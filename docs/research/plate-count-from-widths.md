@@ -467,6 +467,19 @@ is **this project's convention by analogy with its own $t_0$ rule**, not a cited
    measurement band at $t_G$ = 25 and within −10% at $t_G$ = 60. SPEC §10's $R_s \pm 0.3$
    stays unmet for GEM §6's reasons (obstacle 2 is the sample). *Ticket's call.*
 
+**Where this lives (ticket #23).** `hplcsim.width.plate_count_from_width` is §4.1's
+inverse, routed through `peak_width` at $N = 1$ so the forward and inverse forms cannot
+drift; `fit_plate_count` / `FittedPlateCount` implement §3.3's geometric mean, the
+`ratio` diagnostic of item 3 and the post-gradient stamp of §4.3 (such widths are used
+and stamped, never refused — the project's warnings-over-blocks posture); `fit_peak`
+carries the result as `FitResult.plate_count`; `PeakWidth.plate_count_source` is the
+three-way stamp of item 2, and `resolution_table(plate_counts=...)` applies the
+precedence of §5. `tests/test_reality.py` pins the §0.2 numbers: widths 0.9–1.25× and
+$R_s$ 0.85–1.05× of measured at both held-out conditions, the $t_G$ = 25 residual inside
+its measurement band, the $t_G$ = 60 residual outside it, and SPEC §10's ±0.3 as unmet.
+Item 5 (precision gating) and the threshold for item 3 are left to the diagnostics
+ticket (#20).
+
 ---
 
 ## 7. What I could NOT verify

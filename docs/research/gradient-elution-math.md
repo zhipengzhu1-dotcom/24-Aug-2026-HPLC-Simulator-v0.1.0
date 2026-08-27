@@ -475,12 +475,14 @@ dropped the radical over $N$ (and Wilson's squares). I reconstructed $\sqrt N$ f
 dimensional consistency with the isocratic width $W = 4t_0(1+k)/\sqrt N$ and from
 Guillarme Eq. 13, which rendered cleanly and unambiguously contains $\sqrt N$.
 
-$N$ here is the **isocratic** plate count at the elution composition. For v0.1,
-treating $N$ as one number per column/flow-rate is defensible; Molnár §9 notes
+$N$ here is the **isocratic** plate count at the elution composition. Treating $N$
+as one number per column/flow-rate was the v0.1 starting point; Molnár §9 notes
 DryLab originally worked around $N$ varying across the chromatogram by using
 different plate numbers in the front/middle/final third, and (his §16) later solved it
-properly by taking **measured peak widths as input data** — a good v0.2 direction:
-fit $N$ per peak from the scouting runs instead of assuming it.
+properly by taking **measured peak widths as input data**. Build ticket #23 took that
+route: $N$ is fitted per peak from the scouting widths — the inverse of the equation
+above, one $N$ per peak as the geometric mean of what each width implies — with the
+sources, the estimator and the regime caveats in `plate-count-from-widths.md`.
 
 ### 5.2 Band compression factor $G$
 
@@ -658,7 +660,7 @@ exact form — §10.)
 predicted $t_R$ at those conditions. Re-sort at every grid point: elution order
 changes (§7.4).
 
-**Note on validating $R_s$ (ticket #17).** SPEC §10 wanted an $R_s \pm 0.3$ bar once
+**Note on validating $R_s$ (tickets #17 and #23).** SPEC §10 wanted an $R_s \pm 0.3$ bar once
 §5.4's calibration landed. It is not met, and the reason is worth stating precisely
 because it is *not* about $G$.
 
@@ -671,17 +673,21 @@ because it is *not* about $G$.
    sit at $R_s$ = 30–116, where ±0.3 is a 0.3–1% tolerance. An $R_s$ bar only bites
    near the critical region ($R_s \approx 1$–3), which this dataset never enters.
 
-Obstacle 1 is closable inside v0.1 by making $N$ a fitted quantity rather than a
-geometry estimate — §5.1 notes DryLab took exactly that route, and fitting $N$ per
-compound from the scouting pair alone drops the held-out $R_s$ error from 18–39% to
-1.5–11.7 in absolute $R_s$ units. Obstacle 2 needs different data: a sample with a
-genuinely difficult pair.
+Obstacle 1 was closed by ticket #23, which makes $N$ a fitted quantity rather than a
+geometry estimate (§5.1; `plate-count-from-widths.md`): with $N$ fitted per compound
+from the scouting pair, held-out $R_s$ lands at 0.955 / 0.956× measured at $t_G$ = 25
+and 0.935 / 0.900× at $t_G$ = 60 — 1.5–11.6 absolute $R_s$ units low, slightly
+pessimistic where the default was 18–39% optimistic. At $t_G$ = 25 that residual is
+inside the −9..+12% band run 3's two-decimal widths can resolve; at $t_G$ = 60 it is
+real. Obstacle 2 stands and needs different data: a sample with a genuinely
+difficult pair.
 
 **What is asserted instead.** The absolute number is caveated, but the *ranking* is
-not: the error is a near-common factor across pairs, so the engine names the correct
-critical pair at both held-out conditions. That — not the absolute $R_s$ — is what a
-chromatographer acts on, and it is what `tests/test_reality.py` pins, alongside the
-optimism band, which fails deliberately the day $N$ becomes fitted.
+not: under either $N$ the engine names the correct critical pair at both held-out
+conditions. That — not the absolute $R_s$ — is what a chromatographer acts on, and it
+is what `tests/test_reality.py` pins, alongside the fitted-$N$ bands, the defaulted-$N$
+optimism band (kept for the width-less path; it tripped as designed when #23 landed)
+and the unmet ±0.3 itself, pinned as a number.
 
 ---
 
