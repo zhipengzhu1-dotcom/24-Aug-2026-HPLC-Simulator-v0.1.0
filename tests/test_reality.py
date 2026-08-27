@@ -9,6 +9,7 @@ instrument actually did.
 Every target gradient here is held out of the fit that predicts it.
 """
 
+import math
 from dataclasses import replace
 from pathlib import Path
 from statistics import fmean, median
@@ -19,6 +20,7 @@ from den_uijl_data import SET_X, SET_Y, ScanningGradientSet
 from hplcsim.fit import fit_peak, fit_peaks
 from hplcsim.model import Method, Peak, Run
 from hplcsim.retention import predict_retention
+from hplcsim.width import band_compression_factor, peak_width
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_MEASURED_TG25,
@@ -48,6 +50,8 @@ def _signed_percent_errors(predicted: list[float], measured: list[float]) -> lis
 def _elution_order(retention_times: list[float]) -> list[int]:
     return sorted(range(len(retention_times)), key=retention_times.__getitem__)
 
+
+_LN10 = math.log(10.0)
 
 # --- the lab dataset in validation/ (SPEC §10's end-to-end trust bar) ---
 
@@ -336,3 +340,137 @@ def test_fixture_matches_the_transcription_of_record(
     assert list(dataset.retention) == list(published), "compound set or row order drifted"
     for compound, times in published.items():
         assert dataset.retention[compound] == pytest.approx(times, abs=0.0), compound
+
+
+# --- the G-convention calibration against the measured lab widths (SPEC §3) ---
+#
+# The engine's width model carries one unknown per compound (its plate count N) and
+# one convention-dependent factor (G). Measured W½ therefore cannot test G directly:
+# any single width can be matched by moving N. What *is* free of N is the ratio of a
+# compound's two measured widths, since both runs share a column:
+#
+#     W½(run2)/W½(run1) = [G(run2)·(1 + k_e,run2)] / [G(run1)·(1 + k_e,run1)]
+#
+# That is the statistic these tests use. Its resolving power is bounded by the
+# ±1.5–2.7% quantisation of W½ (LAB_W_HALF_ULP) and by N drifting with elution
+# composition — the residual trends monotonically with φ_e in *every* candidate
+# convention, which is the signature of the latter. Outcome recorded in research doc
+# §5.4; these tests and that section must move together.
+
+# The bar sits in the gap the data actually opened: the conventions it admits miss by
+# at most 7.2%, the ones it rejects by at least 11.1%. Not a slack tolerance — a
+# measured separation. Widening it past ~11% makes the calibration vacuous.
+_G_CALIBRATION_BAR = 9.0
+
+
+def _measured_width_ratios() -> list[float]:
+    """Each lab peak's measured W½(run2)/W½(run1) — the N-free statistic."""
+    ratios = []
+    for peak in LAB_MEASURED_PEAKS:
+        assert peak.w_half_run1 is not None and peak.w_half_run2 is not None
+        ratios.append(peak.w_half_run2 / peak.w_half_run1)
+    return ratios
+
+
+def _ratio_errors(b_e_scale: float | None) -> list[float]:
+    """Signed % error of the predicted W½ ratio against the measured one, per peak.
+
+    ``b_e_scale`` scales the steepness fed to G: 1.0 is the shipped natural-log
+    convention, ln 10 and 1/ln 10 are the two directions the 2.303 factor can slip,
+    and ``None`` is the no-compression null (G = 1). Only the shipped case goes
+    through :func:`peak_width`; the alternatives are reconstructed here because they
+    are counterfactuals, not behaviour the engine offers.
+    """
+    errors = []
+    for peak, measured in zip(LAB_MEASURED_PEAKS, _measured_width_ratios(), strict=True):
+        params = fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params
+        per_run = []
+        for run in (LAB_RUN1, LAB_RUN2):
+            width = peak_width(params, LAB_METHOD, run.gradient)
+            assert width.g < 1.0, "both lab runs must elute in the compressed regime"
+            if b_e_scale is None:
+                g = 1.0
+            elif b_e_scale == 1.0:
+                g = width.g
+            else:
+                gradient = run.gradient
+                b_e = LAB_METHOD.t0 * gradient.delta_phi * params.s_e / gradient.t_gradient
+                g = band_compression_factor(b_e * b_e_scale, k0=params.k_at(gradient.phi0))
+            per_run.append(g * (1.0 + width.k_e))
+        errors.append((per_run[1] / per_run[0] / measured - 1.0) * 100.0)
+    return errors
+
+
+def test_lab_widths_exclude_the_no_compression_model() -> None:
+    """Band compression is real, measurable, and not optional.
+
+    Research doc §5.2 warns "do not hard-code G as a ~10% correction or drop it as
+    negligible". This is the measurement behind that: with no compression *every*
+    lab peak's width ratio falls short, and by more than the quantisation band — a
+    bias, not scatter. The strongest statement this dataset supports.
+    """
+    errors = _ratio_errors(None)
+
+    assert all(error < -_G_CALIBRATION_BAR for error in errors), errors
+
+
+def test_lab_widths_exclude_the_base10_steepness_slip() -> None:
+    """Reading the engine's natural-log b_e as if it were Snyder's base-10 b.
+
+    The under-compressing direction of the project's #1 hazard. Excluded, but more
+    weakly than G = 1: only the worst peak clears the bar outright, and what carries
+    the finding is that all three miss in the same direction. The opposite direction
+    (b_e × ln 10) survives — see the test below.
+    """
+    errors = _ratio_errors(1.0 / _LN10)
+
+    assert max(abs(error) for error in errors) > _G_CALIBRATION_BAR, errors
+    assert all(error < 0.0 for error in errors), f"not a one-sided bias: {errors}"
+
+
+def test_the_calibrated_convention_reproduces_the_lab_width_ratios() -> None:
+    """The shipped natural-log G is consistent with every measured lab width."""
+    errors = _ratio_errors(1.0)
+
+    assert max(abs(error) for error in errors) <= _G_CALIBRATION_BAR, errors
+
+
+def test_the_lab_widths_do_not_by_themselves_settle_the_2303_factor() -> None:
+    """The documented *limit* of this evidence — deliberately a fail-loudly guard.
+
+    Research doc §10 item 5 asks for G to be checked "against a measured peak width
+    once real data exists". It has been, and the honest answer is asymmetric: six
+    widths quantised to 0.001 min exclude G = 1 and the base-10 steepness slip, but
+    cannot separate the shipped convention from its over-compressed mirror image
+    (b_e × ln 10), which lands *inside* the bar at 4.1%. That direction rests on
+    §5.2's two primary sources, not on this dataset.
+
+    If a richer dataset ever pushes the mirror variant outside the bar, this test
+    fails — the signal to tighten §5.4 and promote it from "consistent with" to
+    "confirms".
+    """
+    errors = _ratio_errors(_LN10)
+
+    assert max(abs(error) for error in errors) <= _G_CALIBRATION_BAR, (
+        "the over-compressed variant is now distinguishable from the shipped one — "
+        f"research doc §5.4 understates this dataset and must be revisited: {errors}"
+    )
+
+
+def test_the_column_based_plate_count_underpredicts_real_widths() -> None:
+    """The h = 2 default is a textbook estimate, not a fit — and reads as one.
+
+    Real widths carry extra-column broadening and a real reduced plate height above
+    2, so the default N over-estimates efficiency and predicted widths come out
+    narrow. Pinned as a band rather than left implicit so that a units slip or a
+    dropped √N (research doc §5.1's reconstruction caveat) cannot hide inside "the
+    default is only an estimate".
+    """
+    ratios = []
+    for peak in LAB_MEASURED_PEAKS:
+        params = fit_peak(peak, LAB_METHOD, LAB_RUN1, LAB_RUN2).params
+        for run, measured in ((LAB_RUN1, peak.w_half_run1), (LAB_RUN2, peak.w_half_run2)):
+            assert measured is not None
+            ratios.append(peak_width(params, LAB_METHOD, run.gradient).w_half / measured)
+
+    assert all(0.6 <= ratio <= 1.0 for ratio in ratios), ratios

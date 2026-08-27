@@ -531,6 +531,80 @@ from §5.2, and $W$ from §5.1 with a user-supplied or column-preset $N$. Expose
 as a knob. Do **not** silently apply $G$ to peaks in the post-gradient regime
 (§4.2) — they are not compressed; use $G=1$ there.
 
+### 5.4 Calibration of the $G$ convention against measured widths
+
+Added during build ticket #17, which owns this calibration. §10 item 5 flagged the
+log-base convention inside $p$ as *"the highest-risk number in this document"* and
+named the cheap resolution: *"check a computed $G$ against a measured peak width once
+real data exists."* Done — and the answer is **asymmetric**, so it is recorded in full
+rather than as a verdict.
+
+**The statistic.** A measured $W_{1/2}$ cannot test $G$ on its own: the width model
+carries an unknown $N$ per compound, and any single width can be matched by moving
+$N$. What *is* free of $N$ is the ratio of one compound's two scouting widths, since
+both runs share a column:
+
+$$\frac{W_{1/2}(\text{run 2})}{W_{1/2}(\text{run 1})}
+= \frac{G(\text{run 2})\,(1+k_{e,2})}{G(\text{run 1})\,(1+k_{e,1})}$$
+
+**The data.** `validation/run1.csv` and `run2.csv` — three compounds, $t_G$ = 15 and
+45 min, six $W_{1/2}$ values. $(k_0, S_e)$ per compound comes from the two-run fit on
+the same pair. Measured ratios: 2.6364, 2.7353, 2.8400.
+
+**Result** — signed error of the predicted ratio against the measured one:
+
+| convention for $p$ | Unknown-1 | Unknown-2 | Unknown-3 | worst |
+|---|---|---|---|---|
+| $G=1$ (no compression) | −9.35% | −11.93% | −15.52% | 15.52% |
+| $p = (b_e/\ln 10)\,k_0/(1+k_0)$ | −4.68% | −7.46% | −11.10% | 11.10% |
+| **$p = b_e k_0/(1+k_0)$ — §5.2, shipped** | **−0.57%** | **−3.49%** | **−7.23%** | **7.23%** |
+| $p = (\ln 10)\,b_e k_0/(1+k_0)$ | +4.07% | +1.03% | −2.94% | 4.07% |
+
+**What this settles.**
+
+1. **Band compression is real and must be computed.** $G=1$ misses every peak by more
+   than the measurement can excuse, all in one direction. This is the firm result, and
+   it is the measurement behind §5.2's "do not hard-code $G$ as a ~10% correction or
+   drop it as negligible".
+2. **The under-compressing slip is excluded.** Reading the engine's natural-log $b_e$
+   as if it were Snyder's base-10 $b$ — dividing $p$ by 2.303 — misses by up to 11.1%,
+   again one-sided. So the *direction* of the convention is confirmed by measurement.
+
+**What this does not settle.** The mirror slip, $p$ multiplied by $\ln 10$, lands
+*inside* the residual at 4.07% — nominally better than the shipped convention. It is
+not adopted, for three reasons: §5.2's two independent primary sources both write $p$
+with no 2.303 beside a natural-log $b$; $n = 3$ with a residual larger than the effect
+is not evidence; and the residual is **structured, not random** — it grows
+monotonically with elution composition in *every* row of the table (Unknown-1 through
+-3 elute at $\varphi_e$ = 0.52, 0.62, 0.90 in run 1), which is the signature of $N$
+drifting with composition (§5.1), not of a wrong $G$.
+
+Three effects each of the same size as the ~4.6% the convention is worth here:
+
+- **Quantisation.** $W_{1/2}$ is recorded to 0.001 min, i.e. ±1.5–2.7% on run 1's
+  narrow peaks, ±2–2.7% once ratioed.
+- **$N$ drift with composition.** $\varphi_e$ differs by ~9 percentage points between
+  the two runs for every compound, and by 38 points across the three compounds.
+- **Extra-column variance.** Adds a constant $\sigma^2$ that inflates run 1's narrow
+  peaks proportionally more, biasing the measured ratio upward. Unfitted here — the
+  lab dataset has no extra-column measurement.
+
+**What would settle it:** widths recorded to 0.0001 min, or a compound set spanning a
+narrow $\varphi_e$ range (so $N$ drift cannot masquerade as $G$), or a measured
+extra-column variance to subtract. Any of the three would separate a factor of 2.303
+cleanly.
+
+**Where this lives in the tests.** `tests/test_reality.py` pins all four rows of the
+table above: two exclusion tests, one that the shipped convention clears the bar, and
+one that deliberately asserts the $\times\ln 10$ mirror *also* clears it — that last
+one fails loudly if a richer dataset ever makes the two separable, which is the signal
+to revisit this section. The bar (9%) sits in the gap the data opened, between 7.23%
+and 11.10%. §5.2's own computed table is pinned separately in `tests/test_width.py`
+as the numeric statement of the convention.
+
+**Status of §10 item 5: partially resolved.** Direction confirmed by measurement,
+magnitude still resting on the two secondary sources.
+
 ---
 
 ## 6. Resolution
@@ -559,6 +633,15 @@ exact form — §10.)
 **Critical resolution** = $\min$ over adjacent pairs, after sorting peaks by
 predicted $t_R$ at those conditions. Re-sort at every grid point: elution order
 changes (§7.4).
+
+**Note on validating $R_s$ (ticket #17).** SPEC §10 wanted an $R_s \pm 0.3$ bar once
+§5.4's calibration landed. The lab dataset cannot carry one: `run3.csv` and `run4.csv`
+record no $W_{1/2}$, so no held-out condition has a measured width, and the three
+peaks of runs 1–2 are separated at $R_s$ = 30.5 / 91.1 (run 1) and 33.4 / 99.5
+(run 2). At $R_s = 33$, ±0.3 is a 0.9% tolerance — an order of magnitude tighter than
+the ~5% the width model is good to (§5.4). An $R_s$ bar only bites near the critical
+region ($R_s \approx 1$–3), which this dataset never enters. Validating it needs a
+sample with a genuinely difficult pair.
 
 ---
 
@@ -895,6 +978,13 @@ weaker than the rest of the document.
    intended, every $G$ is wrong by ~10–15% at typical steepness. **Flagged as the
    highest-risk number in this document.** Cheap resolution: check a computed $G$
    against a measured peak width once real data exists.
+
+   **Update (ticket #17): partially resolved — see §5.4.** The lab scouting widths
+   were used as proposed. They exclude $G=1$ and exclude the base-10 reading of $b$,
+   so the *direction* is now confirmed by measurement; they cannot separate the
+   opposite slip ($p \times \ln 10$), which stays on the two secondary sources.
+   This item is no longer the highest-risk number in the document, but it is not
+   closed either.
 6. **LCGC columns by Dolan, Snyder, Stoll** (chromatographyonline.com) — every URL
    returned HTTP 403. The Stoll quotation in §5.2 about the ~10% width effect comes
    from a search-result summary of that article, not the article itself.

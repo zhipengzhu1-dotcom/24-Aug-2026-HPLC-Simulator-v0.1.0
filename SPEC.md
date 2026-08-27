@@ -132,7 +132,7 @@ Automated three-layer bar (pytest, red until met):
 2. **Reference**: reproduce the Guillarme 2022 worked spreadsheet ≤ 1e-6 (catches convention slips).
 3. **Reality**: den Uijl Sets X and Y (`docs/research/validation-datasets.md`, incl. the corrected Set X cell): median |ΔtR| ≤ 0.5%, worst ≤ 2%, **mean signed error ≤ 0.2%**.
 
-End-to-end trust bar — **already passed pre-build** on the lab dataset and re-asserted as a test: predict `run3.csv` from runs 1–2 within avg |ΔtR| ≤ 2%, worst ≤ 5%, order correct (measured: 0.35% / 0.53% / ✓); `run4.csv` as the extrapolation case (measured: 0.26%). Rs ± 0.3 asserted once the G convention is calibrated (§3). Residual note: signed bias flips between conditions (+0.35% / −0.26%) — mild LSS curvature, chromatographically negligible.
+End-to-end trust bar — **already passed pre-build** on the lab dataset and re-asserted as a test: predict `run3.csv` from runs 1–2 within avg |ΔtR| ≤ 2%, worst ≤ 5%, order correct (measured: 0.35% / 0.53% / ✓); `run4.csv` as the extrapolation case (measured: 0.26%). Rs ± 0.3 **is not assertable on this dataset** (#17, once the G convention was calibrated): `run3.csv`/`run4.csv` carry no W½ column, so no held-out condition has a measured width, and runs 1–2's three peaks sit at Rs 30–100, where ±0.3 is a ~1% tolerance on a width model good to ~5%. The bar needs a dataset containing a near-critical pair; carried to the v0.2 resolution-map work. Residual note: signed bias flips between conditions (+0.35% / −0.26%) — mild LSS curvature, chromatographically negligible.
 
 ## 11. Roadmap ([#10](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/10))
 
