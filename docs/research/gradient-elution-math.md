@@ -678,7 +678,7 @@ geometry estimate (§5.1; `plate-count-from-widths.md`): with $N$ fitted per com
 from the scouting pair, held-out $R_s$ lands at 0.955 / 0.956× measured at $t_G$ = 25
 and 0.935 / 0.900× at $t_G$ = 60 — 1.5–11.6 absolute $R_s$ units low, slightly
 pessimistic where the default was 18–39% optimistic. At $t_G$ = 25 that residual is
-inside the −9..+12% band run 3's two-decimal widths can resolve; at $t_G$ = 60 it is
+inside the ±9–13% band run 3's two-decimal widths can resolve; at $t_G$ = 60 it is
 real. Obstacle 2 stands and needs different data: a sample with a genuinely
 difficult pair.
 

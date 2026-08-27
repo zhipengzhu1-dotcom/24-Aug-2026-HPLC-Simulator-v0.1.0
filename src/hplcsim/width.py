@@ -1,7 +1,9 @@
 """Peak width in gradient elution (SPEC §3; research doc §5).
 
-σ_t = G·t0·(1 + k_e)/√N, with N a global plate-count knob and G the band
-compression factor of §5.2. All steepness math is in the natural-log convention
+σ_t = G·t0·(1 + k_e)/√N, with G the band compression factor of §5.2 and N the plate
+count per peak — fitted from that peak's measured scouting widths when it has any
+(:func:`fit_plate_count`), else the user's global knob, else the column default
+(SPEC §3, §4). All steepness math is in the natural-log convention
 (b_e), which is also the convention G's ``p`` is written in — see
 :func:`band_compression_factor` for why, and §5.4 of the research doc for the
 calibration that settled it against measured widths.
@@ -89,10 +91,12 @@ class FittedPlateCount:
     (gradient-math doc §5.4: 0.92% across a fourfold range of tG); thresholding it
     is the diagnostics ticket's job, not this module's.
 
-    ``low_confidence`` marks a fit that rests on a width from the post-gradient
-    regime, where the band was compressed under the ramp and then broadened
-    isocratically, so inverting with G = 1 inherits an unquantified model error
-    (§4.3). The width is still used — warnings over blocks — but stamped.
+    ``low_confidence`` marks a fit that rests *only* on post-gradient widths — where
+    the band was compressed under the ramp and then broadened isocratically, so
+    inverting with G = 1 inherits an unquantified model error (§4.3). Such a width is
+    left out of ``plate_count`` whenever the other run's width is usable (its
+    ``implied_run`` value is still reported, so ``ratio`` shows the disagreement); it
+    is used, and stamped, only when it is all the peak has.
     """
 
     plate_count: float
@@ -114,14 +118,15 @@ class PeakWidth:
 
     ``g`` and ``plate_count`` are reported rather than hidden because they are the
     two assumptions the number rests on: G is the calibrated compression factor
-    actually applied (1.0 outside the gradient regime), and N is the global knob.
+    actually applied (1.0 outside the gradient regime), and N is the plate count the
+    width rests on, with ``plate_count_source`` saying where it came from.
     ``k_e`` is the retention factor at elution, carried through from the retention
     prediction so callers need not recompute it.
 
     ``plate_count_source`` records where N came from — the same posture SPEC §4
     takes on an estimated t0 ("labeled fallback that stamps predictions
     lower-confidence"). It matters: against the lab dataset the h = 2 default lands
-    widths at 0.67–0.91× measured and Rs 18–39% high at held-out conditions, while
+    widths at 0.69–0.92× measured and Rs 18–39% high at held-out conditions, while
     an N fitted from the peak's own widths lands them at 0.99–1.16× (research docs
     ``gradient-elution-math.md`` §6 and ``plate-count-from-widths.md`` §0.2).
     """
@@ -208,8 +213,14 @@ def fit_plate_count(
     """Fit one peak's N from whichever scouting widths it carries; ``None`` if none.
 
     ``params`` is that peak's retention fit: the inverse needs G and k_e at each
-    scouting run, and both come from (k0, S_e). One width is enough (§3.1 — a single
-    width still beats a geometry estimate); two give the ``ratio`` diagnostic as well.
+    scouting run, and both come from (k0, S_e). One width is enough — §3.2's estimator
+    is written for n widths and n = 1 is its degenerate case; that a single width still
+    beats a geometry estimate is the build brief's call (design item 4). Two widths give
+    the ``ratio`` diagnostic as well.
+
+    A post-gradient width (§4.3) is left out of ``plate_count`` when the other run's
+    width is usable — dropping a known-biased measurement is not a block — and used,
+    with the result stamped ``low_confidence``, only when it is all the peak has.
     """
     widths = ((run1, peak.w_half_run1), (run2, peak.w_half_run2))
     implied = [
@@ -219,14 +230,15 @@ def fit_plate_count(
     present = [n for n in implied if n is not None]
     if not present:
         return None
-    low_confidence = any(
-        w_half is not None
-        and predict_retention(params, method, run.gradient).regime == "post_gradient"
-        for run, w_half in widths
-    )
+    usable = [
+        n
+        for (run, _), n in zip(widths, implied, strict=True)
+        if n is not None
+        and predict_retention(params, method, run.gradient).regime != "post_gradient"
+    ]
     return FittedPlateCount(
-        plate_count=math.exp(fmean(math.log(n) for n in present)),
+        plate_count=math.exp(fmean(math.log(n) for n in usable or present)),
         implied_run1=implied[0],
         implied_run2=implied[1],
-        low_confidence=low_confidence,
+        low_confidence=not usable,
     )

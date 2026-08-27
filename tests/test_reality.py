@@ -631,10 +631,12 @@ def test_the_implied_plate_count_ratio_is_the_data_quality_signal_per_peak() -> 
     """How far a peak's two scouting widths disagree about N — characterised, not judged.
 
     Research doc §5.4 showed a correctly modelled peak holds implied N to ~1% across a
-    fourfold range of tG, and §2.4 of plate-count-from-widths.md reads Unknown-3's
-    16% as intrinsic (its peaks are the narrowest, so extra-column dispersion cannot
-    be the cause). The engine reports the ratio; the threshold is diagnostics work
-    (ticket #20), and these are the numbers it will be drawn against.
+    fourfold range of tG; Unknown-3's two scouting widths disagree by 16%. That is a
+    different number from the one §2.4 of plate-count-from-widths.md discusses — its
+    N being 1.6× the other compounds', read there as intrinsic because its peaks are
+    the narrowest — but it is the same peak and the same question of whether its
+    widths are trustworthy. The engine reports the ratio; the threshold is
+    diagnostics work (ticket #20), and these are the numbers it will be drawn against.
     """
     ratios = [fit.plate_count.ratio for fit in _lab_fits() if fit.plate_count is not None]
 
@@ -678,14 +680,21 @@ _RS_OPTIMISM_BAND = (1.1, 1.6)
 _RS_BAR = 0.3
 
 
-def _measured_resolutions(run_name: str, measured_t_r: dict[str, float]) -> list[float]:
-    """Rs from measured tR and measured W½, in elution order."""
+def _measured_resolutions(
+    run_name: str, measured_t_r: dict[str, float], *, width_offset: float = 0.0
+) -> list[float]:
+    """Rs from measured tR and measured W½, in elution order.
+
+    ``width_offset`` is added to every width: 0 gives the point estimate, ±ULP the two
+    edges of the band the recorded precision allows (`_measured_resolution_bands`).
+    """
     ordered = sorted(measured_t_r, key=lambda name: measured_t_r[name])
+    widths = LAB_MEASURED_W_HALF[run_name]
     return [
         _W_HALF_PER_SIGMA
         / 2.0
         * (measured_t_r[later] - measured_t_r[earlier])
-        / (LAB_MEASURED_W_HALF[run_name][earlier] + LAB_MEASURED_W_HALF[run_name][later])
+        / (widths[earlier] + widths[later] + 2.0 * width_offset)
         for earlier, later in zip(ordered, ordered[1:], strict=False)
     ]
 
@@ -700,13 +709,13 @@ def _measured_resolution_bands(
     own precision rather than typed in, so a re-measured run 3 moves it automatically.
     """
     ulp = LAB_W_HALF_ULP[run_name]
-    ordered = sorted(measured_t_r, key=lambda name: measured_t_r[name])
-    bands = []
-    for earlier, later in zip(ordered, ordered[1:], strict=False):
-        separation = _W_HALF_PER_SIGMA / 2.0 * (measured_t_r[later] - measured_t_r[earlier])
-        widths = LAB_MEASURED_W_HALF[run_name][earlier] + LAB_MEASURED_W_HALF[run_name][later]
-        bands.append((separation / (widths + 2.0 * ulp), separation / (widths - 2.0 * ulp)))
-    return bands
+    return list(
+        zip(
+            _measured_resolutions(run_name, measured_t_r, width_offset=ulp),
+            _measured_resolutions(run_name, measured_t_r, width_offset=-ulp),
+            strict=True,
+        )
+    )
 
 
 _HELD_OUT = [("tG25", LAB_RUN3, LAB_MEASURED_TG25), ("tG60", LAB_RUN4, LAB_MEASURED_TG60)]
@@ -777,7 +786,8 @@ def test_resolution_with_fitted_plate_counts_lands_within_a_tenth_of_measured(
 def test_at_tg25_the_fitted_resolution_is_inside_the_measurement_band() -> None:
     """The confirmation run cannot resolve the fitted-N residual at all.
 
-    run3.csv records W½ to two decimals, so its measured Rs is only known to −9..+12%.
+    run3.csv records W½ to two decimals, so its measured Rs is only known to ±9–13%
+    (−9.1..+11.1% and −10.0..+12.5%, pair by pair).
     Both fitted-N predictions sit inside that band: at tG = 25 the engine and the
     instrument agree to within what the instrument wrote down.
     """

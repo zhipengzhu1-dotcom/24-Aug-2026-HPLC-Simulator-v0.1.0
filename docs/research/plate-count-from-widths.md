@@ -15,9 +15,10 @@ display-only. Where the 2.303 slip can enter, it is called out.
 
 ## 0. Purpose and context from the build
 
-### 0.1 What the engine already does
+### 0.1 What the engine did before this ticket
 
-`width.py` implements GEM §5.1 with the exact half-height constant:
+As of `main` at `1d7d883`, before #23 landed (the closing note of §6 records what
+changed): `width.py` implements GEM §5.1 with the exact half-height constant:
 
 $$\sigma_t = \frac{G\,t_0\,(1+k_e)}{\sqrt N}, \qquad
 W_{1/2} = \sqrt{8\ln 2}\;\sigma_t, \qquad W = 4\,\sigma_t$$
@@ -55,8 +56,8 @@ All on `validation/run1–4.csv` under the shipped natural-log $G$ convention
   units" is the correct statement; the ticket's "~1.5–11.7%" is a units slip. With fitted
   $N$ the error is slightly *pessimistic* (ratios 0.955/0.956 at $t_G$ = 25, 0.935/0.900
   at $t_G$ = 60), so the (1.1, 1.6) guard flips as designed.
-- Measured $R_s$ at $t_G$ = 25 carries ±9–12% uncertainty because `run3.csv` records
-  $W_{1/2}$ to two decimals (0.05/0.05/0.04); at $t_G$ = 60 (three decimals) it is ±0.5%.
+- Measured $R_s$ at $t_G$ = 25 carries ±9–13% uncertainty (−9.1..+11.1% and −10.0..+12.5%
+  pair by pair) because `run3.csv` records $W_{1/2}$ to two decimals (0.05/0.05/0.04); at $t_G$ = 60 (three decimals) it is ±0.5%.
   So at $t_G$ = 25 the fitted-$N$ $R_s$ lies inside the measurement band; at $t_G$ = 60
   the −6.5% / −10% is real.
 - SPEC §10's $R_s \pm 0.3$ bar remains unmet: absolute errors 1.5–11.6 ≫ 0.3, and the
@@ -463,15 +464,16 @@ is **this project's convention by analogy with its own $t_0$ rule**, not a cited
 7. **Keep the exact constants** ($\sqrt{8\ln2}$; natural-log $p$ in $G$): the 2.303 slip
    now enters $N$ squared (§3.1).
 8. **Tests:** the (1.1, 1.6) band flips as designed; the honest replacement bar is what
-   §0.2 measured — held-out $W_{1/2}$ ratios 0.99–1.16, $R_s$ inside the ±9–12%
+   §0.2 measured — held-out $W_{1/2}$ ratios 0.99–1.16, $R_s$ inside the ±9–13%
    measurement band at $t_G$ = 25 and within −10% at $t_G$ = 60. SPEC §10's $R_s \pm 0.3$
    stays unmet for GEM §6's reasons (obstacle 2 is the sample). *Ticket's call.*
 
 **Where this lives (ticket #23).** `hplcsim.width.plate_count_from_width` is §4.1's
 inverse, routed through `peak_width` at $N = 1$ so the forward and inverse forms cannot
 drift; `fit_plate_count` / `FittedPlateCount` implement §3.3's geometric mean, the
-`ratio` diagnostic of item 3 and the post-gradient stamp of §4.3 (such widths are used
-and stamped, never refused — the project's warnings-over-blocks posture); `fit_peak`
+`ratio` diagnostic of item 3 and the post-gradient rule of §4.3 (such a width is left out
+when the other run's width is usable, and used with a low-confidence stamp only when it
+is the peak's only width); `fit_peak`
 carries the result as `FitResult.plate_count`; `PeakWidth.plate_count_source` is the
 three-way stamp of item 2, and `resolution_table(plate_counts=...)` applies the
 precedence of §5. `tests/test_reality.py` pins the §0.2 numbers: widths 0.9–1.25× and

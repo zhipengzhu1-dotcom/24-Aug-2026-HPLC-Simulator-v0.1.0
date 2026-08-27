@@ -79,7 +79,7 @@ class FitResult:
     beta_spacing: BetaSpacing
     low_k0: bool
     low_confidence: bool
-    plate_count: FittedPlateCount | None = None
+    plate_count: FittedPlateCount | None
 
     @property
     def delta_phi_e(self) -> float:

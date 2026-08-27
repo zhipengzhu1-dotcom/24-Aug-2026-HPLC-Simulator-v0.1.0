@@ -19,7 +19,7 @@ from hplcsim.width import (
 
 
 class TestDefaultPlateCount:
-    """SPEC §4: N is a global knob with a column-based default."""
+    """SPEC §4: the column-based default — the last fallback behind a fitted N and the knob."""
 
     def test_lab_column_gets_the_reduced_plate_height_estimate(self) -> None:
         # N = L / (h·dp) with h = 2: 100 mm / (2 × 0.0016 mm) = 31250 for the
@@ -312,8 +312,10 @@ class TestFitPlateCount:
         ("n_run1", "n_run2"), [(12000.0, None), (None, 12000.0)], ids=["run1-only", "run2-only"]
     )
     def test_one_width_is_enough(self, n_run1: float | None, n_run2: float | None) -> None:
-        # Research doc §3.1: a single width still beats a geometry estimate. With one
-        # value there is nothing to compare it against, so the ratio is absent.
+        # Research doc §3.2's estimator is written for n widths; n = 1 is its degenerate
+        # case, and the brief (design item 4) makes the call that one width still beats
+        # a geometry estimate. With one value there is nothing to compare it against,
+        # so the ratio is absent.
         fitted = fit_plate_count(
             self._peak(n_run1, n_run2), self.PARAMS, self.METHOD, self.RUN1, self.RUN2
         )
@@ -324,36 +326,66 @@ class TestFitPlateCount:
         assert (fitted.implied_run1 is None) is (n_run1 is None)
         assert (fitted.implied_run2 is None) is (n_run2 is None)
 
-    def test_a_post_gradient_width_is_used_but_stamped_low_confidence(self) -> None:
-        # Research doc §4.3: a band still on-column when the ramp ends was compressed
-        # under the ramp and then broadened isocratically, so its width is neither
-        # value and the G = 1 inverse inherits an unquantified error. Warnings over
-        # blocks — the width is used, and the stamp says what it rests on.
-        method = Method(t0=0.6, t_dwell=0.0, flow=0.4)
-        steep = Run(Gradient(phi0=0.0, phif=0.2, t_gradient=2.0), name="steep")
-        shallow = Run(Gradient(phi0=0.0, phif=0.2, t_gradient=40.0), name="shallow")
-        params = RetentionParams(ln_k0=math.log(500.0), s_e=20.0, phi_ref=0.0)
-        assert predict_retention(params, method, steep.gradient).regime == "post_gradient"
-        assert predict_retention(params, method, shallow.gradient).regime == "gradient"
-        peak = Peak(
-            t_r_run1=predict_retention(params, method, steep.gradient).t_r,
-            t_r_run2=predict_retention(params, method, shallow.gradient).t_r,
-            w_half_run1=peak_width(params, method, steep.gradient, plate_count=9000.0).w_half,
-            w_half_run2=peak_width(params, method, shallow.gradient, plate_count=9000.0).w_half,
+    # Research doc §4.3: a band still on-column when the ramp ends was compressed under
+    # the ramp and then broadened isocratically, so its width is neither value and the
+    # G = 1 inverse inherits an unquantified error. The steep run below elutes this
+    # solute post-gradient and the shallow run in-gradient; each width is built at its
+    # own N, so the fitted value shows which widths the fit rests on.
+    POST_GRADIENT_METHOD = Method(t0=0.6, t_dwell=0.0, flow=0.4)
+    STEEP = Run(Gradient(phi0=0.0, phif=0.2, t_gradient=2.0), name="steep")
+    SHALLOW = Run(Gradient(phi0=0.0, phif=0.2, t_gradient=40.0), name="shallow")
+    POST_GRADIENT_PARAMS = RetentionParams(ln_k0=math.log(500.0), s_e=20.0, phi_ref=0.0)
+
+    def _regime_peak(self, n_steep: float | None, n_shallow: float | None) -> Peak:
+        method, params = self.POST_GRADIENT_METHOD, self.POST_GRADIENT_PARAMS
+        assert predict_retention(params, method, self.STEEP.gradient).regime == "post_gradient"
+        assert predict_retention(params, method, self.SHALLOW.gradient).regime == "gradient"
+
+        def width(run: Run, n: float | None) -> float | None:
+            if n is None:
+                return None
+            return peak_width(params, method, run.gradient, plate_count=n).w_half
+
+        return Peak(
+            t_r_run1=predict_retention(params, method, self.STEEP.gradient).t_r,
+            t_r_run2=predict_retention(params, method, self.SHALLOW.gradient).t_r,
+            w_half_run1=width(self.STEEP, n_steep),
+            w_half_run2=width(self.SHALLOW, n_shallow),
         )
 
-        fitted = fit_plate_count(peak, params, method, steep, shallow)
+    def test_a_post_gradient_width_is_left_out_when_the_other_run_has_a_usable_one(
+        self,
+    ) -> None:
+        # Dropping a known-biased measurement is not a block: the fit rests on the
+        # in-gradient width alone (9000 — not 6000, the geometric mean with the other),
+        # while the post-gradient width's implied value is still reported, so the
+        # ratio shows the disagreement.
+        fitted = fit_plate_count(
+            self._regime_peak(4000.0, 9000.0),
+            self.POST_GRADIENT_PARAMS,
+            self.POST_GRADIENT_METHOD,
+            self.STEEP,
+            self.SHALLOW,
+        )
 
         assert fitted is not None
         assert fitted.plate_count == pytest.approx(9000.0, rel=1e-9)
-        assert fitted.low_confidence
+        assert fitted.implied_run1 == pytest.approx(4000.0, rel=1e-9)
+        assert fitted.ratio == pytest.approx(4000.0 / 9000.0, rel=1e-9)
+        assert not fitted.low_confidence
 
-        only_shallow = fit_plate_count(
-            Peak(peak.t_r_run1, peak.t_r_run2, w_half_run2=peak.w_half_run2),
-            params,
-            method,
-            steep,
-            shallow,
+    def test_a_lone_post_gradient_width_is_used_but_stamped_low_confidence(self) -> None:
+        # Warnings over blocks: refusing the peak's only width would leave it on the
+        # geometry default, which is worse. It is used, and the stamp says what it
+        # rests on.
+        fitted = fit_plate_count(
+            self._regime_peak(4000.0, None),
+            self.POST_GRADIENT_PARAMS,
+            self.POST_GRADIENT_METHOD,
+            self.STEEP,
+            self.SHALLOW,
         )
-        assert only_shallow is not None
-        assert not only_shallow.low_confidence
+
+        assert fitted is not None
+        assert fitted.plate_count == pytest.approx(4000.0, rel=1e-9)
+        assert fitted.low_confidence
