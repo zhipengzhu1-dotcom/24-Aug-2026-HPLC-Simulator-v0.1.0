@@ -149,6 +149,7 @@ def test_peaks_are_stored_once_row_per_compound() -> None:
 
 def test_unset_optional_fields_are_omitted_not_null() -> None:
     parsed = _file_of(MINIMAL_SESSION)
+    assert "session_name" not in parsed
     assert "column_length_mm" not in parsed["method"]
     assert "plate_count" not in parsed["method"]
     assert "area_run1" not in parsed["peaks"][0]
@@ -172,6 +173,12 @@ def test_missing_schema_version_is_rejected() -> None:
 
 def test_missing_app_version_is_rejected() -> None:
     text = _mutated(FULL_SESSION, lambda f: f.pop("app_version"))
+    with pytest.raises(SessionFileError, match="app_version"):
+        load_session(text)
+
+
+def test_non_text_app_version_is_rejected() -> None:
+    text = _mutated(FULL_SESSION, lambda f: f.__setitem__("app_version", 0.1))
     with pytest.raises(SessionFileError, match="app_version"):
         load_session(text)
 

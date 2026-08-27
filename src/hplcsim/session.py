@@ -73,7 +73,7 @@ def save_session(session: Session) -> str:
     document = {
         "schema_version": SCHEMA_VERSION,
         "app_version": __version__,
-        "session_name": session.session_name,
+        **_drop_unset({"session_name": session.session_name or None}),
         "method": _method_block(session, shared),
         "runs": [_run_row(run) for run in session.runs],
         "peaks": [_peak_row(peak) for peak in session.peaks],
@@ -225,10 +225,6 @@ class _Fields:
             raise SessionFileError(f"session file: {self.at(key)} must be text, got {value!r}")
         return value
 
-    def required_text(self, key: str) -> str:
-        self.raw(key)
-        return self.text(key, "")
-
     def _number(self, key: str, value: Any) -> float:
         # bool is an int in Python, but `true` is never a measurement.
         if isinstance(value, bool) or not isinstance(value, int | float):
@@ -257,7 +253,9 @@ def _check_versions(document: _Fields) -> None:
             f"session file: schema_version {version!r} is not supported by this app, "
             f"which reads schema_version {SCHEMA_VERSION}"
         )
-    document.required_text("app_version")
+    stamp = document.raw("app_version")
+    if not isinstance(stamp, str):
+        raise SessionFileError(f"session file: app_version must be text, got {stamp!r}")
 
 
 def _read_method(block: _Fields) -> Method:
@@ -310,11 +308,17 @@ def _read_peak(row: _Fields) -> Peak:
 
 
 def _check_inputs(session: Session) -> None:
-    """Impossible values and structure the flat file cannot carry — checked both ways.
+    """Impossible values, and structure the flat file cannot carry — checked both ways.
 
-    Deliberately *not* checked here: everything SPEC §4 makes a warning rather than a
-    block (spacing ratio, tR ≤ t0, two runs sharing a tG). A half-entered session is
-    still worth saving, and those judgements belong to the fit and the UI.
+    Saving applies the same rules as loading on purpose. Writing a value that ``load``
+    would refuse hands the user a file that fails to open later, which is worse than an
+    error naming the field while the value is still on screen and fixable.
+
+    Two things are deliberately *not* checked. SPEC §4's judgement calls — spacing
+    ratio, tR ≤ t0 — are warnings there and stay warnings. And two runs sharing a tG,
+    which SPEC §4 and CLAUDE.md both make a hard failure, is refused by ``fit`` where
+    the impossibility bites: a half-entered session is still worth saving, and refusing
+    to *reopen* one would strand the work rather than protect it.
     """
     if len(session.runs) != 2:
         raise SessionFileError(f"{_TWO_RUNS}, got {len(session.runs)}")
