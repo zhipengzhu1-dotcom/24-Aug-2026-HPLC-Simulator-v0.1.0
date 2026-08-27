@@ -476,9 +476,9 @@ dimensional consistency with the isocratic width $W = 4t_0(1+k)/\sqrt N$ and fro
 Guillarme Eq. 13, which rendered cleanly and unambiguously contains $\sqrt N$.
 
 $N$ here is the **isocratic** plate count at the elution composition. For v0.1,
-treating $N$ as one number per column/flow-rate is defensible; Molnár §16 notes
+treating $N$ as one number per column/flow-rate is defensible; Molnár §9 notes
 DryLab originally worked around $N$ varying across the chromatogram by using
-different plate numbers in the front/middle/final third, and later solved it
+different plate numbers in the front/middle/final third, and (his §16) later solved it
 properly by taking **measured peak widths as input data** — a good v0.2 direction:
 fit $N$ per peak from the scouting runs instead of assuming it.
 
