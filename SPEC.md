@@ -110,15 +110,24 @@ Two decisions taken while building ([#18](https://github.com/zhipengzhu1-dotcom/
 
 ## 9. Architecture and stack ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6))
 
-Python ≥ 3.12 · uv · ruff · mypy (strict on the engine) · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
+Python ≥ 3.12 · uv · ruff · mypy (strict on the engine and on the app's logic layer; only the Streamlit entry point is excluded) · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
 
 ```
-src/hplcsim/
-  method.py     # MethodConstants, Gradient, Run, Peak (dataclasses; φ + natural-log internal units)
-  fit.py        # fit_two_run(method, run1, run2) -> list[PeakFit]   (seed + Brent, diagnostics)
-  predict.py    # predict(method, fits, gradient) -> Prediction      (tR, σ, Rs, flags, branches)
-  session.py    # JSON schema v1 load/save + validation
-app/streamlit_app.py
+src/hplcsim/      # the engine: a pure library, importing no UI code
+  model.py        # Method, Gradient, Run, Peak, RetentionParams; the φ and log-convention boundaries
+  retention.py    # predict_retention(params, method, gradient) -> RetentionResult (regime branches)
+  fit.py          # fit_peaks(peaks, method, run1, run2) -> list[FitResult]  (seed + Brent)
+  width.py        # peak_width, fit_plate_count -> PeakWidth, FittedPlateCount (G, and N per peak)
+  resolution.py   # resolution_table(...) -> ResolutionTable (adjacent pairs, critical pair)
+  session.py      # JSON schema v1 load/save + validation
+streamlit_app.py  # the app's entry point — at the root because `streamlit run` puts the
+                  # script's own folder on sys.path, so an entry point inside app/ cannot
+                  # import app.pipeline at all
+app/              # the Cockpit: depends on the engine, never the reverse
+  pipeline.py     # entry -> fit -> prediction, Streamlit-free (what the app's tests target)
+  chromatogram.py # the Gaussian sum, and the v0.2 resolution-map frame
+  tables.py       # the display frames; the base-10 display boundary
+  panels.py       # the left rail's label/value blocks
 tests/          # three-layer suite (§10)
 validation/     # lab dataset (committed) — protocol + method.csv + run1..4.csv
 docs/research/  # merged research docs (normative math + datasets)
