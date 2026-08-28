@@ -125,7 +125,7 @@ def main() -> None:
         st.warning(_DWELL_REQUIRED, icon="⚠️")
         return
 
-    rail, main_view = st.columns([1.0, 3.1], gap="medium")
+    rail, main_view = st.columns([1.15, 3.0], gap="medium")
 
     with rail:
         run1, run2 = _scouting_runs(constants)
@@ -383,7 +383,7 @@ def _peak_detail(cockpit: Cockpit) -> None:
             Row("S", f"{s_base10_from_s_e(fit.params.s_e):.2f}"),
         ]
     before, after = _neighbouring_resolution(cockpit, name)
-    rows.append(Row("Rs before / after", f"{_rs_text(before)} / {_rs_text(after)}"))
+    rows.append(Row("Rs before/after", f"{_rs_text(before)} / {_rs_text(after)}"))
     st.markdown(panels.panel("Selected peak", rows), unsafe_allow_html=True)
 
 

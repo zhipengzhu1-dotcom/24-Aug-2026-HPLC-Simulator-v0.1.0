@@ -82,19 +82,28 @@ STYLE = """
 
   .hs-panel {
     border: 1px solid #b9c6d6; border-radius: 3px; background: #f2f6fb;
-    margin-bottom: 8px; overflow: hidden;
+    margin-bottom: 8px; overflow: hidden; max-width: 100%; box-sizing: border-box;
   }
+  /* A flex child defaults to min-width:auto, which lets a wide table push the whole
+     column past its share of the row instead of wrapping inside it. */
+  div[data-testid="stColumn"] { min-width: 0; }
   .hs-panel-title {
     background: #dbe6f2; border-bottom: 1px solid #b9c6d6; padding: 3px 8px;
     font-size: 0.72rem; font-weight: 700; letter-spacing: .04em;
     text-transform: uppercase; color: #24445f;
   }
-  .hs-table { width: 100%; border-collapse: collapse; }
-  .hs-table td { padding: 2px 8px; font-size: 0.80rem; border-bottom: 1px solid #e4ebf3; }
+  /* table-layout: fixed is load-bearing. Without it the columns size to their content,
+     the table computes wider than the rail, and the panel's overflow clips the values —
+     right-aligned ones first, so a short value disappears entirely. Both cells wrap. */
+  .hs-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .hs-table td {
+    padding: 3px 8px; font-size: 0.78rem; border-bottom: 1px solid #e4ebf3;
+    overflow-wrap: anywhere; vertical-align: top;
+  }
   .hs-table tr:last-child td { border-bottom: none; }
-  .hs-label { color: #4a5768; white-space: nowrap; }
+  .hs-label { color: #4a5768; width: 46%; }
   .hs-value {
-    text-align: right; font-variant-numeric: tabular-nums; color: #14202e; white-space: nowrap;
+    text-align: right; font-variant-numeric: tabular-nums; color: #14202e; width: 55%;
   }
   .hs-empty { color: #8d99a8; font-style: italic; font-size: 0.78rem; }
 
