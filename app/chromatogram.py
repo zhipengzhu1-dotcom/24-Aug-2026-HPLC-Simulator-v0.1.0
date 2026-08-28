@@ -114,7 +114,20 @@ def figure(trace: Chromatogram, *, height: int = 380) -> Any:
             y=trace.signal,
             mode="lines",
             line={"width": 1.4},
-            hovertemplate="%{x:.3f} min<extra></extra>",
+            hovertemplate="%{x:.3f} min · %{y:.4g}<extra></extra>",
+        )
+    )
+    # SPEC §7 asks for "peak labels; hover values". The annotations are the labels; the
+    # summed trace cannot say which peak a point belongs to, so an invisible marker at
+    # each apex carries the name and the predicted time a reader would hover to find.
+    fig.add_trace(
+        go.Scatter(
+            x=[label.t_r for label in trace.labels],
+            y=[label.height for label in trace.labels],
+            mode="markers",
+            marker={"size": 12, "opacity": 0.0},
+            customdata=[[label.name] for label in trace.labels],
+            hovertemplate="<b>%{customdata[0]}</b><br>tR %{x:.3f} min<extra></extra>",
         )
     )
     for label in trace.labels:

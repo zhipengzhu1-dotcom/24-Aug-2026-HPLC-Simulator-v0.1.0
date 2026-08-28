@@ -19,10 +19,12 @@ from app.chromatogram import Chromatogram, chromatogram
 from app.pipeline import (
     Cockpit,
     CockpitInputs,
+    MethodEntry,
     PeakRow,
     area_shares,
-    prepare,
+    dwell_from_volume,
     run_cockpit,
+    split_rows,
 )
 from app.tables import (
     COMPOUND,
@@ -155,7 +157,7 @@ def test_sliding_the_candidate_moves_every_prediction() -> None:  # AC 1
 
 def test_blank_rows_are_not_peaks_and_do_not_take_a_number() -> None:
     """The editor's spare rows are not half-entered compounds; numbering skips them."""
-    entry = prepare(
+    entry = split_rows(
         [PeakRow(), PeakRow(t_r_run1=9.9, t_r_run2=20.8), PeakRow(), PeakRow(t_r_run1=11.6)]
     )
 
@@ -164,7 +166,9 @@ def test_blank_rows_are_not_peaks_and_do_not_take_a_number() -> None:
 
 
 def test_a_typed_name_survives_the_automatic_numbering() -> None:
-    entry = prepare([PeakRow(name="Caffeine", t_r_run1=9.9, t_r_run2=20.8), PeakRow(t_r_run1=1.0)])
+    entry = split_rows(
+        [PeakRow(name="Caffeine", t_r_run1=9.9, t_r_run2=20.8), PeakRow(t_r_run1=1.0)]
+    )
 
     assert [peak.name for peak in entry.tracked] == ["Caffeine"]
     # Numbering counts every non-blank row, so the named row still consumes P1.
@@ -181,6 +185,42 @@ def test_a_row_carries_its_optional_measurements_into_the_engines_peak() -> None
 def test_a_half_paired_row_has_no_engine_peak_at_all() -> None:
     assert PeakRow(name="x", t_r_run1=12.0).as_peak() is None
     assert PeakRow(name="x", t_r_run2=12.0).as_peak() is None
+
+
+# --- the entry boundaries of SPEC §4 ----------------------------------------------------
+
+
+def test_a_dwell_volume_becomes_a_time_by_dividing_by_the_flow() -> None:
+    """SPEC §4: "entered as t_D (min) or V_D (mL, ÷F)". The lab method's own numbers."""
+    assert dwell_from_volume(0.375, 0.4) == pytest.approx(0.9375)
+    assert dwell_from_volume(0.375, 0.4) == LAB_METHOD.t_dwell
+
+
+def test_a_dwell_volume_at_zero_flow_is_refused_rather_than_returned_as_infinity() -> None:
+    with pytest.raises(ValueError, match="flow must be positive"):
+        dwell_from_volume(0.375, 0.0)
+
+
+def test_percent_b_reaches_the_engine_as_a_fraction_and_only_here() -> None:
+    """CLAUDE.md's units rule: %B is an entry boundary, φ is what the engine holds."""
+    entry = MethodEntry(method=LAB_METHOD, percent_b_start=5.0, percent_b_end=95.0, hold=0.5)
+
+    gradient = entry.gradient(15.0)
+
+    assert (gradient.phi0, gradient.phif) == (0.05, 0.95)
+    assert gradient.delta_phi == pytest.approx(0.9)
+    assert (gradient.t_gradient, gradient.t_init) == (15.0, 0.5)
+    assert entry.gradient(LAB_RUN1.gradient.t_gradient) == LAB_RUN1.gradient
+
+
+def test_the_candidate_may_hold_for_longer_than_the_scouting_runs_did() -> None:
+    """SPEC §4's prediction targets vary tG *and* t_init within the same %B range."""
+    entry = MethodEntry(method=LAB_METHOD, percent_b_start=5.0, percent_b_end=95.0, hold=0.5)
+
+    candidate = entry.gradient(25.0, hold=2.0)
+
+    assert candidate.t_init == 2.0
+    assert (candidate.phi0, candidate.phif) == (0.05, 0.95)
 
 
 # --- warnings over blocks ---------------------------------------------------------------

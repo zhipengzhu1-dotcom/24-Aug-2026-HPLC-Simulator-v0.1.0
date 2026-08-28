@@ -25,7 +25,18 @@ AREA_RUN2 = "Area run 2"
 W_HALF_RUN1 = "W½ run 1 (min)"
 W_HALF_RUN2 = "W½ run 2 (min)"
 
-PEAK_COLUMNS = (COMPOUND, TR_RUN1, TR_RUN2, AREA_RUN1, AREA_RUN2, W_HALF_RUN1, W_HALF_RUN2)
+# Every optional per-peak measurement of SPEC §4, as a display column against the
+# :class:`~app.pipeline.PeakRow` field it fills. One mapping rather than a column list
+# beside a hand-written constructor: adding a measurement is then one line here.
+_MEASUREMENT_FIELDS = {
+    TR_RUN1: "t_r_run1",
+    TR_RUN2: "t_r_run2",
+    AREA_RUN1: "area_run1",
+    AREA_RUN2: "area_run2",
+    W_HALF_RUN1: "w_half_run1",
+    W_HALF_RUN2: "w_half_run2",
+}
+PEAK_COLUMNS = (COMPOUND, *_MEASUREMENT_FIELDS)
 
 N_RATIO = "N run 1 / run 2"
 FIT_COLUMNS = (COMPOUND, "log10 k0", "S", "N", "N from", N_RATIO, "Note")
@@ -63,12 +74,7 @@ def peak_rows_from_frame(frame: pd.DataFrame) -> list[PeakRow]:
     return [
         PeakRow(
             name=_text(record.get(COMPOUND)),
-            t_r_run1=_number(record.get(TR_RUN1)),
-            t_r_run2=_number(record.get(TR_RUN2)),
-            area_run1=_number(record.get(AREA_RUN1)),
-            area_run2=_number(record.get(AREA_RUN2)),
-            w_half_run1=_number(record.get(W_HALF_RUN1)),
-            w_half_run2=_number(record.get(W_HALF_RUN2)),
+            **{field: _number(record.get(column)) for column, field in _MEASUREMENT_FIELDS.items()},
         )
         for record in frame.to_dict("records")
     ]

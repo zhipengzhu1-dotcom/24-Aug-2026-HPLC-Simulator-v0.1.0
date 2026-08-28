@@ -22,13 +22,18 @@ on screen.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import streamlit as st
 
 from app import chromatogram, tables
-from app.pipeline import Cockpit, CockpitInputs, PeakRow, run_cockpit
-from hplcsim.model import Gradient, Method, Run, phi_from_percent_b
+from app.pipeline import (
+    Cockpit,
+    CockpitInputs,
+    MethodEntry,
+    PeakRow,
+    dwell_from_volume,
+    run_cockpit,
+)
+from hplcsim.model import Gradient, Method, Run
 from hplcsim.width import default_plate_count
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
@@ -40,8 +45,6 @@ _PARTICLE_UM = 1.6
 _FLOW = 0.4
 _TEMPERATURE_C = 45.0
 _T0 = 0.6
-_DWELL_VOLUME_ML = 0.375
-_DWELL_TIME_MIN = 0.9375
 _PERCENT_B_START = 5.0
 _PERCENT_B_END = 95.0
 _HOLD = 0.5
@@ -55,6 +58,27 @@ _MAX_CANDIDATE_HOLD = 20.0
 
 _MEASURED = "Measured marker"
 _BY_VOLUME = "Volume (mL)"
+
+_DWELL_REQUIRED = (
+    "**Enter the dwell before anything can be predicted.** It belongs to the instrument, "
+    "not to the method, and there is no sensible default to guess: a dwell that is wrong "
+    "by a minute moves every predicted retention time by a minute, in the same direction, "
+    "and the fit cannot see the error. The sidebar takes it as a volume or as a time."
+)
+
+# validation/PROTOCOL.md §1, which is how this repo's own dwell should have been obtained
+# — method.csv records it as "from instrument spec sheet, NOT measured".
+_DWELL_GUIDANCE = """\
+Replace the column with a zero-dead-volume union, then:
+
+1. A = water; B = water + ~0.1% acetone. Detector ~265 nm.
+2. Program a sharp linear gradient 0 → 100 %B at your normal flow.
+3. **t_D** = the time from gradient start to the **midpoint** of the absorbance rise.
+4. **V_D** = t_D × F.
+
+A spec-sheet figure is a starting point, not a measurement — dwell volume belongs to the
+instrument as plumbed, and it is worth about 1% of systematic bias when it is wrong.
+"""
 
 # SPEC §6 diagnostic 5. Scoped to peaks whose N is the column estimate, per the amended
 # wording of that section; the numbers are research docs `gradient-elution-math.md` §6
@@ -70,32 +94,19 @@ _DIAGNOSTIC_5 = (
 )
 
 
-@dataclass(frozen=True)
-class _Constants:
-    """What the sidebar holds: the method, the shared gradient shape, and the N knob."""
-
-    method: Method
-    percent_b_start: float
-    percent_b_end: float
-    hold: float
-    plate_count: float | None
-
-    def gradient(self, t_gradient: float, hold: float | None = None) -> Gradient:
-        """The shared gradient at one gradient time — the %B → φ boundary, in one place."""
-        return Gradient(
-            phi0=phi_from_percent_b(self.percent_b_start),
-            phif=phi_from_percent_b(self.percent_b_end),
-            t_gradient=t_gradient,
-            t_init=self.hold if hold is None else hold,
-        )
-
-
 def main() -> None:
     st.set_page_config(page_title="hplcsim — Cockpit", layout="wide")
     constants = _sidebar()
 
     st.title("hplcsim — Cockpit")
     st.caption("Two scouting runs in, per-peak LSS parameters out, any linear gradient predicted.")
+
+    # SPEC §4 makes the dwell required with no silent default: it belongs to the
+    # instrument, a guessed one biases every prediction the same way, and this is the
+    # one constant the spec singles out. So nothing is predicted until it is entered.
+    if constants is None:
+        st.warning(_DWELL_REQUIRED, icon="⚠️")
+        return
 
     run1, run2 = _scouting_runs(constants)
     candidate = _candidate_gradient(constants)
@@ -127,7 +138,8 @@ def main() -> None:
 # --- sidebar: the method constants of SPEC §4 -----------------------------------------
 
 
-def _sidebar() -> _Constants:
+def _sidebar() -> MethodEntry | None:
+    """The method constants, or ``None`` while the required dwell is still unset."""
     with st.sidebar:
         st.header("Method constants")
         st.caption("Shared by both scouting runs and by the candidate.")
@@ -143,10 +155,16 @@ def _sidebar() -> _Constants:
         t0_source = st.radio("t0 source", [_MEASURED, "Geometry estimate"], horizontal=True)
         t0 = st.number_input("t0 (min)", 0.001, 100.0, _T0, step=0.05, format="%.4f")
         if t0_source != _MEASURED:
-            st.caption("An estimated t0 stamps every prediction lower-confidence (SPEC §6).")
+            st.caption(
+                "Enter the t0 you estimated from the column geometry — the app does not "
+                "compute one. Predictions from an estimated t0 are stamped "
+                "lower-confidence (SPEC §6 diagnostic 6)."
+            )
 
         st.subheader("Dwell")
         t_dwell = _dwell(flow)
+        if t_dwell is None:
+            return None
 
         st.subheader("Gradient")
         percent_b_start = st.number_input("%B start", 0.0, 100.0, _PERCENT_B_START)
@@ -167,7 +185,7 @@ def _sidebar() -> _Constants:
         st.subheader("Plate count N")
         plate_count = _plate_count_knob(method)
 
-    return _Constants(
+    return MethodEntry(
         method=method,
         percent_b_start=percent_b_start,
         percent_b_end=percent_b_end,
@@ -176,13 +194,22 @@ def _sidebar() -> _Constants:
     )
 
 
-def _dwell(flow: float) -> float:
-    """t_D directly, or V_D ÷ F — the entry-boundary conversion of SPEC §4."""
+def _dwell(flow: float) -> float | None:
+    """t_D directly, or V_D ÷ F — ``None`` until one of the two is entered.
+
+    The only constant that opens empty. SPEC §4: "Dwell | required, no silent default;
+    entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance."
+    """
     entered_as = st.radio("Dwell entered as", [_BY_VOLUME, "Time (min)"], horizontal=True)
     if entered_as != _BY_VOLUME:
-        return st.number_input("Dwell time t_D (min)", 0.0, 100.0, _DWELL_TIME_MIN, format="%.4f")
-    volume = st.number_input("Dwell volume V_D (mL)", 0.0, 100.0, _DWELL_VOLUME_ML, format="%.4f")
-    t_dwell = volume / flow
+        return st.number_input("Dwell time t_D (min)", 0.0, 100.0, value=None, format="%.4f")
+
+    volume = st.number_input("Dwell volume V_D (mL)", 0.0, 100.0, value=None, format="%.4f")
+    with st.expander("How to measure V_D"):
+        st.markdown(_DWELL_GUIDANCE)
+    if volume is None:
+        return None
+    t_dwell = dwell_from_volume(volume, flow)
     st.caption(f"t_D = V_D / F = {t_dwell:.4f} min")
     return t_dwell
 
@@ -203,7 +230,7 @@ def _plate_count_knob(method: Method) -> float | None:
 # --- runs, candidate, entry -----------------------------------------------------------
 
 
-def _scouting_runs(constants: _Constants) -> tuple[Run, Run]:
+def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
     st.subheader("Scouting runs")
     left, right = st.columns(2)
     t_gradient1 = left.number_input("Run 1 tG (min)", 0.1, 600.0, _TG_RUN1, step=0.5)
@@ -214,7 +241,7 @@ def _scouting_runs(constants: _Constants) -> tuple[Run, Run]:
     )
 
 
-def _candidate_gradient(constants: _Constants) -> Gradient:
+def _candidate_gradient(constants: MethodEntry) -> Gradient:
     st.subheader("Candidate gradient")
     left, right = st.columns(2)
     t_gradient = left.slider("Candidate tG (min)", 1.0, _MAX_CANDIDATE_TG, _TG_CANDIDATE, step=0.5)

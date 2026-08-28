@@ -22,7 +22,7 @@ from dataclasses import dataclass, replace
 from statistics import fmean
 
 from hplcsim.fit import FitResult, fit_peak
-from hplcsim.model import Gradient, Method, Peak, Run
+from hplcsim.model import Gradient, Method, Peak, Run, phi_from_percent_b
 from hplcsim.resolution import PredictedPeak, ResolutionTable, resolution_table
 
 
@@ -92,7 +92,7 @@ class Entry:
         return len(self.untracked)
 
 
-def prepare(rows: Sequence[PeakRow]) -> Entry:
+def split_rows(rows: Sequence[PeakRow]) -> Entry:
     """Drop blank rows, fill in the automatic names, and split on completeness.
 
     Names are numbered across every non-blank row, tracked or not, so the number a
@@ -123,10 +123,14 @@ class PeakOutcome:
 
 @dataclass(frozen=True)
 class CockpitInputs:
-    """Everything the widgets hold — deliberately the shape of a saved session.
+    """Everything the widgets hold: the method, the two scouting runs, the candidate.
 
-    Field for field this is :class:`hplcsim.session.Session` with ``PeakRow`` in place
-    of ``Peak``, so ticket #21 wires save/load by mapping the peak list and nothing else.
+    Close to :class:`hplcsim.session.Session` but not identical, and ticket #21 should
+    expect the differences rather than the resemblance: the runs are two fields here
+    against Session's ``runs`` pair, ``PeakRow`` stands in for ``Peak`` so half-paired
+    rows have somewhere to live, ``plate_count`` is a float here and an int there, and
+    Session's ``session_name`` has no counterpart because nothing on this screen names
+    a session yet.
     """
 
     method: Method
@@ -150,9 +154,7 @@ class Cockpit:
     @property
     def fitted(self) -> tuple[tuple[Peak, FitResult], ...]:
         """The peaks that reached a fit, paired with it — input order, not elution order."""
-        return tuple(
-            (outcome.peak, outcome.fit) for outcome in self.outcomes if outcome.fit is not None
-        )
+        return _fitted_pairs(self.outcomes)
 
     @property
     def predicted_by_name(self) -> dict[str, PredictedPeak]:
@@ -178,7 +180,7 @@ class Cockpit:
 
 def run_cockpit(inputs: CockpitInputs) -> Cockpit:
     """Fit every tracked peak, then predict the candidate gradient from the survivors."""
-    entry = prepare(inputs.rows)
+    entry = split_rows(inputs.rows)
     blocked = _blocking_reason(inputs.run1, inputs.run2)
     if blocked is not None:
         return Cockpit(entry, (), None, None, blocked)
@@ -197,6 +199,11 @@ def run_cockpit(inputs: CockpitInputs) -> Cockpit:
         plate_counts=[fit.plate_count for _, fit in fitted],
     )
     return Cockpit(entry, outcomes, table, area_shares([peak for peak, _ in fitted]), None)
+
+
+def _fitted_pairs(outcomes: Sequence[PeakOutcome]) -> tuple[tuple[Peak, FitResult], ...]:
+    """The outcomes that carry a fit, narrowed. ``Cockpit.fitted`` is this, read back."""
+    return tuple((outcome.peak, outcome.fit) for outcome in outcomes if outcome.fit is not None)
 
 
 def _fit_one(peak: Peak, inputs: CockpitInputs) -> PeakOutcome:
@@ -252,3 +259,48 @@ def area_shares(peaks: Sequence[Peak]) -> dict[str, float] | None:
 
     total = sum(means)
     return {peak.name: mean / total for peak, mean in zip(peaks, means, strict=True)}
+
+
+# --- the entry boundaries of SPEC §4 --------------------------------------------------
+#
+# These two conversions used to sit in the widget file, where no gate could see them.
+# They are the app's side of CLAUDE.md's units rule — %B on 0–100 and a dwell that may
+# have been typed as a volume become φ and minutes here, once, and the engine sees only
+# its own units.
+
+
+def dwell_from_volume(volume_ml: float, flow_ml_min: float) -> float:
+    """t_D = V_D ÷ F — SPEC §4's dwell entry boundary, where a volume becomes a time.
+
+    The file stores the *time* (SPEC §8), so this conversion never round-trips: it
+    happens once, as the user types, and a later edit to the flow does not silently
+    restate a dwell that was measured on the instrument.
+    """
+    if flow_ml_min <= 0.0:
+        raise ValueError(f"flow must be positive to convert a dwell volume, got {flow_ml_min}")
+    return volume_ml / flow_ml_min
+
+
+@dataclass(frozen=True)
+class MethodEntry:
+    """The method constants as the sidebar holds them, with %B still on 0–100.
+
+    Everything the two scouting runs and the candidate share. The gradient is kept in
+    the user's units until :meth:`gradient` builds one, so the %B → φ turn happens in
+    a single place no matter which of the three gradients is being made.
+    """
+
+    method: Method
+    percent_b_start: float
+    percent_b_end: float
+    hold: float
+    plate_count: float | None = None
+
+    def gradient(self, t_gradient: float, hold: float | None = None) -> Gradient:
+        """The shared gradient at one gradient time, and optionally a different hold."""
+        return Gradient(
+            phi0=phi_from_percent_b(self.percent_b_start),
+            phif=phi_from_percent_b(self.percent_b_end),
+            t_gradient=t_gradient,
+            t_init=self.hold if hold is None else hold,
+        )
