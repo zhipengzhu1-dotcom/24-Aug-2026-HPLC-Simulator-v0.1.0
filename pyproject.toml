@@ -36,13 +36,13 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-# Strict on the engine (CLAUDE.md) and on the app's whole logic layer. Only
-# app/streamlit_app.py is excluded, and only because Streamlit widget calls would cost a
-# type: ignore apiece. Nothing governed by a documented rule is allowed to hide there:
-# SPEC §4's two entry conversions (%B → φ, V_D ÷ F) live in app.pipeline, checked.
+# Strict on the engine (CLAUDE.md) and on the app's whole logic layer. Only the
+# root streamlit_app.py entry point is excluded, and only because Streamlit widget calls
+# would cost a type: ignore apiece. Nothing governed by a documented rule is allowed to
+# hide there: SPEC §4's two entry conversions (%B → φ, V_D ÷ F) live in app.pipeline.
 packages = ["hplcsim", "app"]
 mypy_path = ["src", "."]
-exclude = "app/streamlit_app.py"
+exclude = "^streamlit_app\\.py$"
 
 [[tool.mypy.overrides]]
 # plotly ships no type information; pandas' and streamlit's are followed normally.

@@ -2,7 +2,12 @@
 
 Run it with::
 
-    uv run --extra app streamlit run app/streamlit_app.py
+    uv run --extra app streamlit run streamlit_app.py
+
+It sits at the repo root on purpose. Streamlit puts the *script's own folder* on
+``sys.path`` — not the working directory — so an entry point inside ``app/`` cannot
+import ``app.pipeline`` at all. Keeping it here is what makes the documented command
+work with no ``PYTHONPATH`` and no ``sys.path`` surgery.
 
 Only widgets and layout live here. Every number on screen is computed by
 :func:`app.pipeline.run_cockpit` and shaped by :mod:`app.tables`, so the whole path
