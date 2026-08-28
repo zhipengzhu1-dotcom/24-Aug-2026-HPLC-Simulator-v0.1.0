@@ -7,7 +7,8 @@ requires-python = ">=3.12"
 dependencies = ["numpy>=1.26", "scipy>=1.11"]
 
 [project.optional-dependencies]
-app = ["streamlit>=1.37", "pandas>=2.0", "plotly>=5.20"]
+# The app layer uses the width="stretch" element API, which lands in streamlit 1.49.
+app = ["streamlit>=1.49", "pandas>=2.0", "plotly>=5.20"]
 
 [dependency-groups]
 dev = [
@@ -15,6 +16,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "scipy-stubs>=1.18.1.0",
+    "pandas-stubs>=3.0.5.260730",
 ]
 
 [build-system]
@@ -26,7 +28,7 @@ packages = ["src/hplcsim"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
@@ -34,8 +36,19 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["hplcsim"]
-mypy_path = "src"
+# Strict on the engine (CLAUDE.md) and on the app's pure layer. app.streamlit_app is
+# widgets only and is excluded: nothing in it is worth a type: ignore for a UI callback.
+packages = ["hplcsim", "app"]
+mypy_path = ["src", "."]
+exclude = "app/streamlit_app.py"
+
+[[tool.mypy.overrides]]
+# plotly ships no type information; pandas' and streamlit's are followed normally.
+module = ["plotly.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `app` is not an installed package (only src/hplcsim is), so the repo root goes on the
+# path for the tests that exercise the Cockpit's logic layer.
+pythonpath = ["."]
