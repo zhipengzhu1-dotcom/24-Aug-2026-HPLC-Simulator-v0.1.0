@@ -55,6 +55,11 @@ _POST_GRADIENT_N = "N from a post-gradient width — treat as indicative"
 _LOW_CONFIDENCE_FIT = "low-confidence fit"
 
 
+def plate_count_label(source: PlateCountSource) -> str:
+    """How a plate count's provenance is worded on screen — one wording, two panels."""
+    return _PLATE_COUNT_LABEL[source]
+
+
 def blank_peak_frame(rows: int = 6) -> pd.DataFrame:
     """An empty peak table with the right dtypes, so the editor offers number fields."""
     return pd.DataFrame(

@@ -148,3 +148,63 @@ def figure(trace: Chromatogram, *, height: int = 380) -> Any:
         yaxis_title="response (relative)" if trace.scaled_by_area else "response (equal heights)",
     )
     return fig
+
+
+def resolution_map_placeholder(
+    *,
+    t_gradient_range: tuple[float, float],
+    hold_range: tuple[float, float],
+    candidate: tuple[float, float],
+    height: int = 430,
+) -> Any:
+    """The frame of the v0.2 resolution map, with nothing drawn inside it.
+
+    SPEC §11 puts the map — "max-of-minimum Rs over swept tG/hold" — in v0.2. The
+    engine could already sweep it, which is exactly why this stays empty: a filled
+    contour would be indistinguishable from the real thing on screen, and a plot that
+    looks like data a chromatographer could pick a method from must be data. The axes
+    and the current condition are real; the field is blank on purpose.
+    """
+    fig = go.Figure()
+    fig.add_shape(
+        type="rect",
+        x0=t_gradient_range[0],
+        x1=t_gradient_range[1],
+        y0=hold_range[0],
+        y1=hold_range[1],
+        fillcolor="#eef2f7",
+        line={"color": "#b9c6d6", "width": 1},
+        layer="below",
+    )
+    fig.add_annotation(
+        x=(t_gradient_range[0] + t_gradient_range[1]) / 2.0,
+        y=(hold_range[0] + hold_range[1]) / 2.0,
+        text=(
+            "<b>Resolution map — not in v0.1</b><br>"
+            "<span style='font-size:12px'>Minimum Rs swept over gradient time and "
+            "initial hold.<br>Deferred to v0.2 with the optimiser (SPEC §11).<br>"
+            "Left blank rather than mocked: a filled contour here would be<br>"
+            "indistinguishable from a method you could choose from.</span>"
+        ),
+        showarrow=False,
+        font={"size": 15, "color": "#5a6a7d"},
+        align="center",
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[candidate[0]],
+            y=[candidate[1]],
+            mode="markers",
+            marker={"size": 11, "symbol": "diamond-open", "color": "#1f4e79", "line": {"width": 2}},
+            hovertemplate="candidate<br>tG %{x:.1f} min · hold %{y:.2f} min<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        height=height,
+        margin={"l": 10, "r": 10, "t": 10, "b": 10},
+        showlegend=False,
+        xaxis={"title": "gradient time tG (min)", "range": list(t_gradient_range)},
+        yaxis={"title": "initial hold (min)", "range": list(hold_range)},
+        plot_bgcolor="#ffffff",
+    )
+    return fig

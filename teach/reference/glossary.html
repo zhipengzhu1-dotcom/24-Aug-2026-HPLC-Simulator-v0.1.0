@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HPLC Gradient Simulator — Quick Reference</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [
+    {left: '$$', right: '$$', display: true},
+    {left: '$', right: '$', display: false}
+  ]});"></script>
+</head>
+<body>
+<div class="lesson">
+
+<div class="kicker">Reference · HPLC Gradient Simulator</div>
+<h1>Symbols &amp; core equations</h1>
+<p class="dek">The compressed form of <code>docs/research/gradient-elution-math.md</code> (§1–§6,
+branch <code>research/gradient-math</code>). Every lesson uses this vocabulary — come back here
+instead of re-deriving. Internal convention throughout: <strong>natural log</strong>
+($k_0$, $S_e$, $b_e$); convert to base-10 ($S$, $b$) only at the display boundary.</p>
+
+<h2>Timing</h2>
+<table>
+<tr><th>Symbol</th><th>Meaning</th><th>Units</th></tr>
+<tr><td>$t_0$</td><td>column dead time, $V_m/F$ — measured with an unretained marker</td><td>min</td></tr>
+<tr><td>$t_D$</td><td>instrument dwell (gradient delay) time, $V_D/F$ — <strong>per-instrument, must be measured</strong></td><td>min</td></tr>
+<tr><td>$t_\text{init}$</td><td>programmed initial isocratic hold at $\varphi_0$ (0 if none)</td><td>min</td></tr>
+<tr><td>$\tau$</td><td>$t_D + t_\text{init}$ — total pre-gradient isocratic period</td><td>min</td></tr>
+<tr><td>$t_G$</td><td>gradient time (duration of the linear ramp)</td><td>min</td></tr>
+<tr><td>$\beta$</td><td>$t_{G,2}/t_{G,1}$, the ratio of the two scouting runs — use 3</td><td>—</td></tr>
+<tr><td>$t_R$</td><td>retention time, measured or predicted</td><td>min</td></tr>
+<tr><td>$t'_R$</td><td>$t_R - t_0 - \tau$, the "gradient-corrected" retention time</td><td>min</td></tr>
+</table>
+
+<h2>Composition &amp; retention</h2>
+<table>
+<tr><th>Symbol</th><th>Meaning</th><th>Units</th></tr>
+<tr><td>$\varphi$</td><td>volume fraction of strong solvent (%B ÷ 100)</td><td>0–1</td></tr>
+<tr><td>$\varphi_0, \varphi_f$</td><td>composition at gradient start / end</td><td>0–1</td></tr>
+<tr><td>$\Delta\varphi$</td><td>$\varphi_f-\varphi_0$</td><td>0.05–1.0</td></tr>
+<tr><td>$\varphi_e$</td><td>composition the band experiences at the moment it elutes</td><td>0–1</td></tr>
+<tr><td>$k$</td><td>retention factor, $(t_R-t_0)/t_0$</td><td>—</td></tr>
+<tr><td>$k_0$</td><td>$k$ at the initial composition $\varphi_0$ — the parameter the two-run fit determines well</td><td>—</td></tr>
+<tr><td>$k_e$</td><td>$k$ at the instant the band elutes; $\to 1/b_e$ for well-retained solutes</td><td>—</td></tr>
+<tr><td>$S_e$</td><td>solvent-strength parameter, natural-log convention</td><td>—</td></tr>
+<tr><td>$S$</td><td>same, base-10: $S=S_e/2.303$ — this is what chromatographers quote, ~1.7–6.3 for small molecules</td><td>—</td></tr>
+</table>
+
+<h2>Fit &amp; shape</h2>
+<table>
+<tr><th>Symbol</th><th>Meaning</th><th>Units</th></tr>
+<tr><td>$b_e$</td><td>gradient steepness, $t_0\Delta\varphi S_e/t_G$ — ~0.2–1 in practice</td><td>—</td></tr>
+<tr><td>$N$</td><td>column plate count at the elution composition — a user knob in v0.1</td><td>—</td></tr>
+<tr><td>$G$</td><td>band-compression factor, 0.7–1.0 — <em>compute it, don't hard-code ~10%</em></td><td>—</td></tr>
+<tr><td>$\sigma_t,\ W,\ W_{1/2}$</td><td>peak σ, baseline width ($4\sigma_t$), half-height width ($2.355\sigma_t$)</td><td>min</td></tr>
+<tr><td>$R_s$</td><td>resolution of an adjacent pair</td><td>—</td></tr>
+</table>
+
+<h2>The equations you'll actually use</h2>
+
+<p><strong>LSS retention model</strong> — why two runs pin down two parameters per peak:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$\ln k = \ln k_0 - S_e(\varphi-\varphi_0)$$
+</div>
+
+<p><strong>Gradient retention time</strong> (linear ramp, pre-gradient period $\tau$):</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$t_R = \tau + t_0 + \frac{t_0}{b_e}\ln\!\Big[b_e\big(k_0-\tfrac{\tau}{t_0}\big)+1\Big]$$
+</div>
+
+<p><strong>Two-run seed</strong> (large-$k_0$ approximation — starting guess only, never the answer):</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$b_{e,1} \approx \frac{t_0\ln\beta}{t'_{R,1}-t'_{R,2}/\beta}
+\qquad\Longleftrightarrow\qquad
+S_e \approx \frac{\ln\beta}{\varphi_{e,1}-\varphi_{e,2}}$$
+</div>
+
+<p><strong>Resolution</strong> (use the exact constant, not 1.178):</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$R_s = \frac{t_{R,2}-t_{R,1}}{2(\sigma_1+\sigma_2)} = 1.1774\,\frac{t_{R,2}-t_{R,1}}{W_{1/2,1}+W_{1/2,2}}$$
+</div>
+
+<h2>The log-base trap</h2>
+<table>
+<tr><th></th><th>base-10 (Snyder/Dolan/DryLab)</th><th>natural-log (Carr, Schoenmakers)</th></tr>
+<tr><td>model</td><td>$\log_{10}k=\log_{10}k_w-S\varphi$</td><td>$\ln k=\ln k_w-S_e\varphi$</td></tr>
+<tr><td>steepness</td><td>$b=t_0\Delta\varphi S/t_G$</td><td>$b_e=t_0\Delta\varphi S_e/t_G$</td></tr>
+<tr><td>conversion</td><td colspan="2">$S_e=2.303\,S,\quad b_e=2.303\,b$ — the engine works internally in natural-log; convert only at the UI boundary</td></tr>
+</table>
+
+<div class="callout note">
+<span class="label">Full derivations</span>
+See <code>docs/research/gradient-elution-math.md</code> (branch <code>research/gradient-math</code>)
+for every derivation, source citation, and the edge-case branches (peak elutes in the
+hold, peak elutes after the gradient ends, very early/late eluters) that this reference
+deliberately omits for brevity.
+</div>
+
+</div>
+</body>
+</html>

@@ -14,10 +14,15 @@ Only widgets and layout live here. Every number on screen is computed by
 can be exercised without a browser (``tests/test_app.py``) and ticket #20's
 diagnostics have a logic layer to attach to.
 
-Layout is the winning prototype variant: sidebar constants, candidate controls and
-the chromatogram at the top, entry on the left, results on the right. The
-chromatogram is drawn into a container reserved *before* the peak table is rendered,
-which is how it sits above the entry it depends on.
+Layout follows the instrument software this tool sits beside (DryLab and its
+relatives), at the driver's direction: a narrow left rail carrying the condition and
+its summary, a tabbed main view with the resolution map first, the chromatogram pinned
+underneath, and a status bar at the foot. SPEC §7 still describes the earlier prototype
+layout, so it needs amending — the diff is with the driver.
+
+Panels are filled out of render order. Streamlit containers are reserved first and
+written into later, which is how the left rail can summarise a fit that the peak table
+on the right has not yet been rendered to produce.
 
 Scope: the guided empty state and the sticky chromatogram are ticket #21's, and five
 of SPEC §6's six diagnostics are ticket #20's. Diagnostic 5's banner is here because
@@ -29,7 +34,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app import chromatogram, tables
+from app import chromatogram, panels, tables
+from app.panels import Row
 from app.pipeline import (
     Cockpit,
     CockpitInputs,
@@ -38,7 +44,14 @@ from app.pipeline import (
     dwell_from_volume,
     run_cockpit,
 )
-from hplcsim.model import Gradient, Method, Run
+from hplcsim.model import (
+    Gradient,
+    Method,
+    Run,
+    log10_k0_from_ln_k0,
+    percent_b_from_phi,
+    s_base10_from_s_e,
+)
 from hplcsim.width import default_plate_count
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
@@ -101,25 +114,31 @@ _DIAGNOSTIC_5 = (
 
 def main() -> None:
     st.set_page_config(page_title="hplcsim — Cockpit", layout="wide")
+    st.markdown(panels.STYLE, unsafe_allow_html=True)
     constants = _sidebar()
-
-    st.title("hplcsim — Cockpit")
-    st.caption("Two scouting runs in, per-peak LSS parameters out, any linear gradient predicted.")
 
     # SPEC §4 makes the dwell required with no silent default: it belongs to the
     # instrument, a guessed one biases every prediction the same way, and this is the
     # one constant the spec singles out. So nothing is predicted until it is entered.
     if constants is None:
+        st.title("hplcsim")
         st.warning(_DWELL_REQUIRED, icon="⚠️")
         return
 
-    run1, run2 = _scouting_runs(constants)
-    candidate = _candidate_gradient(constants)
-    hero = st.container()
+    rail, main_view = st.columns([1.0, 3.1], gap="medium")
 
-    entry_column, results_column = st.columns(2, gap="large")
-    with entry_column:
-        rows = _peak_table()
+    with rail:
+        run1, run2 = _scouting_runs(constants)
+        candidate = _candidate_controls(constants)
+        summary_slot = st.container()
+
+    with main_view:
+        map_tab, peaks_tab, fit_tab, resolution_tab = st.tabs(
+            ["Resolution map", "Table of peaks", "Fit parameters", "Resolution"]
+        )
+        with peaks_tab:
+            rows = _peak_table()
+        chromatogram_slot = st.container()
 
     cockpit = run_cockpit(
         CockpitInputs(
@@ -132,12 +151,20 @@ def main() -> None:
         )
     )
 
-    with entry_column:
+    with summary_slot:
+        _summary_panels(cockpit)
+    with peaks_tab:
         _entry_notes(cockpit)
-    with results_column:
-        _results(cockpit)
-    with hero:
+    with map_tab:
+        _resolution_map(candidate)
+    with fit_tab:
+        _fit_tab(cockpit)
+    with resolution_tab:
+        _resolution_tab(cockpit)
+    with chromatogram_slot:
         _chromatogram(cockpit, candidate)
+
+    _status_bar(cockpit, candidate)
 
 
 # --- sidebar: the method constants of SPEC §4 -----------------------------------------
@@ -232,32 +259,7 @@ def _plate_count_knob(method: Method) -> float | None:
     return st.number_input("Plate count N", 100.0, 1_000_000.0, _PLATE_COUNT, step=500.0)
 
 
-# --- runs, candidate, entry -----------------------------------------------------------
-
-
-def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
-    st.subheader("Scouting runs")
-    left, right = st.columns(2)
-    t_gradient1 = left.number_input("Run 1 tG (min)", 0.1, 600.0, _TG_RUN1, step=0.5)
-    t_gradient2 = right.number_input("Run 2 tG (min)", 0.1, 600.0, _TG_RUN2, step=0.5)
-    return (
-        Run(constants.gradient(t_gradient1), name=f"tG{t_gradient1:g}"),
-        Run(constants.gradient(t_gradient2), name=f"tG{t_gradient2:g}"),
-    )
-
-
-def _candidate_gradient(constants: MethodEntry) -> Gradient:
-    st.subheader("Candidate gradient")
-    left, right = st.columns(2)
-    t_gradient = left.slider("Candidate tG (min)", 1.0, _MAX_CANDIDATE_TG, _TG_CANDIDATE, step=0.5)
-    hold = right.slider(
-        "Candidate initial hold (min)",
-        0.0,
-        _MAX_CANDIDATE_HOLD,
-        min(constants.hold, _MAX_CANDIDATE_HOLD),
-        step=0.05,
-    )
-    return constants.gradient(t_gradient, hold=hold)
+# --- entry ----------------------------------------------------------------------------
 
 
 def _peak_table() -> list[PeakRow]:
@@ -296,49 +298,126 @@ def _entry_notes(cockpit: Cockpit) -> None:
         st.error(cockpit.blocked)
 
 
-# --- results --------------------------------------------------------------------------
+# --- the left rail: the condition, and what it comes to -------------------------------
 
 
-def _results(cockpit: Cockpit) -> None:
-    st.subheader("Predicted at the candidate gradient")
-    if cockpit.resolution is None:
-        st.caption("Nothing fitted yet — enter a tR in both runs for at least one peak.")
-        return
-
-    _diagnostic_5_banner(cockpit)
-    st.dataframe(
-        tables.prediction_frame(cockpit),
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "tR (min)": st.column_config.NumberColumn(format="%.3f"),
-            "W½ (min)": st.column_config.NumberColumn(format="%.4f"),
-            "k at elution": st.column_config.NumberColumn(format="%.2f"),
-        },
+def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
+    st.markdown("### Scouting runs")
+    left, right = st.columns(2)
+    t_gradient1 = left.number_input("Run 1 tG", 0.1, 600.0, _TG_RUN1, step=0.5)
+    t_gradient2 = right.number_input("Run 2 tG", 0.1, 600.0, _TG_RUN2, step=0.5)
+    return (
+        Run(constants.gradient(t_gradient1), name=f"tG{t_gradient1:g}"),
+        Run(constants.gradient(t_gradient2), name=f"tG{t_gradient2:g}"),
     )
 
-    st.subheader("Resolution")
-    critical = cockpit.resolution.critical_pair
-    if critical is None:
-        st.caption("Resolution needs two fitted peaks.")
-    else:
-        st.metric(
-            "Critical pair",
-            f"{critical.earlier.name} / {critical.later.name}",
-            f"Rs {critical.rs:.2f}",
-            delta_color="off",
-        )
-        st.dataframe(
-            tables.resolution_frame(cockpit),
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "ΔtR (min)": st.column_config.NumberColumn(format="%.3f"),
-                "Rs": st.column_config.NumberColumn(format="%.2f"),
-            },
-        )
 
-    st.subheader("Fitted parameters")
+def _candidate_controls(constants: MethodEntry) -> Gradient:
+    st.markdown("### Candidate")
+    t_gradient = st.slider("tG (min)", 1.0, _MAX_CANDIDATE_TG, _TG_CANDIDATE, step=0.5)
+    hold = st.slider(
+        "Initial hold (min)",
+        0.0,
+        _MAX_CANDIDATE_HOLD,
+        min(constants.hold, _MAX_CANDIDATE_HOLD),
+        step=0.05,
+    )
+    return constants.gradient(t_gradient, hold=hold)
+
+
+def _summary_panels(cockpit: Cockpit) -> None:
+    """What the condition on screen comes to, and then one peak in detail."""
+    if cockpit.blocked is not None:
+        st.error(cockpit.blocked)
+        return
+    st.markdown(panels.panel("Method summary", _summary_rows(cockpit)), unsafe_allow_html=True)
+    _peak_detail(cockpit)
+
+
+def _summary_rows(cockpit: Cockpit) -> list[Row]:
+    resolution = cockpit.resolution
+    if resolution is None or not resolution.peaks:
+        return []
+
+    rows = [Row("Peaks fitted", str(len(resolution.peaks)))]
+    if cockpit.entry.untracked_count:
+        rows.append(Row("Untracked", str(cockpit.entry.untracked_count), colour="#c77700"))
+
+    critical = resolution.critical_pair
+    if critical is not None:
+        rows += [
+            Row("Min. Rs", f"{critical.rs:.2f}", panels.resolution_colour(critical.rs)),
+            Row("Critical pair", f"{critical.earlier.name} / {critical.later.name}"),
+        ]
+    rows += [
+        Row("Run time", f"{max(p.retention.t_r for p in resolution.peaks):.2f} min"),
+        Row("Min. k", f"{min(p.retention.k_e for p in resolution.peaks):.2f}"),
+    ]
+    if cockpit.defaulted_width_names:
+        rows.append(
+            Row("N estimated for", f"{len(cockpit.defaulted_width_names)} peak(s)", "#c77700")
+        )
+    return rows
+
+
+def _peak_detail(cockpit: Cockpit) -> None:
+    """One peak at a time, the way instrument software shows a selected peak."""
+    predicted = cockpit.predicted_by_name
+    if not predicted:
+        return
+    name = st.selectbox("Peak", list(predicted), label_visibility="collapsed")
+    peak = predicted[name]
+    fit = next((f for p, f in cockpit.fitted if p.name == name), None)
+
+    rows = [
+        Row("Name", name),
+        Row("tR", f"{peak.retention.t_r:.3f} min"),
+        Row("k at elution", f"{peak.retention.k_e:.2f}"),
+        Row("W½", f"{peak.width.w_half:.4f} min"),
+        Row("N", f"{peak.width.plate_count:,.0f}"),
+        Row("N from", tables.plate_count_label(peak.width.plate_count_source)),
+    ]
+    if fit is not None:
+        rows += [
+            Row("log10 k0", f"{log10_k0_from_ln_k0(fit.params.ln_k0):.2f}"),
+            Row("S", f"{s_base10_from_s_e(fit.params.s_e):.2f}"),
+        ]
+    before, after = _neighbouring_resolution(cockpit, name)
+    rows.append(Row("Rs before / after", f"{_rs_text(before)} / {_rs_text(after)}"))
+    st.markdown(panels.panel("Selected peak", rows), unsafe_allow_html=True)
+
+
+def _neighbouring_resolution(cockpit: Cockpit, name: str) -> tuple[float | None, float | None]:
+    """This peak's resolution from the peak before it and the peak after it."""
+    if cockpit.resolution is None:
+        return None, None
+    before = next((p.rs for p in cockpit.resolution.pairs if p.later.name == name), None)
+    after = next((p.rs for p in cockpit.resolution.pairs if p.earlier.name == name), None)
+    return before, after
+
+
+def _rs_text(rs: float | None) -> str:
+    return "—" if rs is None else f"{rs:.2f}"
+
+
+# --- the main view --------------------------------------------------------------------
+
+
+def _resolution_map(candidate: Gradient) -> None:
+    st.plotly_chart(
+        chromatogram.resolution_map_placeholder(
+            t_gradient_range=(1.0, _MAX_CANDIDATE_TG),
+            hold_range=(0.0, _MAX_CANDIDATE_HOLD),
+            candidate=(candidate.t_gradient, candidate.t_init),
+        ),
+        width="stretch",
+    )
+
+
+def _fit_tab(cockpit: Cockpit) -> None:
+    if not cockpit.outcomes and not cockpit.entry.untracked:
+        st.caption("Nothing fitted yet — enter a tR in both runs for at least one peak.")
+        return
     st.dataframe(
         tables.fit_frame(cockpit),
         width="stretch",
@@ -351,6 +430,44 @@ def _results(cockpit: Cockpit) -> None:
         },
     )
     st.caption("log10 k0 is quoted at the scouting φ0; S is the base-10 slope (SPEC §3).")
+
+
+def _resolution_tab(cockpit: Cockpit) -> None:
+    if cockpit.resolution is None:
+        st.caption("Nothing fitted yet — enter a tR in both runs for at least one peak.")
+        return
+    _diagnostic_5_banner(cockpit)
+    st.dataframe(
+        tables.prediction_frame(cockpit),
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "tR (min)": st.column_config.NumberColumn(format="%.3f"),
+            "W½ (min)": st.column_config.NumberColumn(format="%.4f"),
+            "k at elution": st.column_config.NumberColumn(format="%.2f"),
+        },
+    )
+    st.dataframe(
+        tables.resolution_frame(cockpit),
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "ΔtR (min)": st.column_config.NumberColumn(format="%.3f"),
+            "Rs": st.column_config.NumberColumn(format="%.2f"),
+        },
+    )
+
+
+def _status_bar(cockpit: Cockpit, candidate: Gradient) -> None:
+    fields = [
+        f"tG {candidate.t_gradient:g} min; hold {candidate.t_init:g} min",
+        f"%B {percent_b_from_phi(candidate.phi0):g} → {percent_b_from_phi(candidate.phif):g}",
+    ]
+    critical = cockpit.resolution.critical_pair if cockpit.resolution else None
+    if critical is not None:
+        fields.append(f"Rs {critical.rs:.2f}")
+    fields.append("RP gradient — linear, single segment")
+    st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
 def _diagnostic_5_banner(cockpit: Cockpit) -> None:

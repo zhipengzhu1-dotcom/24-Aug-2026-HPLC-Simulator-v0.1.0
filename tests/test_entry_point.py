@@ -30,7 +30,10 @@ from streamlit.testing.v1 import AppTest
 
 app = AppTest.from_file({str(ENTRY_POINT)!r}, default_timeout=120).run()
 assert not app.exception, app.exception
-assert app.title[0].value == "hplcsim — Cockpit"
+# It renders something of its own, not just an empty page: the app opens on the
+# dwell gate of SPEC §4, so that is what a cold start must show.
+assert app.title[0].value.startswith("hplcsim"), app.title[0].value
+assert any("dwell" in warning.value.lower() for warning in app.warning), "no dwell gate"
 """
 
 

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Why Two Runs Are Enough</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [
+    {left: '$$', right: '$$', display: true},
+    {left: '$', right: '$', display: false}
+  ]});"></script>
+<script defer src="../assets/quiz.js"></script>
+</head>
+<body>
+<div class="lesson with-margin">
+<div class="main">
+
+<div class="kicker">Lesson 2 · The Science Model</div>
+<h1>Why two runs are enough</h1>
+<p class="dek">The engine preview from Lesson 1 fit each peak from exactly two gradient
+runs. Here's the model that makes that possible, and why it needs exactly two — not
+one, not five.</p>
+
+<h2>The thing you already know</h2>
+<p>Run the same compound isocratically at a few different %B and you already know what
+happens: more organic, faster elution; less organic, slower. If you plotted
+<code>log k</code> against %B for one compound across several isocratic runs, you'd get
+something close to a straight line over a moderate range. That empirical observation —
+not a first-principles law, just a very good fit over the ranges chromatographers
+actually work in<span class="sidenote-anchor">1</span> — is the entire content of the
+<strong>linear solvent strength (LSS)</strong> model.</p>
+<aside class="sidenote">1. Traced to Snyder, Dolan &amp; Gant, <em>J. Chromatogr. A</em>
+<strong>165</strong> (1979) 3–30. It's a workhorse approximation, not exact — Lesson 7
+in this workspace covers where it breaks down.</aside>
+
+<h2>The model, in the convention the engine uses</h2>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$\ln k = \ln k_0 - S_e(\varphi - \varphi_0)$$
+</div>
+<p>$\varphi$ is just %B ÷ 100. This is a straight line in $(\varphi, \ln k)$ space, with
+two parameters per compound:</p>
+<ul>
+<li><strong>$k_0$</strong> — the retention factor at the gradient's starting composition
+$\varphi_0$. Anchored inside the range you actually ran, which is why the engine fits
+this instead of the more traditional $k_w$ (retention extrapolated to pure water) — $k_w$
+is a further extrapolation with much larger uncertainty.<span class="sidenote-anchor">2</span></li>
+<li><strong>$S_e$</strong> — the slope: how fast $\ln k$ falls as $\varphi$ rises. Chemically,
+this is that compound's sensitivity to organic content. Small, non-polar-ish differences
+between your three unknowns show up here.</li>
+</ul>
+<aside class="sidenote">2. Poole &amp; Atapattu (2022): "log $k_w$ cannot be recommended as a
+descriptor of solute properties since it has no clear connection to a real distribution
+system." $S_e$ converts to the base-10 $S$ you'd normally quote via $S = S_e/2.303$.</aside>
+
+<div class="callout note">
+<span class="label">A straight line needs two points</span>
+A line has two unknowns — an intercept and a slope. One measurement can't pin down both;
+you need two. That's the whole reason the method needs two runs, restated as geometry
+instead of algebra.
+</div>
+
+<h2>What one gradient run actually measures</h2>
+<p>A gradient run isn't an isocratic measurement at one $\varphi$ — the composition
+changes continuously while the band migrates. But each run still produces exactly one
+number for a given peak: its retention time $t_R$. Converting that $t_R$ into where on
+the $(\varphi, \ln k)$ line it sits requires knowing $t_0$ and $\tau$ (the pre-gradient
+period — dwell plus any hold; more on that in Lesson 3) and the gradient's steepness. The
+full relationship — sourced, not derived here — is:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$t_R = \tau + t_0 + \frac{t_0}{b_e}\ln\!\Big[b_e\big(k_0-\tfrac{\tau}{t_0}\big)+1\Big],
+\qquad b_e = \frac{t_0\,\Delta\varphi\,S_e}{t_G}$$
+</div>
+<p>Don't memorize this yet — the point right now is just what's on each side. One
+equation, one measured $t_R$, two unknowns ($k_0$, $S_e$) buried inside $b_e$. Exactly
+as underdetermined as the line-with-one-point picture above.</p>
+
+<h2>Why the second run has to be steeper, not just different</h2>
+<p>Look at $b_e$: it depends on $S_e$ and on $t_G$. Two runs that differ <strong>only</strong>
+in $t_G$ — same column, same $\varphi_0/\varphi_f$, same everything else — give two
+different $b_e$ values for the same peak, which means the band elutes at two different
+points along its own $(\varphi,\ln k)$ line. Two equations, two unknowns, solvable — and
+because $k_0$ and $S_e$ genuinely differ per compound, this works <strong>independently
+for every peak</strong> in the mixture, using the same pair of runs.</p>
+<p>This is exactly what your scouting runs did:</p>
+
+<div class="callout data-user">
+<span class="label">Your own scouting data</span>
+<table style="margin:0.4rem 0 0;">
+<tr><th>Compound</th><th>tR @ tG=15</th><th>tR @ tG=45</th></tr>
+<tr><td>Unknown-1</td><td>9.855 min</td><td>20.831 min</td></tr>
+<tr><td>Unknown-2</td><td>11.592 min</td><td>25.932 min</td></tr>
+<tr><td>Unknown-3</td><td>16.159 min</td><td>39.796 min</td></tr>
+</table>
+<p style="margin:0.6rem 0 0;">Six numbers total, two per peak — and that's all the engine
+had. It fit three independent $(k_0, S_e)$ pairs from exactly this table, then predicted
+your tG=25 and tG=60 confirmation runs to 0.35% and 0.26% average error.</p>
+</div>
+
+<p>Note $t_{G,2}/t_{G,1} = 45/15 = 3$ here — that ratio isn't a coincidence, it's a
+deliberate choice ($\beta$). Why 3 specifically, and what goes wrong close to 1, is
+Lesson 4.</p>
+
+<h2>Check your understanding</h2>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">With only <em>one</em> gradient scouting run, could you determine both $k_0$ and $S_e$ for a peak?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Yes, one $t_R$ is always enough</label>
+    <label class="q-option"><input type="radio" value="b"> No — one measured $t_R$ gives one equation for two unknowns</label>
+    <label class="q-option"><input type="radio" value="c"> Only if the peak elutes very early</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Right — exactly the one-point-can't-fix-a-line problem. You'd need to assume one of the two parameters, which is what older single-run 'rule of 3' heuristics effectively do."
+       data-incorrect-text="One run gives one t_R, and the retention-time equation has two unknowns (k0, Se) tangled together in b_e — underdetermined either way."></div>
+</div>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">Why must the two scouting runs be identical in everything <em>except</em> tG?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Because Empower can only change one method parameter per sequence</label>
+    <label class="q-option"><input type="radio" value="b"> So the only thing that changes is gradient steepness — isolating two different points on the same compound's (φ, ln k) line</label>
+    <label class="q-option"><input type="radio" value="c"> Because the column can't tolerate two different %B ranges in one day</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Exactly — if anything else changed (column, φ0/φf, temperature), you couldn't attribute the difference in tR purely to steepness, and the two-run fit would be measuring a moving target."
+       data-incorrect-text="Think about what the fit needs: two clean readings of the same underlying line. Anything that changes besides tG contaminates the comparison."></div>
+</div>
+
+<h2>Primary source</h2>
+<p>Recommended: Guillarme, Bouvarel, Rouvière &amp; Heinisch, <em>J. Sep. Sci.</em> <strong>45</strong>
+(2022) 3276–3285 — <a href="https://doi.org/10.1002/jssc.202200161">open access</a>. Eq. 1
+is the model above; §2 and Eqs. 8–16 are the two-run fit in the composition domain. It's
+the single most-cited source in this workspace's research doc and reads cleanly for
+someone with your bench background. For the full derivation with every edge case, see
+<code>docs/research/gradient-elution-math.md</code> §1–3 (branch <code>research/gradient-math</code>)
+and the <a href="../reference/glossary.html">quick-reference sheet</a>.</p>
+
+<div class="ask-agent">
+If the jump from "isocratic log k vs. %B" to "gradient tR equation" felt like it skipped
+a step, ask — that derivation (§2.1 of the research doc) is worth walking through slowly
+if it'll stick better that way.
+</div>
+
+<div class="lesson-nav">
+  <a href="0001-three-things-called-the-prototype.html">← Lesson 1: three things called "the prototype"</a>
+  <a href="0003-the-pre-gradient-period-tau.html">Lesson 3: the pre-gradient period τ →</a>
+</div>
+
+</div>
+</div>
+</body>
+</html>
