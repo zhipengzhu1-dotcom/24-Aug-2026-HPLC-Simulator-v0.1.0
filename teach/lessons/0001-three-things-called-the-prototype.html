@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Three Things Called "The Prototype"</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script defer src="../assets/quiz.js"></script>
+</head>
+<body>
+<div class="lesson">
+
+<div class="kicker">Lesson 1 · Orientation</div>
+<h1>Three things called "the prototype"</h1>
+<p class="dek">Before any of the math — a map of what actually exists on disk right now,
+because the word "prototype" has been doing triple duty and that's worth untangling first.</p>
+
+<p>Over the last few sessions, three different things got called "the prototype." They
+prove different things, they live in different places, and only one of them produced the
+number you actually care about. Here they are, in the order they were built:</p>
+
+<h2>1 · A UI mock (throwaway)</h2>
+<p>Three Streamlit layout variants, on branch <code>prototype/main-screen</code>, file
+<code>prototype_main_screen.py</code>. The math inside is <strong>cartoon math</strong> —
+clearly labeled as fake, there only to see how a chromatogram, a peak table, and a fit-results
+panel sit together on screen. The <strong>Cockpit</strong> variant won: sidebar for method
+constants, chromatogram as the hero element, peak table and fit results side by side. That
+layout decision is real and carries forward into the spec (§7) — the numbers behind it never
+were.</p>
+
+<h2>2 · A live engine preview (this is "the simulation")</h2>
+<p>About 50 lines of Python, written and run <strong>in conversation only</strong> — it was
+never committed anywhere in the repo. This is the one that matters: it implemented the real
+two-run LSS fit and retention-time prediction from the sourced equations, and ran it against
+your own lab data. When you've been calling something "the simulation," this is it.</p>
+
+<h2>3 · The planned product (not built yet)</h2>
+<p>No production code exists. What exists is a specification — <code>SPEC.md</code> at the
+repo root, currently <strong>uncommitted</strong>, awaiting your review (ticket #11 on the
+wayfinder map). It describes a thin Streamlit app sitting over a pure <code>hplcsim</code>
+engine library. Building it is deliberately out of scope for this session — see the last
+section below.</p>
+
+<div class="callout data-user">
+<span class="label">The number that matters belongs to #2</span>
+From two scouting runs (tG = 15 &amp; 45 min, three unknown peaks), the engine preview
+<strong>blindly predicted</strong> your confirmation runs:
+<ul style="margin:0.6rem 0 0;">
+<li>tG = 25 (interpolation): 13.861 / 16.729 / 24.383 predicted vs. 13.787 / 16.658 / 24.358
+measured → <strong>0.35% average error, 0.53% worst</strong></li>
+<li>tG = 60 (extrapolation, 1.33× outside the bracket): 25.480 / 32.236 / 50.774 predicted
+vs. 25.587 / 32.320 / 50.821 measured → <strong>0.26% average error</strong></li>
+</ul>
+</div>
+
+<p>That's the headline result the rest of this workspace exists to explain. Lesson 2 starts
+on the model that produced it — the LSS equation and why two runs are enough to fit it.</p>
+
+<h2>Check your understanding</h2>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">Which of the three artifacts produced the 0.35% / 0.26% error numbers?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> The UI mock (<code>prototype/main-screen</code>)</label>
+    <label class="q-option"><input type="radio" value="b"> The engine preview (in-conversation, uncommitted)</label>
+    <label class="q-option"><input type="radio" value="c"> The planned product (<code>SPEC.md</code>)</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Right — the UI mock had cartoon math by design, and SPEC.md is just a document describing what to build."
+       data-incorrect-text="The UI mock's math was intentionally fake, and SPEC.md hasn't been built yet — neither could produce a validation number."></div>
+</div>
+
+<div class="quiz" data-correct="a">
+  <div class="q-prompt">Which of the three currently exists <em>nowhere</em> in the git repository?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> The engine preview</label>
+    <label class="q-option"><input type="radio" value="b"> The UI mock</label>
+    <label class="q-option"><input type="radio" value="c"> The spec draft</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="The UI mock lives on prototype/main-screen and SPEC.md sits uncommitted-but-present at the repo root — the engine preview was never saved anywhere but the conversation that produced it."
+       data-incorrect-text="The UI mock has its own branch, and SPEC.md is sitting on disk (uncommitted, but present) — one of the three was never saved at all."></div>
+</div>
+
+<h2>Primary source</h2>
+<p>For this lesson, the highest-trust source is the project's own record, not external
+literature: <code>SPEC.md</code> §1–2 (purpose and scope) and §9 (architecture), plus the
+<a href="https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1">wayfinder
+map, issue #1</a>, which shows how each of these three artifacts came out of a specific,
+closed ticket. Worth skimming before Lesson 2.</p>
+
+<div class="ask-agent">
+Stuck on anything above, or want to go deeper on one of the three artifacts before moving
+on? Ask — that's what this session is for.
+</div>
+
+<div class="lesson-nav">
+  <span></span>
+  <a href="0002-lss-model-and-two-run-fit.html">Lesson 2: the LSS model &amp; two-run fit →</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>No Closed Form: Seed and Root-Find</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [
+    {left: '$$', right: '$$', display: true},
+    {left: '$', right: '$', display: false}
+  ]});"></script>
+<script defer src="../assets/quiz.js"></script>
+</head>
+<body>
+<div class="lesson with-margin">
+<div class="main">
+
+<div class="kicker">Lesson 5 · From Equations to Algorithm</div>
+<h1>No closed form: seed and root-find</h1>
+<p class="dek">Lesson 2 said two runs give two equations for two unknowns — "solvable."
+Today's the catch: solvable in principle isn't the same as solvable with algebra. This is
+where the engine stops being a formula and starts being a small piece of numerical software.</p>
+
+<h2>Why you can't just solve it by hand</h2>
+<p>Write out what each run gives you, from the boxed equation in Lesson 2:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$e^{\,b_{e,i}\,t'_{R,i}/t_0} - 1 = b_{e,i}A, \qquad A \equiv k_0-\frac{\tau}{t_0},
+\qquad b_{e,2}=b_{e,1}/\beta$$
+</div>
+<p>Two equations, two unknowns ($b_{e,1}$ and $A$) — but $b_{e,1}$ sits inside two
+exponentials running at <em>different, incommensurate rates</em> ($t'_{R,1}/t_0$ vs.
+$t'_{R,2}/(\beta t_0)$). Try to eliminate $A$ and you're left with one equation that mixes
+those two exponentials with no algebraic move that isolates $b_{e,1}$. That's what
+"transcendental" means here in practice: not unsolvable, just not solvable by rearranging
+symbols. It needs a number, found numerically.</p>
+
+<h2>The seed: the same intuition from Lesson 2, made literal</h2>
+<p>Recall the "two points define a line" picture from Lesson 2. If the solute is well
+retained ($b_e A \gg 1$), the "+1" in the retention equation is negligible, and the algebra
+<em>does</em> go through cleanly:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$S_e \approx \frac{\ln\beta}{\varphi_{e,1}-\varphi_{e,2}}$$
+</div>
+<p>That's not a new idea — it's the two-points-define-a-line picture written out as an
+actual formula: $S_e$ is (a constant) divided by the separation between the two sampled
+points. This closed form is real and useful, but only as a <strong>starting guess</strong>,
+because "+1 is negligible" is an approximation that degrades badly for smaller $k_0$:</p>
+<table>
+<tr><th>true $k_0$</th><td>8</td><td>20</td><td>50</td><td>500</td><td>5,000</td><td>10,000</td></tr>
+<tr><th>log₁₀ k₀</th><td>0.9</td><td>1.3</td><td>1.7</td><td>2.7</td><td>3.7</td><td>4.0</td></tr>
+<tr><th>error in S</th><td><strong>138%</strong></td><td><strong>37%</strong></td><td>9.6%</td><td>0.7%</td><td>0.1%</td><td>0.03%</td></tr>
+</table>
+<p>Guillarme et al. (2022) give the threshold explicitly: the approximation becomes tolerable
+once log₁₀k₀ exceeds about 2.1 (k₀ ≈ 126) — well suited to proteins, marginal for small
+molecules, which is exactly your regime.</p>
+
+<div class="callout data-user">
+<span class="label">Where your own peaks sit</span>
+Your three fitted peaks have log₁₀k₀ ≈ 2.76, 3.24, and 4.76 — all above Guillarme's 2.1
+threshold, so the seed alone would probably already be decent for this particular sample.
+That's exactly the trap: <strong>a general-purpose engine can't assume every future sample
+will be this well-behaved.</strong> Someone will eventually enter an early-eluting peak with
+k₀ = 8, where the seed alone is off by 138%. <code>SPEC.md</code> §3 states the resulting
+policy plainly: <em>"The closed form alone is forbidden as a final answer."</em>
+</div>
+
+<h2>The exact solve</h2>
+<p>The seed feeds a proper root-find. Define, for $b>0$:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$g(b) = e^{\,b\,t'_{R,1}/t_0} - 1 - \beta\Big(e^{\,b\,t'_{R,2}/(\beta t_0)}-1\Big)$$
+</div>
+<p>$g(b)=0$ is the exact two-run condition, just rearranged so both runs are on one side.
+Three facts about its shape turn into guardrails in the code, not just curiosities:</p>
+<ul>
+<li><strong>$g(0)=0$ always</strong> — a mathematical artifact, not a real fit. The
+search must exclude it and bracket strictly above zero.</li>
+<li><strong>$g$ dips negative right after 0</strong>, because the shallower gradient always
+elutes a peak later than the steeper one — a physically necessary fact, not a coincidence.</li>
+<li><strong>A positive root exists (and is unique) only if $\varphi_{e,1} > \varphi_{e,2}$</strong>
+— the steeper gradient must elute the peak at the higher %B. If that fails, the data are
+<em>inconsistent with LSS entirely</em> — usually because two peaks got swapped between the
+two runs during tracking. That's not a numerical failure to paper over; it's a diagnostic
+the engine should surface as "check peak tracking," not silently patch with a least-squares
+fudge.</li>
+</ul>
+<p>The seed from the previous section gives a good starting bracket; <strong>Brent's
+method</strong> — a standard root-finder that never diverges the way Newton's method
+sometimes can, and costs little extra since $g$ is cheap to evaluate — finds the exact
+root inside it. Once you have $b_{e,1}$, recovering $k_0$ and $S_e$ is exact, no
+approximation left:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$A=\frac{e^{\,b_{e,1}t'_{R,1}/t_0}-1}{b_{e,1}}, \qquad k_0=A+\frac{\tau}{t_0}, \qquad
+S_e=\frac{b_{e,1}t_{G,1}}{t_0\Delta\varphi}$$
+</div>
+
+<h2>The self-check that catches your own bugs</h2>
+<p>After solving, the research doc's recommended discipline is to plug the fitted
+$(k_0,S_e)$ back into the original retention equation for <em>both</em> runs and confirm
+you recover the two input $t_R$ values to within 1e-8. This "round-trip" check is a
+generalizable idea worth keeping regardless of domain: it doesn't validate the model
+against reality, it validates that the code that just ran actually solved the equation it
+was supposed to, catching a silent implementation bug before it becomes a silently wrong
+retention-time prediction.</p>
+
+<h2>Check your understanding</h2>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">Your peaks all sit above Guillarme's log k₀ &gt; 2.1 "tolerable" threshold for the seed formula. Does that mean v0.1 can skip the exact root-find for peaks like yours?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Yes — above the threshold the seed is accurate enough to ship as the final answer</label>
+    <label class="q-option"><input type="radio" value="b"> No — the spec always runs the exact solve, because the same engine has to handle every future peak correctly, not just well-retained ones like today's sample</label>
+    <label class="q-option"><input type="radio" value="c"> Only if β is at least 3</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Right — this is a software-engineering judgment as much as a numerical one: don't let today's easy dataset excuse skipping a check that a future k0=8 peak would need."
+       data-incorrect-text="The threshold describes when the approximation happens to be accurate — it says nothing about what the spec permits. SPEC.md forbids the closed form as a final answer unconditionally."></div>
+</div>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">$g(b)$ always equals zero at $b=0$. What does the root-finding algorithm do with that fact?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Reports $b=0$ as the fitted value whenever the search reaches it</label>
+    <label class="q-option"><input type="radio" value="b"> Excludes it explicitly and searches only for a strictly positive root, since b=0 is a trivial mathematical artifact, not a real fit</label>
+    <label class="q-option"><input type="radio" value="c"> Treats it as proof the two runs are mistracked</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Correct — the bracket for Brent's method is set strictly above zero for exactly this reason."
+       data-incorrect-text="b=0 is a mathematical guarantee of the equation's shape (any two runs give g(0)=0), not a signal about the data — it has to be excluded by construction, every time."></div>
+</div>
+
+<h2>Primary source</h2>
+<p>Re-read <code>docs/research/gradient-elution-math.md</code> §3.1–3.3 (branch
+<code>research/gradient-math</code>) now that you have the vocabulary — it's dense on
+first pass but should read cleanly the second time. Brent's method itself is standard
+numerical-analysis material, documented in any numerical methods reference; nothing
+domain-specific to verify there beyond what the research doc already states about how it's
+being used here.</p>
+
+<div class="ask-agent">
+Want to walk through why $\varphi_{e,1} \le \varphi_{e,2}$ specifically signals mistracked
+peaks, with a worked example? That's also a preview of the peak-tracking material still
+ahead.
+</div>
+
+<div class="lesson-nav">
+  <a href="0004-why-beta-equals-three.html">← Lesson 4: why β = 3</a>
+  <span>Lesson 6: validation design — interpolation, extrapolation, and the sign-flip (coming next session)</span>
+</div>
+
+</div>
+</div>
+</body>
+</html>

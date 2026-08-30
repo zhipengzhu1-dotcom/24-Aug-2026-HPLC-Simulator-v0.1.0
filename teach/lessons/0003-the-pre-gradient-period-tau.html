@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Pre-Gradient Period τ</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [
+    {left: '$$', right: '$$', display: true},
+    {left: '$', right: '$', display: false}
+  ]});"></script>
+<script defer src="../assets/quiz.js"></script>
+</head>
+<body>
+<div class="lesson with-margin">
+<div class="main">
+
+<div class="kicker">Lesson 3 · The Science Model (continued)</div>
+<h1>The pre-gradient period τ</h1>
+<p class="dek">Lesson 2 told you to ignore one term in the retention equation for now.
+Here it is: τ, and why it's load-bearing enough that your own spec makes it a
+required input, not a default.</p>
+
+<h2>What τ actually is</h2>
+<p>The retention equation from Lesson 2, in full:</p>
+<div class="eq" style="display:block; padding:0.8rem 1rem;">
+$$t_R = \underbrace{\tau}_{\text{new today}} + t_0 + \frac{t_0}{b_e}\ln\!\Big[b_e\big(k_0-\tfrac{\tau}{t_0}\big)+1\Big]$$
+</div>
+<p>$\tau = t_D + t_\text{init}$ — two things you already deal with at the bench, just not
+usually as one combined number:</p>
+<ul>
+<li><strong>$t_D$, dwell time</strong> — the gradient your pump mixes at $t=0$ doesn't
+reach the column instantly. It has to sweep through the mixer and tubing between the pump
+and the column inlet — the dwell volume $V_D$. Until it arrives, the column still sees the
+starting composition $\varphi_0$.</li>
+<li><strong>$t_\text{init}$, initial hold</strong> — any isocratic hold you programmed on
+purpose before the ramp starts (your method has 0.5 min of it).</li>
+</ul>
+<p>Both have the same effect on a band sitting in the column: <strong>nothing changes</strong>
+for those $\tau$ minutes, no matter what the method's programmed clock says is happening.
+The column's clock and the pump's clock are offset by $\tau$.</p>
+
+<h2>Your own numbers</h2>
+<div class="callout data-user">
+<span class="label">H-Class / CORTECS, from your method.csv</span>
+<table style="margin:0.4rem 0 0;">
+<tr><td>Dwell volume $V_D$ (spec-sheet, not yet measured)</td><td>0.375 mL</td></tr>
+<tr><td>Dwell time $t_D = V_D/F$</td><td>0.9375 min</td></tr>
+<tr><td>Initial hold $t_\text{init}$</td><td>0.5 min</td></tr>
+<tr><td>$\tau = t_D + t_\text{init}$</td><td><strong>1.4375 min</strong></td></tr>
+<tr><td>$t_0$ (measured, uracil-class marker)</td><td>0.6 min</td></tr>
+</table>
+</div>
+<p>Sit with that comparison: <strong>dwell time alone (0.9375 min) is already longer than
+your column's entire dead time (0.6 min).</strong> Before the gradient front has even
+reached the column inlet, more time has passed than it takes an unretained peak to sweep
+straight through the column. $\tau$ isn't a rounding footnote here — it's bigger than $t_0$
+itself.</p>
+
+<h2>The evidence this is worth requiring, not defaulting</h2>
+<p>This isn't a theoretical worry — it's a finding from your own validation research
+(<a href="https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/4">ticket
+#4</a>, sourced from <code>docs/research/validation-datasets.md</code>):</p>
+<div class="callout warn">
+<span class="label">From the den Uijl reference datasets</span>
+<strong>Set X:</strong> dropping just the 0.25 min programmed hold degraded median |ΔtR|
+from 0.11% to a systematic <strong>+1.09% bias</strong>.<br>
+<strong>Set Y:</strong> using a geometry-estimated $t_0$ instead of a measured marker left a
+<strong>+0.41% bias</strong>.
+</div>
+<p>Your own <code>validation/PROTOCOL.md</code> — the bench protocol you wrote for
+characterizing this exact instrument — states the general form of the same finding
+directly:<span class="sidenote-anchor">1</span> <em>"Sloppy dwell/t0 values — not the
+engine — are the usual reason such bars fail (+1% systematic bias per dropped term)."</em>
+This is exactly why <code>SPEC.md</code> §4 makes dwell "required, no silent default" and
+$t_0$ "measured-first" with a labeled, confidence-lowering fallback — not caution for its
+own sake, but a direct response to a measured failure mode.</p>
+<aside class="sidenote">1. <code>validation/PROTOCOL.md</code> also documents how you
+actually measure $V_D$ properly instead of trusting the spec sheet: replace the column with
+a zero-dead-volume union, run water→water+0.1% acetone, and take $t_D$ as the time to the
+<strong>midpoint</strong> of the absorbance rise. Your current 0.375 mL is spec-sheet, not
+measured — the cheapest remaining accuracy upgrade on this method.</aside>
+
+<h2>What it costs on your own peak, worked out</h2>
+<p>Using Unknown-1's fitted parameters from the confirmation run (log₁₀k₀ ≈ 2.76, S ≈ 5.08 —
+rounded values, so treat this as illustrative rather than the engine's exact internal
+arithmetic) and predicting at tG = 25:</p>
+<table>
+<tr><th>τ used</th><th>Predicted tR</th><th>vs. correct (τ = 1.4375)</th></tr>
+<tr><td>Full: dwell + hold (1.4375 min)</td><td>13.87 min</td><td>— (matches the 13.861 reported in Lesson 1)</td></tr>
+<tr><td>Hold dropped, dwell kept (0.9375 min)</td><td>13.37 min</td><td><strong>−0.50 min, −3.6%</strong></td></tr>
+<tr><td>Both dropped (τ = 0)</td><td>12.44 min</td><td><strong>−1.43 min, −10.3%</strong></td></tr>
+</table>
+<p>Either mistake alone blows through the ±2% trust bar (<code>SPEC.md</code> §10) on this
+one peak by a wide margin — before any other source of error even enters. That's the
+practical weight behind Lesson 1's headline number: getting τ right is part of <em>why</em>
+the blind prediction landed at 0.35%, not a detail that happened not to matter.</p>
+
+<h2>Check your understanding</h2>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">Physically, what does τ represent?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> The total time the gradient ramp runs for</label>
+    <label class="q-option"><input type="radio" value="b"> The time before the changing composition actually reaches and moves past the band — dwell plus any programmed hold</label>
+    <label class="q-option"><input type="radio" value="c"> The time remaining after the gradient ends but before the last peak elutes</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Right — for those τ minutes, the band is sitting at φ0 exactly as if the run were isocratic, regardless of what the pump's programmed timeline says."
+       data-incorrect-text="τ is specifically the pre-gradient period — the column sees φ0 unchanged for τ minutes no matter what the pump is doing upstream."></div>
+</div>
+
+<div class="quiz" data-correct="c">
+  <div class="q-prompt">For your own H-Class method, how does τ compare to t0?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> τ is negligibly small next to t0 — safe to ignore</label>
+    <label class="q-option"><input type="radio" value="b"> τ and t0 are about equal</label>
+    <label class="q-option"><input type="radio" value="c"> τ (1.4375 min) is more than double t0 (0.6 min) — the dwell time alone already exceeds t0</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Exactly the number that should make τ impossible to hand-wave away for this instrument."
+       data-incorrect-text="Recompute: dwell alone is 0.9375 min, already bigger than t0's 0.6 min, before adding the 0.5 min hold."></div>
+</div>
+
+<h2>Primary source</h2>
+<p>Your own <a href="https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/blob/main/validation/PROTOCOL.md"><code>validation/PROTOCOL.md</code></a>
+is the best next read — it's short, it's yours, and §1 is literally the bench procedure for
+turning "spec-sheet dwell" into "measured dwell." For the derivation of why $\tau$ enters
+the equation exactly where it does, see <code>docs/research/gradient-elution-math.md</code>
+§2.1–2.2 and §4.1 (branch <code>research/gradient-math</code>) — §4.1 in particular covers
+what happens when a peak is so early-eluting it finishes migrating <em>during</em> τ, which
+is its own edge case.</p>
+
+<div class="ask-agent">
+Curious how the zero-dead-volume-union dwell measurement actually works at the bench, or
+want to see the early-eluting-during-τ edge case worked through? Ask.
+</div>
+
+<div class="lesson-nav">
+  <a href="0002-lss-model-and-two-run-fit.html">← Lesson 2: why two runs are enough</a>
+  <a href="0004-why-beta-equals-three.html">Lesson 4: why β = 3 →</a>
+</div>
+
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# The Cockpit is modelled on instrument software (DryLab-style): a light, dense,
+# panelled screen. Pinning the theme keeps it legible regardless of the viewer's
+# browser preference — a chromatographer reads this beside a CDS, not at night.
+[theme]
+base = "light"
+primaryColor = "#1f4e79"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#e8eef6"
+textColor = "#1a1a1a"
+font = "sans serif"

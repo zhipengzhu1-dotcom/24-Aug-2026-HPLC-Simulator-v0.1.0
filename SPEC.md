@@ -62,14 +62,38 @@ All six ship in v0.1:
 2. **Early-eluter badge** (elutes near t0 + dwell + hold).
 3. **β-spacing escalation** on fit results.
 4. **Prediction crossing flags** (order at candidate differs from scouting runs).
-5. **Width/Rs caveat banner**. The G convention is settled (§3, #17) and N is fitted wherever widths exist (#23), so the banner is scoped to peaks whose N is *defaulted*: a geometry estimate runs 0.67–0.91× on measured lab widths and 18–39% optimistic on Rs at held-out conditions, where a fitted N lands at 0.99–1.16× and −4 to −10%. The engine stamps every width with `PeakWidth.plate_count_source` (`"default"` / `"supplied"` / `"fitted"`); the banner reads `"default"`. A fitted N's `FittedPlateCount.low_confidence` (its only width came from the post-gradient regime; such a width is left out whenever the other run's is usable) is a per-peak badge, not a banner. Wording is ticket #19's. Absolute widths and Rs are caveated for defaulted peaks; the critical *pair* is not — it is identified correctly at both held-out conditions under either N.
+5. **Width/Rs caveat banner**. The G convention is settled (§3, #17) and N is fitted wherever widths exist (#23), so the banner is scoped to peaks whose N is *defaulted*: a geometry estimate runs 0.69–0.92× on measured lab widths and 18–39% optimistic on Rs at held-out conditions, where a fitted N lands at 0.99–1.16× and −4 to −10%. The engine stamps every width with `PeakWidth.plate_count_source` (`"default"` / `"supplied"` / `"fitted"`); the banner reads `"default"`. A fitted N's `FittedPlateCount.low_confidence` (its only width came from the post-gradient regime; such a width is left out whenever the other run's is usable) is a per-peak badge, not a banner. Wording is ticket #19's. Absolute widths and Rs are caveated for defaulted peaks; the critical *pair* is not — it is identified correctly at both held-out conditions under either N.
 6. **Estimated-t0 stamp** on all outputs when the geometry fallback was used.
 
 Presentation: per-peak badges (2, 4), fit-page notices (3), result banners (5), output stamps (6), candidate-control inline warnings (1).
 
 ## 7. UI ([#7](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/7))
 
-**Cockpit layout** (winning prototype variant, branch `prototype/main-screen`): sidebar = method constants + N knob; main = candidate-gradient controls, **chromatogram as hero**, peak table (left) beside resolution + fit results (right). Three refinements from the losing variants: numbered 1→4 worksheet guidance as the **empty state**; **sticky chromatogram** while scrolling; **fit-parameter table promoted** (log10 k0, S per peak — not hidden in an expander). Chromatogram: sum of Gaussians, heights scaled by area shares where areas exist; peak labels; hover values.
+**Cockpit layout** (modelled on the instrument software this tool sits beside — DryLab and its
+relatives — at the driver's direction during [#19](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/19);
+the prototype variant on branch `prototype/main-screen` is superseded): sidebar = method constants
++ N knob. A narrow **left rail** carries the condition — scouting tG values, candidate tG and
+initial hold — above a **Method summary** panel (peaks fitted, untracked count, minimum Rs and its
+critical pair, run time, minimum k) and a **Selected peak** panel (tR, k at elution, W½, N and where
+it came from, log10 k0, S, Rs to either neighbour). A **tabbed main view** holds resolution map,
+table of peaks, fit parameters and resolution. The **chromatogram is pinned beneath the tabs**,
+always visible. A **status bar** at the foot carries the condition on show.
+
+Carried forward from the prototype: numbered 1→4 worksheet guidance as the **empty state**;
+**sticky chromatogram** while scrolling; **fit-parameter table promoted** — it gets its own tab and
+is never hidden in an expander.
+
+**Resolution map**: the tab ships in v0.1 as an empty frame — real axes (tG × initial hold) and a
+marker for the current condition, with the field deliberately blank and captioned as v0.2 (§11).
+The engine can already sweep it, which is exactly the reason: a filled contour would be
+indistinguishable on screen from a map a chromatographer could pick a method from, and a plot that
+would be acted on has to be data.
+
+**Chromatogram**: sum of Gaussians. Where areas exist a peak's **area** carries its share — a
+detector trace conserves area, so a broader peak is drawn shorter for the same amount injected;
+where they do not, every peak is drawn to the same height, which claims nothing about amounts.
+Peak labels; hover values. Rs is colour-coded on the conventional reading (1.5 baseline separation,
+2.0 robustness target) — a display convention, explicitly not one of §6's thresholded diagnostics.
 
 ## 8. Session persistence ([#12](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/12))
 
@@ -110,15 +134,24 @@ Two decisions taken while building ([#18](https://github.com/zhipengzhu1-dotcom/
 
 ## 9. Architecture and stack ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6))
 
-Python ≥ 3.12 · uv · ruff · mypy (strict on the engine) · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
+Python ≥ 3.12 · uv · ruff · mypy (strict on the engine and on the app's logic layer; only the Streamlit entry point is excluded) · pytest. **Thin Streamlit app over a pure engine library** — the engine imports no UI code and is what the test suite targets.
 
 ```
-src/hplcsim/
-  method.py     # MethodConstants, Gradient, Run, Peak (dataclasses; φ + natural-log internal units)
-  fit.py        # fit_two_run(method, run1, run2) -> list[PeakFit]   (seed + Brent, diagnostics)
-  predict.py    # predict(method, fits, gradient) -> Prediction      (tR, σ, Rs, flags, branches)
-  session.py    # JSON schema v1 load/save + validation
-app/streamlit_app.py
+src/hplcsim/      # the engine: a pure library, importing no UI code
+  model.py        # Method, Gradient, Run, Peak, RetentionParams; the φ and log-convention boundaries
+  retention.py    # predict_retention(params, method, gradient) -> RetentionResult (regime branches)
+  fit.py          # fit_peaks(peaks, method, run1, run2) -> list[FitResult]  (seed + Brent)
+  width.py        # peak_width, fit_plate_count -> PeakWidth, FittedPlateCount (G, and N per peak)
+  resolution.py   # resolution_table(...) -> ResolutionTable (adjacent pairs, critical pair)
+  session.py      # JSON schema v1 load/save + validation
+streamlit_app.py  # the app's entry point — at the root because `streamlit run` puts the
+                  # script's own folder on sys.path, so an entry point inside app/ cannot
+                  # import app.pipeline at all
+app/              # the Cockpit: depends on the engine, never the reverse
+  pipeline.py     # entry -> fit -> prediction, Streamlit-free (what the app's tests target)
+  chromatogram.py # the Gaussian sum, and the v0.2 resolution-map frame
+  tables.py       # the display frames; the base-10 display boundary
+  panels.py       # the left rail's label/value blocks
 tests/          # three-layer suite (§10)
 validation/     # lab dataset (committed) — protocol + method.csv + run1..4.csv
 docs/research/  # merged research docs (normative math + datasets)

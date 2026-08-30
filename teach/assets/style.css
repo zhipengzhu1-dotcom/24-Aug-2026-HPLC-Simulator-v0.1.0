@@ -1,0 +1,258 @@
+/* Shared stylesheet for the HPLC Gradient Simulator teaching workspace.
+   Tufte-ish: generous margin column for sidenotes/citations, serif reading
+   type, restrained color used only to carry meaning (warnings, correctness,
+   the user's own data vs. literature data). Reused by every lesson and
+   reference document — edit here, not per-file. */
+
+:root {
+  --paper: #fbf9f4;
+  --ink: #1b1a17;
+  --ink-soft: #4a473f;
+  --rule: #ddd6c6;
+  --accent: #7a5230;       /* citations, sidenotes */
+  --accent-soft: #f1e9d8;
+  --data-user: #2f6b5e;    /* the user's own lab data */
+  --data-user-bg: #e9f2ee;
+  --warn: #9a3b2f;         /* open hazards / unresolved */
+  --warn-bg: #f8e9e5;
+  --good: #2f6b3a;         /* correct answers */
+  --good-bg: #e9f2ea;
+  --code-bg: #f1ede1;
+  --max-width: 780px;
+  --margin-width: 260px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b1a17;
+    --ink: #ece7d9;
+    --ink-soft: #b9b3a1;
+    --rule: #3a372e;
+    --accent: #d7a978;
+    --accent-soft: #2a2620;
+    --data-user: #7fd6bf;
+    --data-user-bg: #16302a;
+    --warn: #e5877a;
+    --warn-bg: #351e1a;
+    --good: #8fd19e;
+    --good-bg: #17301c;
+    --code-bg: #24221c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--paper); }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Source Serif 4", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  line-height: 1.6;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 6rem;
+  max-width: calc(var(--max-width) + var(--margin-width) + 3rem);
+}
+
+.lesson {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.lesson.with-margin {
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, var(--max-width)) var(--margin-width);
+  column-gap: 2.5rem;
+}
+
+.lesson.with-margin > .main { grid-column: 1; }
+
+@media (max-width: 980px) {
+  .lesson.with-margin { display: block; }
+  .lesson.with-margin > .main { max-width: var(--max-width); margin: 0 auto; }
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+h1 { font-size: 1.9rem; margin: 0 0 0.3rem; }
+h2 { font-size: 1.35rem; margin: 2.4rem 0 0.9rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.3rem; }
+h3 { font-size: 1.1rem; margin: 1.6rem 0 0.6rem; }
+
+.kicker {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.6rem;
+}
+
+.dek {
+  font-size: 1.08rem;
+  color: var(--ink-soft);
+  margin: 0 0 2rem;
+}
+
+p { margin: 0 0 1.1rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; }
+strong { color: var(--ink); }
+
+/* Margin notes / citations, Tufte-style. Falls back to an inline footnote-ish
+   block on narrow screens via the media query above collapsing the grid. */
+.sidenote-anchor {
+  vertical-align: super;
+  font-size: 0.7em;
+  color: var(--accent);
+  cursor: help;
+}
+aside.sidenote {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  margin: 0 0 1.4rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--rule);
+}
+.lesson.with-margin aside.sidenote {
+  grid-column: 2;
+  margin-top: 0.15rem;
+}
+@media (max-width: 980px) {
+  aside.sidenote { margin: 0.6rem 0 1.4rem; }
+}
+
+.callout {
+  margin: 1.4rem 0;
+  padding: 0.9rem 1.1rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.callout.data-user { background: var(--data-user-bg); border-left: 3px solid var(--data-user); }
+.callout.warn { background: var(--warn-bg); border-left: 3px solid var(--warn); }
+.callout.note { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+.callout .label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+.callout.data-user .label { color: var(--data-user); }
+.callout.warn .label { color: var(--warn); }
+.callout.note .label { color: var(--accent); }
+
+code, .eq {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  background: var(--code-bg);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+pre {
+  background: var(--code-bg);
+  padding: 1rem 1.1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+}
+
+.katex-display { margin: 1rem 0 1.4rem; overflow-x: auto; overflow-y: hidden; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0 1.4rem;
+  font-size: 0.92rem;
+}
+th, td { border-bottom: 1px solid var(--rule); padding: 0.4rem 0.7rem; text-align: left; }
+th { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+
+/* Quiz widget (see assets/quiz.js) */
+.quiz {
+  margin: 1.6rem 0;
+  padding: 1.1rem 1.2rem 1.3rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 92%, var(--ink) 3%);
+}
+.quiz .q-prompt { font-weight: 600; margin-bottom: 0.8rem; }
+.quiz .q-options { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.9rem; }
+.quiz label.q-option {
+  display: flex; gap: 0.6rem; align-items: baseline;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.92rem;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  border-radius: 5px;
+}
+.quiz label.q-option:hover { background: var(--accent-soft); }
+.quiz button.q-check {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  padding: 0.45rem 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.quiz button.q-check:hover { opacity: 0.85; }
+.quiz .q-feedback {
+  margin-top: 0.8rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.88rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 5px;
+  display: none;
+}
+.quiz .q-feedback.show { display: block; }
+.quiz .q-feedback.correct { background: var(--good-bg); color: var(--good); }
+.quiz .q-feedback.incorrect { background: var(--warn-bg); color: var(--warn); }
+
+details.reveal {
+  margin: 1.2rem 0;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+}
+details.reveal > summary {
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.88rem;
+  color: var(--accent);
+}
+details.reveal[open] > summary { margin-bottom: 0.6rem; }
+
+.lesson-nav {
+  margin-top: 3rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.88rem;
+}
+
+.ask-agent {
+  margin: 2rem 0;
+  padding: 0.9rem 1.1rem;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink-soft);
+}
+
+@media print {
+  body { padding: 0; font-size: 12pt; }
+  .quiz button.q-check, .ask-agent, .lesson-nav { display: none; }
+  a { color: var(--ink); }
+}

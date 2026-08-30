@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Why β = 3</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [
+    {left: '$$', right: '$$', display: true},
+    {left: '$', right: '$', display: false}
+  ]});"></script>
+<script defer src="../assets/quiz.js"></script>
+</head>
+<body>
+<div class="lesson with-margin">
+<div class="main">
+
+<div class="kicker">Lesson 4 · The Science Model (continued)</div>
+<h1>Why β = 3</h1>
+<p class="dek">Lesson 2 established that two runs sample two points on each peak's
+$(\varphi, \ln k)$ line. This lesson is about how far apart those two points need to
+be — and why your own scouting runs (tG = 15 &amp; 45) already got it right.</p>
+
+<h2>The question Lesson 2 left open</h2>
+<p>$\beta = t_{G,2}/t_{G,1}$ is just the ratio of your two scouting gradient times. Nothing
+in the algebra of Lesson 2 says it has to be any particular number — any two different
+$t_G$ values give two equations for the two unknowns $(k_0, S_e)$. So why does the spec
+(and the literature) insist on <strong>about 3</strong>, not "any two values you like"?</p>
+
+<h2>Two points too close together</h2>
+<p>Picture fitting a line's slope from two points that are almost on top of each other,
+versus two points spread well apart. In the first case, a tiny error in either point's
+height swings the fitted slope wildly; in the second, the same error barely moves it. That's
+literally what's happening here — the two points are each peak's elution composition,
+$\varphi_{e,1}$ and $\varphi_{e,2}$, and the "slope" is $S_e$.</p>
+<p>The research doc quantifies this exactly, injecting a realistic <strong>0.6 seconds</strong>
+of ordinary retention-time noise into synthetic data and watching what it does to the
+fitted $S$:<span class="sidenote-anchor">1</span></p>
+<table>
+<tr><th>β</th><th>3.0</th><th>2.0</th><th>1.5</th><th>1.2</th><th>1.05</th></tr>
+<tr><td>$\varphi_{e,1}-\varphi_{e,2}$</td><td>0.121</td><td>0.077</td><td>0.045</td><td>0.020</td><td>0.005</td></tr>
+<tr><td>resulting error in S</td><td>0.13%</td><td>0.30%</td><td>0.69%</td><td>1.94%</td><td><strong>8.80%</strong></td></tr>
+</table>
+<aside class="sidenote">1. <code>docs/research/gradient-elution-math.md</code> §7.2. The
+rigorous error-propagation analysis behind this is attributed to Quarry, Grob &amp; Snyder
+(1986), which the research session couldn't obtain directly — the numeric table is the
+documented substitute, run on synthetic data with $k_0=500$, $S_e=9$, $t_{G,1}=20$ min.</aside>
+<p>The same 0.6-second wobble — the kind of run-to-run noise you'd get from ordinary
+injection and integration variability, nothing exotic — costs <strong>0.13% at β=3</strong>
+but <strong>8.80% at β=1.05</strong>. That's roughly a 70× difference in how much a fixed
+amount of measurement noise gets amplified into parameter error, purely from how close
+together the two runs were.</p>
+
+<h2>So why not push β even higher?</h2>
+<p>If separation only helps, why not run tG and 10·tG? Because LSS is an approximation —
+$\ln k$ vs. $\varphi$ is only <em>close to</em> a straight line, over a bounded range. The
+wider you stretch the two scouting runs apart, the more of that real, gentle curvature gets
+folded into your fitted "straight line," rather than averaged away as noise. This is exactly
+the phenomenon behind the sign-flip you saw in Lesson 1's headline result — the
+<strong>+0.35% bias at tG=25 flipping to −0.26% at tG=60</strong> was diagnosed as mild LSS
+curvature, not a dwell error. Push β too far and you're intentionally inviting more of that.</p>
+<p>So the real design problem is a trade-off: too close (β near 1) and ordinary timing noise
+dominates the fit; too far apart and real curvature starts contaminating what's supposed to
+be a straight-line fit. β ≈ 3 is where three independent sources land as the sweet spot:</p>
+<ul>
+<li>Molnár (2002), describing DryLab's own worked example: two gradients "in 40 and
+120 min" — β = 3 exactly.</li>
+<li>Molnár, quoting Snyder's guidance on how far any one variable can be changed while still
+treated independently: "a factor of three in gradient elution time."</li>
+<li>Guillarme et al. (2022): "the usual ratio recommended for accurate retention modeling is
+3 only."</li>
+</ul>
+<p>den Uijl et al. (2021) add the honest caveat worth keeping: β is "often assumed to be at
+least three," but what matters more is <strong>how close your scouting runs bracket the
+gradients you actually intend to predict</strong>. β=3 is a good default, not a law handed
+down from above.</p>
+
+<div class="callout data-user">
+<span class="label">Your own runs already did this</span>
+tG = 15 and tG = 45 → β = 45/15 = <strong>3.0, exactly</strong>. Not a coincidence — the
+protocol you built for this instrument (<code>validation/PROTOCOL.md</code>) specified it
+going in, on the strength of the same three sources above.
+</div>
+
+<h2>How the spec turns this into a guardrail</h2>
+<p><code>SPEC.md</code> §4 doesn't hard-block on β — it recommends tG and ~3·tG, then shows
+a warning below a spacing ratio of ~2.5 and a strong warning below ~1.2, never a hard
+refusal. That matches den Uijl's caveat directly: a tighter spacing isn't invalid, it's
+just worse-conditioned, and sometimes matching your actual prediction targets should win
+over chasing the textbook ratio.</p>
+
+<h2>Check your understanding</h2>
+
+<div class="quiz" data-correct="b">
+  <div class="q-prompt">As β → 1 (your two scouting tG values converge), what happens to the fitted $S_e$?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Nothing — the fit is exact regardless of β</label>
+    <label class="q-option"><input type="radio" value="b"> It becomes increasingly sensitive to ordinary timing noise, because the two sampled points on the (φ, ln k) line get too close together</label>
+    <label class="q-option"><input type="radio" value="c"> It becomes undefined only if β is exactly 1.00000</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Right — the 0.6-second-noise table shows this isn't hypothetical: 8.80% error at β=1.05 vs 0.13% at β=3, from the exact same amount of noise."
+       data-incorrect-text="Think of fitting a slope from two nearly-identical points — any noise in either one swings the slope wildly. The same numeric behavior is documented at β=1.05."></div>
+</div>
+
+<div class="quiz" data-correct="a">
+  <div class="q-prompt">Why not just always use the largest β you can (e.g. tG and 10·tG), since more separation reduces noise sensitivity?</div>
+  <div class="q-options">
+    <label class="q-option"><input type="radio" value="a"> Because LSS is only approximately linear — stretching the runs too far apart lets real curvature get folded into the fitted line, not just averaged-out noise</label>
+    <label class="q-option"><input type="radio" value="b"> Because larger β always requires a longer column</label>
+    <label class="q-option"><input type="radio" value="c"> There's no downside — bigger β is strictly better in every case</label>
+  </div>
+  <button class="q-check">Check</button>
+  <div class="q-feedback"
+       data-correct-text="Exactly the tension behind β≈3 as a sweet spot, not an arbitrary round number — and the same curvature that shows up here is what produced the sign-flip in Lesson 1's headline result."
+       data-incorrect-text="The real constraint is the model, not the hardware: LSS is a straight-line approximation to something that's genuinely a little curved, and wider runs sample more of that curvature."></div>
+</div>
+
+<h2>Primary source</h2>
+<p>Recommended this time: den Uijl, Schoenmakers, Pirok &amp; van Bommel, <em>J. Sep. Sci.</em>
+<strong>44</strong> (2021) 88–114 — <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7821232/">open
+access on PMC</a>. It's the source that both qualifies the β=3 rule of thumb and is
+refreshingly direct about where LSS itself breaks down — worth reading before the later
+lesson on the curvature you already glimpsed in Lesson 1's sign-flip. For the quantitative
+table above, see <code>docs/research/gradient-elution-math.md</code> §7.1–7.2 (branch
+<code>research/gradient-math</code>).</p>
+
+<div class="ask-agent">
+Want to see how the "0.13% vs 8.80%" sensitivity numbers were actually derived from the
+closed-form seed equation, rather than just quoted? Ask.
+</div>
+
+<div class="lesson-nav">
+  <a href="0003-the-pre-gradient-period-tau.html">← Lesson 3: the pre-gradient period τ</a>
+  <a href="0005-no-closed-form-seed-and-root-find.html">Lesson 5: no closed form — the seed + Brent root-find →</a>
+</div>
+
+</div>
+</div>
+</body>
+</html>
