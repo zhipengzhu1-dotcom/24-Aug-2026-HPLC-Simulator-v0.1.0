@@ -69,7 +69,31 @@ Presentation: per-peak badges (2, 4), fit-page notices (3), result banners (5), 
 
 ## 7. UI ([#7](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/7))
 
-**Cockpit layout** (winning prototype variant, branch `prototype/main-screen`): sidebar = method constants + N knob; main = candidate-gradient controls, **chromatogram as hero**, peak table (left) beside resolution + fit results (right). Three refinements from the losing variants: numbered 1→4 worksheet guidance as the **empty state**; **sticky chromatogram** while scrolling; **fit-parameter table promoted** (log10 k0, S per peak — not hidden in an expander). Chromatogram: sum of Gaussians, heights scaled by area shares where areas exist; peak labels; hover values.
+**Cockpit layout** (modelled on the instrument software this tool sits beside — DryLab and its
+relatives — at the driver's direction during [#19](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/19);
+the prototype variant on branch `prototype/main-screen` is superseded): sidebar = method constants
++ N knob. A narrow **left rail** carries the condition — scouting tG values, candidate tG and
+initial hold — above a **Method summary** panel (peaks fitted, untracked count, minimum Rs and its
+critical pair, run time, minimum k) and a **Selected peak** panel (tR, k at elution, W½, N and where
+it came from, log10 k0, S, Rs to either neighbour). A **tabbed main view** holds resolution map,
+table of peaks, fit parameters and resolution. The **chromatogram is pinned beneath the tabs**,
+always visible. A **status bar** at the foot carries the condition on show.
+
+Carried forward from the prototype: numbered 1→4 worksheet guidance as the **empty state**;
+**sticky chromatogram** while scrolling; **fit-parameter table promoted** — it gets its own tab and
+is never hidden in an expander.
+
+**Resolution map**: the tab ships in v0.1 as an empty frame — real axes (tG × initial hold) and a
+marker for the current condition, with the field deliberately blank and captioned as v0.2 (§11).
+The engine can already sweep it, which is exactly the reason: a filled contour would be
+indistinguishable on screen from a map a chromatographer could pick a method from, and a plot that
+would be acted on has to be data.
+
+**Chromatogram**: sum of Gaussians. Where areas exist a peak's **area** carries its share — a
+detector trace conserves area, so a broader peak is drawn shorter for the same amount injected;
+where they do not, every peak is drawn to the same height, which claims nothing about amounts.
+Peak labels; hover values. Rs is colour-coded on the conventional reading (1.5 baseline separation,
+2.0 robustness target) — a display convention, explicitly not one of §6's thresholded diagnostics.
 
 ## 8. Session persistence ([#12](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/12))
 
