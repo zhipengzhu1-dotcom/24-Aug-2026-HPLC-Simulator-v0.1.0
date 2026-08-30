@@ -4,7 +4,7 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 
 ## Architecture rules
 
-- The engine (`src/hplcsim`) is a **pure library**: it imports no UI code (no streamlit/pandas/plotly). The Streamlit app (`app/`) depends on the engine, never the reverse.
+- The engine (`src/hplcsim`) is a **pure library**: it imports no UI code (no streamlit/pandas/plotly). The app (`app/` plus the root `streamlit_app.py` entry point) depends on the engine, never the reverse.
 - **Log-convention rule**: retention math runs in the natural-log convention internally (S_e, b_e). Base-10 values (S, log10 k0) appear only at display boundaries, and the conversion lives in exactly one function.
 - **Units**: minutes, mL, mm, µm, °C. φ is a fraction 0–1 internally; %B 0–100 exists only at entry/display boundaries.
 - **Session persistence is inputs-only** (SPEC §8): fitted results are never serialized; the fit recomputes on load.
@@ -14,7 +14,7 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 ## Tooling
 
 - Python ≥ 3.12, uv-managed. Run everything through uv: `uv run pytest`, `uv run ruff check`, `uv run mypy`.
-- ruff lints and formats; mypy runs strict on `src/hplcsim`; pytest owns `tests/`.
+- ruff lints and formats; mypy runs strict on `src/hplcsim` and `app/` (only the root `streamlit_app.py` is excluded); pytest owns `tests/`.
 - Engine correctness is defined by the three-layer test bar (SPEC §10); changes to scientific code must keep every layer green.
 
 ## Process
