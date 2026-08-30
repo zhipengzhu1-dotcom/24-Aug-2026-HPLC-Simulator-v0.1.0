@@ -75,7 +75,7 @@ def status_bar(fields: Sequence[str]) -> str:
 
 STYLE = """
 <style>
-  .block-container { padding-top: 2.2rem; padding-bottom: 4.2rem; max-width: 100%; }
+  .block-container { padding-top: 2.2rem; padding-bottom: 1rem; max-width: 100%; }
   section[data-testid="stSidebar"] { border-right: 1px solid #c3ceda; }
   section[data-testid="stSidebar"] .stNumberInput label,
   section[data-testid="stSidebar"] .stRadio label { font-size: 0.78rem; }
@@ -107,8 +107,13 @@ STYLE = """
   }
   .hs-empty { color: #8d99a8; font-style: italic; font-size: 0.78rem; }
 
+  /* Sticky inside the main column, never fixed to the viewport. A viewport-fixed bar
+     starts at left:0 and runs under Streamlit's sidebar — also fixed, at a far higher
+     z-index — which paints over the leading fields and hides them outright. Laid out in
+     the main column's flow the bar cannot reach the sidebar; and if sticky positioning
+     is ever defeated it degrades to sitting at the end of the content, still the foot. */
   .hs-status {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+    position: sticky; bottom: 0; z-index: 90; margin-top: 10px;
     background: #dbe6f2; border-top: 1px solid #b9c6d6;
     padding: 4px 14px; font-size: 0.76rem; color: #24445f;
   }

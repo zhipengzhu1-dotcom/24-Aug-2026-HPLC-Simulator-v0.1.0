@@ -104,3 +104,20 @@ def test_a_value_column_that_cannot_wrap_would_clip_its_own_numbers() -> None:
     assert "table-layout: fixed" in STYLE
     assert "white-space: nowrap" not in STYLE
     assert "overflow-wrap: anywhere" in STYLE
+
+
+def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
+    """Pins the fix for a real defect: the sidebar hid the bar's leading fields.
+
+    The bar was `position: fixed; left: 0`, so it spanned the whole viewport and ran
+    underneath Streamlit's sidebar, which is fixed too and sits at a far higher
+    z-index. On screen the first fields — tG, %B, Rs — were simply not there, and the
+    text began mid-word. Sticky positioning lays the bar out in the main column's
+    flow, where it cannot reach the sidebar at all.
+    """
+    from app.panels import STYLE
+
+    status_rule = STYLE.split(".hs-status {", 1)[1].split("}", 1)[0]
+    assert "position: sticky" in status_rule
+    assert "position: fixed" not in status_rule
+    assert "left: 0" not in status_rule
