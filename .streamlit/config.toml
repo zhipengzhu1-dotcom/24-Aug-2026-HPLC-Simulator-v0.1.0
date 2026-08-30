@@ -8,6 +8,3 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#e8eef6"
 textColor = "#1a1a1a"
 font = "sans serif"
-
-[server]
-runOnSave = true

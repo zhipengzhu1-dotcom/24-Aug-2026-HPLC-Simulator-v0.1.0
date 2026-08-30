@@ -31,7 +31,7 @@ class PeakRow:
     """One row of the peak table exactly as typed — every measurement optional.
 
     The engine's :class:`~hplcsim.model.Peak` requires both retention times; a row
-    being filled in does not have them yet. ``name`` is blank until :func:`prepare`
+    being filled in does not have them yet. ``name`` is blank until :func:`split_rows`
     fills in SPEC §5's automatic P1…Pn.
     """
 
@@ -85,6 +85,7 @@ class Entry:
 
     tracked: tuple[Peak, ...]
     untracked: tuple[PeakRow, ...]
+    renamed: tuple[tuple[str, str], ...] = ()
 
     @property
     def untracked_count(self) -> int:
@@ -102,8 +103,43 @@ def split_rows(rows: Sequence[PeakRow]) -> Entry:
         row if row.name.strip() else replace(row, name=f"P{index}")
         for index, row in enumerate((row for row in rows if not row.is_blank), start=1)
     ]
+    named, renamed = _make_names_unique(named)
     tracked = tuple(peak for row in named if (peak := row.as_peak()) is not None)
-    return Entry(tracked=tracked, untracked=tuple(row for row in named if not row.is_tracked))
+    return Entry(
+        tracked=tracked,
+        untracked=tuple(row for row in named if not row.is_tracked),
+        renamed=renamed,
+    )
+
+
+def _make_names_unique(
+    rows: Sequence[PeakRow],
+) -> tuple[list[PeakRow], tuple[tuple[str, str], ...]]:
+    """Give every row its own name, and report the ones that had to change.
+
+    A typed name can collide with another typed name, or with an automatic P1…Pn a
+    later row is about to receive. Everything downstream looks a peak up by name —
+    the selected-peak list, the fit table's width lookup — so a duplicate dropped a
+    peak that the rail went on counting, with nothing said. Suffix the later row
+    rather than block on it (CLAUDE.md's warnings-over-blocks) and hand the change
+    back, so the screen can report what it did to the name someone typed.
+    """
+    seen: set[str] = set()
+    unique: list[PeakRow] = []
+    renamed: list[tuple[str, str]] = []
+    for row in rows:
+        if row.name not in seen:
+            seen.add(row.name)
+            unique.append(row)
+            continue
+        suffix = 2
+        while f"{row.name} ({suffix})" in seen:
+            suffix += 1
+        new_name = f"{row.name} ({suffix})"
+        renamed.append((row.name, new_name))
+        seen.add(new_name)
+        unique.append(replace(row, name=new_name))
+    return unique, tuple(renamed)
 
 
 @dataclass(frozen=True)
@@ -186,7 +222,7 @@ def run_cockpit(inputs: CockpitInputs) -> Cockpit:
         return Cockpit(entry, (), None, None, blocked)
 
     outcomes = tuple(_fit_one(peak, inputs) for peak in entry.tracked)
-    fitted = tuple((outcome.peak, outcome.fit) for outcome in outcomes if outcome.fit is not None)
+    fitted = _fitted_pairs(outcomes)
     if not fitted:
         return Cockpit(entry, outcomes, None, None, None)
 

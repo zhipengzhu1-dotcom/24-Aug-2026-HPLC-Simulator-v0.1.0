@@ -548,3 +548,63 @@ def test_the_resolution_table_agrees_with_the_times_and_widths_beside_it() -> No
 
 def _as_record(row: PeakRow) -> dict[str, object]:
     return dict(zip(PEAK_COLUMNS, (row.name, *row.measurements), strict=True))
+
+
+def test_a_typed_name_that_collides_with_an_automatic_one_does_not_lose_a_peak() -> None:
+    """Pins a real defect: a duplicate name dropped a peak, and nothing said so.
+
+    Everything downstream looks a peak up by name — ``predicted_by_name`` feeds the
+    selected-peak list, and the fit table's width lookup keys on it too. Two rows
+    sharing a name collapsed into one entry, so the rail counted three peaks while
+    the list offered two and the survivor wore the other's width.
+    """
+    entry = split_rows(
+        [
+            PeakRow(name="P2", t_r_run1=9.855, t_r_run2=20.831),
+            PeakRow(t_r_run1=11.592, t_r_run2=25.932),
+            PeakRow(t_r_run1=16.159, t_r_run2=39.796),
+        ]
+    )
+
+    names = [peak.name for peak in entry.tracked]
+    assert names == ["P2", "P2 (2)", "P3"]
+    assert len(set(names)) == len(names)
+    assert entry.renamed == (("P2", "P2 (2)"),)
+
+
+def test_every_fitted_peak_reaches_the_selected_peak_list() -> None:
+    """The count in the rail and the length of the list must be the same number."""
+    rows = [
+        PeakRow(name="P2", t_r_run1=9.855, t_r_run2=20.831),
+        PeakRow(t_r_run1=11.592, t_r_run2=25.932),
+        PeakRow(t_r_run1=16.159, t_r_run2=39.796),
+    ]
+    cockpit = run_cockpit(_lab_inputs(rows=tuple(rows)))
+
+    assert cockpit.resolution is not None
+    assert len(cockpit.predicted_by_name) == len(cockpit.resolution.peaks) == 3
+
+
+def test_two_hand_typed_names_that_match_are_both_kept_and_reported() -> None:
+    entry = split_rows(
+        [
+            PeakRow(name="Caffeine", t_r_run1=9.855, t_r_run2=20.831),
+            PeakRow(name="Caffeine", t_r_run1=11.592, t_r_run2=25.932),
+        ]
+    )
+
+    assert [peak.name for peak in entry.tracked] == ["Caffeine", "Caffeine (2)"]
+    assert entry.renamed == (("Caffeine", "Caffeine (2)"),)
+
+
+def test_names_that_are_already_distinct_are_left_exactly_as_typed() -> None:
+    """The rename is a repair, not a habit: untouched names must report nothing."""
+    entry = split_rows(
+        [
+            PeakRow(name="Caffeine", t_r_run1=9.855, t_r_run2=20.831),
+            PeakRow(name="Theophylline", t_r_run1=11.592, t_r_run2=25.932),
+        ]
+    )
+
+    assert [peak.name for peak in entry.tracked] == ["Caffeine", "Theophylline"]
+    assert entry.renamed == ()

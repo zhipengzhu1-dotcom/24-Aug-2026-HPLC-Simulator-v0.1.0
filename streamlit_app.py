@@ -294,8 +294,15 @@ def _entry_notes(cockpit: Cockpit) -> None:
             f"**{len(untracked)} untracked — not fitted** ({names}). A row needs a tR in "
             "both runs before it can be fitted, predicted or resolved."
         )
-    if cockpit.blocked is not None:
-        st.error(cockpit.blocked)
+    if cockpit.entry.renamed:
+        pairs = ", ".join(f"{old} → {new}" for old, new in cockpit.entry.renamed)
+        st.warning(
+            f"**Duplicate peak names renamed** ({pairs}). Every peak is looked up by "
+            "name, so two rows sharing one would drop a peak from the fit table and "
+            "the selected-peak list."
+        )
+    # The block message belongs to the rail, which is always on screen; painting it
+    # here as well showed it twice whenever the peaks tab was the one open.
 
 
 # --- the left rail: the condition, and what it comes to -------------------------------

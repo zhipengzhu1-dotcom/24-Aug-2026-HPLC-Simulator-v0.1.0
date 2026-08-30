@@ -26,7 +26,6 @@ _RS_ROBUST = 2.0
 _GOOD = "#1f9d55"
 _FAIR = "#c77700"
 _POOR = "#c0392b"
-_MUTED = "#6b7785"
 
 
 @dataclass(frozen=True)
