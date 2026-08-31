@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-30
 **Repo:** `/Users/maracchi/Desktop/Claude/24-Aug-2026 HPLC Simulator v0.1.0`
-**Branch:** `main` @ `b2513a2`, clean tree, pushed to origin
+**Branch:** `main` @ `22de637`, clean tree, pushed to origin
 **Next focus:** **#21**, then **#22**; #24 is live and the driver is running it
 
 ---
@@ -53,8 +53,9 @@ driven from `AppTest`, so anything needing a filled peak table still cannot be s
 - **SPEC and research-doc amendments need the driver's approval of the *exact diff*.**
   Show the diff, wait, then apply behind a verbatim-match `assert` on the anchor text.
   `26610c1` is the worked example.
-- **Post-v0.1 findings get their own ticket** opening with "Not for v0.1.0". Filed #37
-  this way (the two deferred fit-confidence diagnostics).
+- **Post-v0.1 findings get their own ticket** opening with "Not for v0.1.0" — the
+  convention still holds, though the one filed this session (#37) was then closed as not
+  valuable. Check with the driver before assuming a deferred finding is worth a ticket.
 - **Stage explicit paths, never the working tree.** `docs/research/porosity-for-t0-geometry.md`
   is an untracked skeleton from a killed `/research` run for #33 — it survived this
   session only because every `git add` named its files.
@@ -63,9 +64,10 @@ driven from `AppTest`, so anything needing a filled peak table still cannot be s
 
 **The engine could hang, and pytest does not time out.** `_solve_steepness` spun forever
 on transposed retention times; the suite presented it as pytest never returning, not as a
-failure. `faulthandler.dump_traceback_later(...)` is what located it. Fixed and recorded
-as [#38](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/38),
-which also suggests `pytest-timeout` — deliberately not added.
+failure. `faulthandler.dump_traceback_later(...)` is what located it — remember that
+technique, because the suite has no timeout and a future hang will look the same. Fixed in
+`3faa5ed`, guarded by
+`tests/test_fit.py::test_a_steeper_run_that_elutes_later_is_refused_rather_than_searched_forever`.
 
 **`uv run` contends with itself.** Two concurrent `uv run` invocations blocked on uv's
 lock and looked exactly like a hung test. Kill stragglers before believing a hang.
