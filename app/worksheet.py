@@ -14,12 +14,21 @@ paragraph of instructions.
 **It retires when the prediction arrives, not when the first row is typed.** The
 cockpit's empty state is not "nobody has typed anything" — it is "there is nothing to
 show yet", and the results surfaces stay empty right up until a peak is fitted and
-predicted. Retiring on the first keystroke would have made steps 2, 3 and 4 unreachable:
-each ticks on evidence that only exists once rows are entered, so the list would have
-read ✅⬜⬜⬜ forever and said nothing about a screen that is stuck. Retiring on the
-prediction is what makes "a screen that is stuck says which step is stuck" true — two
-scouting runs at one tG, or a pair the engine refuses, both leave the list on screen
-naming the step that has not happened.
+predicted.
+
+**Steps 1 and 2 are the chromatographer's; steps 3 and 4 are the app's.** That asymmetry
+is the design, not an oversight, and it bounds what the list can ever show. A prediction
+exists exactly when at least one peak is fitted, so while this worksheet is on screen
+``cockpit.fitted`` is empty by construction — steps 3 and 4 cannot be ticked *here*, and
+the list reads ✅✅⬜⬜ at best. Step 4 completing *is* the worksheet disappearing.
+
+So the guidance that a stuck screen owes the reader lives in the step **details**, not in
+the ticks. There are two ways to be stuck, and each names itself: two scouting runs at
+one tG (step 2), and rows that are paired but that the engine refuses to fit (step 3).
+
+:func:`worksheet_steps` is a pure function and reports all four honestly, including the
+all-done state the screen never displays — that state is what the callers' tests assert
+against, and computing it here rather than special-casing keeps the four steps one shape.
 
 Every one of those judgements is computed here and only *placed* by ``streamlit_app``,
 following what ticket #20 established for :mod:`app.diagnostics`. The wording is here
@@ -70,9 +79,14 @@ def worksheet_steps(inputs: CockpitInputs, cockpit: Cockpit) -> tuple[Step, ...]
     Step 1 is ticked by the dwell: it is the one method constant SPEC §4 makes required
     with no silent default, and reaching this screen at all means it was entered. The
     rest tick on their own evidence rather than on the step before, so a screen that is
-    stuck says *which* step is stuck.
+    stuck says *which* step is stuck. See the module docstring for why only the first
+    two of those ticks can ever appear while the worksheet is being shown.
     """
     scouting_ready = inputs.run1.gradient.t_gradient != inputs.run2.gradient.t_gradient
+    # Rows are paired and the runs differ, yet nothing came back fitted: the engine
+    # refused every pair. This is the second of the two stuck states, and without it
+    # step 3 would offer a chromatographer directions to a tab that is empty.
+    all_refused = bool(cockpit.entry.tracked) and scouting_ready and not cockpit.fitted
     return (
         Step(
             number=1,
@@ -102,7 +116,11 @@ def worksheet_steps(inputs: CockpitInputs, cockpit: Cockpit) -> tuple[Step, ...]
             number=3,
             title="Read the fit",
             detail=(
-                "log10 k0 and S per peak, under **Fit parameters** — one pair of "
+                "Every pair you have entered was refused by the fit. **Fit parameters** "
+                "carries the reason against each row — most often two retention times "
+                "that do not move the way a gradient makes them move."
+                if all_refused
+                else "log10 k0 and S per peak, under **Fit parameters** — one pair of "
                 "numbers per compound, fitted from its two retention times."
             ),
             done=bool(cockpit.fitted),

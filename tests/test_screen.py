@@ -488,3 +488,24 @@ def test_a_file_that_fits_the_screen_says_nothing_about_limits() -> None:
     app.run()  # type: ignore[attr-defined]
 
     assert not any("outside what this screen" in text for text in _messages(app)["warning"])
+
+
+def test_a_refused_file_does_not_leave_the_last_files_warning_standing_beside_it() -> None:
+    """Both notices describe the last file handled, so they have to move together.
+
+    Load a session whose candidate tG is past the slider (warned about), then load a
+    corrupt one. The error is the new file's; the warning would be the old file's, and
+    it names a number no longer anywhere on screen.
+    """
+    wild = replace(RESTORED, candidate=replace(RESTORED.candidate, t_gradient=500.0))
+    app = _running_app()
+    _uploader(app).upload("wild.json", save_session(wild).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+    assert any("outside what this screen" in text for text in _messages(app)["warning"])
+
+    _uploader(app).upload("bad.json", b'{"schema_version": 99, "app_version": "0.1.0"}')
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert any("schema_version 99" in text for text in _messages(app)["error"])
+    assert not any("outside what this screen" in text for text in _messages(app)["warning"])

@@ -105,6 +105,7 @@ _T0_RANGE = (0.001, 100.0)
 _DWELL_TIME_RANGE = (0.0, 100.0)
 _HOLD_RANGE = (0.0, 60.0)
 _PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
+_PERCENT_B_RANGE = (0.0, 100.0)
 _TG_RUN_RANGE = (0.1, 600.0)
 _CANDIDATE_TG_RANGE = (1.0, _MAX_CANDIDATE_TG)
 _CANDIDATE_HOLD_RANGE = (0.0, _MAX_CANDIDATE_HOLD)
@@ -314,6 +315,10 @@ def _load_control() -> None:
                 # is the *file* that is refused, not the session on screen, which is
                 # left exactly as it was for the user to go on working in.
                 st.session_state[Keys.LOAD_ERROR] = str(error)
+                # Both notices describe the *last file handled*, so a refusal clears the
+                # previous file's out-of-range warning. Left standing it would sit under
+                # this error, naming a number from a session no longer on screen.
+                st.session_state[Keys.LOAD_NOTE] = None
             else:
                 st.session_state[Keys.LOAD_ERROR] = None
                 _restore(session)
@@ -345,42 +350,49 @@ def _restore(session: Session) -> None:
     rerun, replacing the page with a traceback rather than saying anything useful.
     """
     method, shared = session.method, session.runs[0].gradient
-    fit = Restore()
+    restore = Restore()
     st.session_state.update(
         {
             Keys.SESSION_NAME: session.session_name,
-            Keys.LENGTH: fit.within(
+            Keys.LENGTH: restore.within(
                 "column length", method.column_length_mm or _COLUMN_LENGTH_MM, *_LENGTH_RANGE
             ),
-            Keys.COLUMN_ID: fit.within(
+            Keys.COLUMN_ID: restore.within(
                 "column i.d.", method.column_id_mm or _COLUMN_ID_MM, *_COLUMN_ID_RANGE
             ),
-            Keys.PARTICLE: fit.within(
+            Keys.PARTICLE: restore.within(
                 "particle size", method.particle_um or _PARTICLE_UM, *_PARTICLE_RANGE
             ),
-            Keys.FLOW: fit.within("flow", method.flow, *_FLOW_RANGE),
-            Keys.TEMPERATURE: fit.within(
+            Keys.FLOW: restore.within("flow", method.flow, *_FLOW_RANGE),
+            Keys.TEMPERATURE: restore.within(
                 "temperature",
                 _TEMPERATURE_C if method.temperature_c is None else method.temperature_c,
                 *_TEMPERATURE_RANGE,
             ),
             Keys.T0_SOURCE: _MEASURED if method.t0_is_measured else _ESTIMATED,
-            Keys.T0: fit.within("t0", method.t0, *_T0_RANGE),
+            Keys.T0: restore.within("t0", method.t0, *_T0_RANGE),
             # The file stores the dwell as a time (SPEC §8), so the time is what comes
             # back. Dividing a volume out of it would be inventing the V_D that was
             # typed, at whatever the flow happens to be now — the conversion is an
             # entry boundary and is not meant to run backwards.
             Keys.DWELL_AS: _BY_TIME,
-            Keys.DWELL_TIME: fit.within("dwell", method.t_dwell, *_DWELL_TIME_RANGE),
-            # %B needs no clamp: the file already refuses anything outside 0–100.
-            Keys.PERCENT_B_START: percent_b_from_phi(shared.phi0),
-            Keys.PERCENT_B_END: percent_b_from_phi(shared.phif),
-            Keys.HOLD: fit.within("initial hold", shared.t_init, *_HOLD_RANGE),
+            Keys.DWELL_TIME: restore.within("dwell", method.t_dwell, *_DWELL_TIME_RANGE),
+            # %B goes through `restore` like everything else. The file already refuses
+            # anything outside 0–100 (`_check_percent`), so it should never bind — but
+            # being the one documented exception is how a later reader ends up
+            # re-deriving whether that exception is still safe.
+            Keys.PERCENT_B_START: restore.within(
+                "%B start", percent_b_from_phi(shared.phi0), *_PERCENT_B_RANGE
+            ),
+            Keys.PERCENT_B_END: restore.within(
+                "%B end", percent_b_from_phi(shared.phif), *_PERCENT_B_RANGE
+            ),
+            Keys.HOLD: restore.within("initial hold", shared.t_init, *_HOLD_RANGE),
             Keys.USE_N_ESTIMATE: session.plate_count is None,
-            Keys.TG_RUN1: fit.within(
+            Keys.TG_RUN1: restore.within(
                 "run 1 tG", session.runs[0].gradient.t_gradient, *_TG_RUN_RANGE
             ),
-            Keys.TG_RUN2: fit.within(
+            Keys.TG_RUN2: restore.within(
                 "run 2 tG", session.runs[1].gradient.t_gradient, *_TG_RUN_RANGE
             ),
             Keys.PEAK_FRAME: tables.peak_frame_from_rows(peak_rows_from_session(session)),
@@ -391,13 +403,13 @@ def _restore(session: Session) -> None:
         }
     )
     if session.plate_count is not None:
-        st.session_state[Keys.PLATE_COUNT] = fit.within(
+        st.session_state[Keys.PLATE_COUNT] = restore.within(
             "plate count N", float(session.plate_count), *_PLATE_COUNT_RANGE
         )
     _preset_slider_with_box(
         Keys.CANDIDATE_TG,
         seed=_TG_CANDIDATE,
-        value=fit.within("candidate tG", session.candidate.t_gradient, *_CANDIDATE_TG_RANGE),
+        value=restore.within("candidate tG", session.candidate.t_gradient, *_CANDIDATE_TG_RANGE),
     )
     _preset_slider_with_box(
         # The candidate hold's default is fed by the method hold, so the seed has to be
@@ -405,11 +417,11 @@ def _restore(session: Session) -> None:
         # `_slider_with_box` sees a changed default and overwrites the value just loaded.
         Keys.CANDIDATE_HOLD,
         seed=min(st.session_state[Keys.HOLD], _MAX_CANDIDATE_HOLD),
-        value=fit.within(
+        value=restore.within(
             "candidate initial hold", session.candidate.t_init, *_CANDIDATE_HOLD_RANGE
         ),
     )
-    st.session_state[Keys.LOAD_NOTE] = fit.note
+    st.session_state[Keys.LOAD_NOTE] = restore.note
 
 
 def _save_control(inputs: CockpitInputs) -> None:
@@ -481,10 +493,10 @@ def _sidebar() -> MethodEntry | None:
 
         st.subheader("Gradient")
         percent_b_start = st.number_input(
-            "%B start", 0.0, 100.0, _PERCENT_B_START, key=Keys.PERCENT_B_START
+            "%B start", *_PERCENT_B_RANGE, _PERCENT_B_START, key=Keys.PERCENT_B_START
         )
         percent_b_end = st.number_input(
-            "%B end", 0.0, 100.0, _PERCENT_B_END, key=Keys.PERCENT_B_END
+            "%B end", *_PERCENT_B_RANGE, _PERCENT_B_END, key=Keys.PERCENT_B_END
         )
         hold = st.number_input("Initial hold (min)", *_HOLD_RANGE, _HOLD, step=0.1, key=Keys.HOLD)
 

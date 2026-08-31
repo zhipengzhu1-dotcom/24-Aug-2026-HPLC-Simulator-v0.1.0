@@ -82,19 +82,37 @@ def test_one_fitted_peak_completes_every_step() -> None:
     assert _steps(replace(EMPTY, rows=(TRACKED,))) == {1: True, 2: True, 3: True, 4: True}
 
 
-def test_steps_two_and_three_can_be_ticked_while_the_guidance_is_still_on_screen() -> None:
-    """Otherwise the ticks are unreachable: a ✅ nobody can ever be shown is dead code.
+def test_only_the_first_two_ticks_can_ever_appear_while_the_guidance_is_on_screen() -> None:
+    """The ceiling is ✅✅⬜⬜, and it is the design rather than an accident.
 
-    A peak the engine refuses gets step 2 ticked (the rows are typed, the runs differ)
-    with step 3 still open — and, because nothing is predicted, the list is still up.
+    A prediction exists exactly when at least one peak is fitted, so a screen still
+    showing this worksheet has `cockpit.fitted` empty by construction. Steps 3 and 4
+    therefore cannot tick here — step 4 completing *is* the worksheet disappearing.
+    Pinned so that a future change to the retirement condition has to face it: the
+    earlier version of this test was named for a ✅ it then asserted was absent.
     """
     refused = replace(EMPTY, rows=(PeakRow(name="P1", t_r_run1=20.831, t_r_run2=9.855),))
     cockpit = run_cockpit(refused)
 
     assert needs_guidance(cockpit)
-    steps = {step.number: step.done for step in worksheet_steps(refused, cockpit)}
-    assert steps[2] is True
-    assert steps[3] is False
+    assert _steps(refused) == {1: True, 2: True, 3: False, 4: False}
+
+
+def test_a_pair_the_engine_refuses_is_named_at_step_three() -> None:
+    """The second of the two stuck states. Without it, step 3 sends a chromatographer
+    to a tab that is empty and says nothing about why."""
+    refused = replace(EMPTY, rows=(PeakRow(name="P1", t_r_run1=20.831, t_r_run2=9.855),))
+    (step,) = [s for s in worksheet_steps(refused, run_cockpit(refused)) if s.number == 3]
+
+    assert "refused by the fit" in step.detail
+
+
+def test_step_three_gives_plain_directions_when_nothing_has_been_entered_yet() -> None:
+    """Nothing is refused on an empty table, so the refusal wording must not appear."""
+    (step,) = [s for s in worksheet_steps(EMPTY, run_cockpit(EMPTY)) if s.number == 3]
+
+    assert "refused" not in step.detail
+    assert "Fit parameters" in step.detail
 
 
 def test_two_scouting_runs_at_one_gradient_time_hold_step_two_back() -> None:
