@@ -10,7 +10,7 @@ percentB_end,95,%,phif x 100
 initial_hold,0.5,min,t_init; 0 if none
 dwell_volume,0.375,mL,"from instrument spec sheet, NOT measured"
 dwell_time,0.9375,min,VD / F; derived from spec-sheet VD
-t0,0.525,min,"driver-read 2026-08-31 from the run-1 chromatogram; supersedes the 0.6 first entered (wrong time point). Fits/fixtures still use 0.6 — re-baselining is #24's call"
+t0,0.525,min,"driver-read 2026-08-31 from run1-chromatogram.png (solvent front); supersedes the 0.6 first entered (wrong time point). Fits/fixtures still use 0.6 — re-baselining is #24's call"
 t0_marker,solvent front,,"no marker compound injected; first baseline disturbance of the injection. A uracil confirmation would make it audit-grade (campaign #27)"
 injection_volume,10,uL,keep constant across runs
 sample_diluent,50:50 water:ACN,,consider diluting 1:1 with water or 2-3 uL injection; keep identical across runs
