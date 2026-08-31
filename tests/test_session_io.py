@@ -15,6 +15,7 @@ import pytest
 
 from app.pipeline import CockpitInputs, PeakRow, split_rows
 from app.session_io import (
+    Restore,
     inputs_from_session,
     peak_rows_from_session,
     session_filename,
@@ -152,3 +153,46 @@ def test_a_very_long_name_is_cut_to_a_filename_a_filesystem_will_take() -> None:
     filename = session_filename("x" * 500)
     assert filename.endswith(".json")
     assert len(filename) <= 90
+
+
+# --- values a file may hold that no widget can show -----------------------------------
+#
+# `load_session` refuses an impossible number; it has no opinion about a merely large
+# one. A 500-minute candidate tG is a real method, and it is past the end of a slider
+# that stops at 180 — written into the widget's state raw, Streamlit raises on the next
+# run and the page becomes a traceback rather than a screen.
+
+
+def test_a_value_inside_the_range_is_untouched_and_unreported() -> None:
+    restore = Restore()
+    assert restore.within("candidate tG", 25.0, 1.0, 180.0) == 25.0
+    assert restore.adjusted == []
+    assert restore.note is None
+
+
+def test_a_value_past_the_end_is_brought_to_the_limit() -> None:
+    restore = Restore()
+    assert restore.within("candidate tG", 500.0, 1.0, 180.0) == 180.0
+    assert restore.within("t0", 0.0, 0.001, 100.0) == 0.001
+
+
+def test_a_squeeze_is_reported_by_name_and_by_both_numbers() -> None:
+    """Silence is the failure mode: the user must be able to see which number moved."""
+    restore = Restore()
+    restore.within("candidate tG", 500.0, 1.0, 180.0)
+    note = restore.note
+
+    assert note is not None
+    assert "candidate tG 500 → 180" in note
+    # And that the file was not rewritten behind them.
+    assert "file itself is unchanged" in note
+
+
+def test_every_squeeze_is_named_not_just_the_first() -> None:
+    restore = Restore()
+    restore.within("candidate tG", 500.0, 1.0, 180.0)
+    restore.within("run 1 tG", 900.0, 0.1, 600.0)
+
+    assert len(restore.adjusted) == 2
+    note = restore.note
+    assert note is not None and "candidate tG" in note and "run 1 tG" in note

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from app.pipeline import CockpitInputs, PeakRow, run_cockpit
-from app.worksheet import is_empty, worksheet_steps
+from app.worksheet import needs_guidance, worksheet_steps
 from hplcsim.model import Gradient, Method, Run
 
 _SHARED = Gradient(phi0=0.05, phif=0.95, t_gradient=0.0, t_init=0.5)
@@ -30,26 +30,40 @@ def _steps(inputs: CockpitInputs) -> dict[int, bool]:
 
 
 # --- when the worksheet is on screen at all ------------------------------------------
+#
+# The retirement condition is the arrival of a *prediction*, not the first keystroke.
+# Retiring on the first row would leave steps 2, 3 and 4 unreachable — each ticks on
+# evidence that only exists once rows are entered — so the list would read ✅⬜⬜⬜
+# forever and never say which step a stuck screen is stuck on.
 
 
 def test_an_untouched_screen_is_the_empty_state() -> None:
-    assert is_empty(run_cockpit(EMPTY))
+    assert needs_guidance(run_cockpit(EMPTY))
 
 
 def test_a_table_of_nothing_but_the_editors_spares_is_still_empty() -> None:
-    """The worksheet must not vanish on the first keystroke in a blank spare row."""
     spares = replace(EMPTY, rows=(PeakRow(), PeakRow(), PeakRow()))
-    assert is_empty(run_cockpit(spares))
+    assert needs_guidance(run_cockpit(spares))
 
 
-def test_one_tracked_peak_hands_the_screen_to_the_cockpit() -> None:
-    assert not is_empty(run_cockpit(replace(EMPTY, rows=(TRACKED,))))
+def test_a_prediction_retires_the_guidance() -> None:
+    """The screen has filled: SPEC §7's "cockpit layout thereafter"."""
+    assert not needs_guidance(run_cockpit(replace(EMPTY, rows=(TRACKED,))))
 
 
-def test_a_half_typed_peak_also_hands_over_rather_than_hiding_the_table() -> None:
-    """Pulling the worksheet back over a row being typed would hide the row."""
+def test_a_half_typed_peak_leaves_the_guidance_up_because_nothing_is_predicted_yet() -> None:
     half = replace(EMPTY, rows=(PeakRow(name="P1", t_r_run1=9.855),))
-    assert not is_empty(run_cockpit(half))
+    assert needs_guidance(run_cockpit(half))
+
+
+def test_a_screen_that_is_stuck_keeps_the_guidance_that_names_the_stuck_step() -> None:
+    """The case the retirement condition exists for: rows typed, nothing predicted."""
+    same = replace(EMPTY, run2=Run(replace(_SHARED, t_gradient=15.0)), rows=(TRACKED,))
+    cockpit = run_cockpit(same)
+
+    assert needs_guidance(cockpit)
+    steps = {step.number: step.done for step in worksheet_steps(same, cockpit)}
+    assert steps[2] is False
 
 
 # --- which step is done --------------------------------------------------------------
@@ -66,6 +80,21 @@ def test_an_empty_screen_has_only_step_one_done() -> None:
 
 def test_one_fitted_peak_completes_every_step() -> None:
     assert _steps(replace(EMPTY, rows=(TRACKED,))) == {1: True, 2: True, 3: True, 4: True}
+
+
+def test_steps_two_and_three_can_be_ticked_while_the_guidance_is_still_on_screen() -> None:
+    """Otherwise the ticks are unreachable: a ✅ nobody can ever be shown is dead code.
+
+    A peak the engine refuses gets step 2 ticked (the rows are typed, the runs differ)
+    with step 3 still open — and, because nothing is predicted, the list is still up.
+    """
+    refused = replace(EMPTY, rows=(PeakRow(name="P1", t_r_run1=20.831, t_r_run2=9.855),))
+    cockpit = run_cockpit(refused)
+
+    assert needs_guidance(cockpit)
+    steps = {step.number: step.done for step in worksheet_steps(refused, cockpit)}
+    assert steps[2] is True
+    assert steps[3] is False
 
 
 def test_two_scouting_runs_at_one_gradient_time_hold_step_two_back() -> None:

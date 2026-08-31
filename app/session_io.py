@@ -23,21 +23,51 @@ fair place for it.
 from __future__ import annotations
 
 import re
-from dataclasses import fields
 
 from app.pipeline import CockpitInputs, PeakRow, split_rows
 from hplcsim.model import Peak
 from hplcsim.session import Session, UntrackedPeak
 
-# What a row holds beyond its name: the six optional measurements of SPEC §4. PeakRow,
-# Peak and UntrackedPeak all spell them the same way, which is what lets the three
-# translations below be field copies rather than seven hand-written arguments apiece —
-# and what makes adding a seventh measurement a change in one place.
-_MEASUREMENTS = tuple(field.name for field in fields(UntrackedPeak) if field.name != "name")
-
 _FILENAME_FALLBACK = "hplcsim-session"
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_STEM = 80
+
+
+class Restore:
+    """Restored values squeezed into the ranges the widgets can actually show.
+
+    The file and the widgets disagree about what is possible. ``load_session`` refuses
+    an impossible number — a negative t0, a flow of zero — but it has no opinion about
+    a candidate tG of 500 min, which is a perfectly good method and simply past the end
+    of a slider that stops at 180. Writing that straight into the widget's state does
+    not warn: Streamlit raises on the next run, and the whole page becomes a traceback.
+
+    So a restored value is squeezed into the widget's range and the squeeze is
+    *reported*, never silent — CLAUDE.md's warnings-over-blocks, applied to a file that
+    is valid but does not fit the screen. The caller paints :attr:`adjusted` beside the
+    uploader, so the one number that changed is named while the file is still to hand.
+    """
+
+    def __init__(self) -> None:
+        self.adjusted: list[str] = []
+
+    def within(self, label: str, value: float, low: float, high: float) -> float:
+        """``value``, or the nearer end of [low, high] with ``label`` recorded."""
+        squeezed = min(max(value, low), high)
+        if squeezed != value:
+            self.adjusted.append(f"{label} {value:g} → {squeezed:g}")
+        return squeezed
+
+    @property
+    def note(self) -> str | None:
+        """What to tell the user about the squeeze, or ``None`` when nothing moved."""
+        if not self.adjusted:
+            return None
+        return (
+            "**Some values in that file are outside what this screen can show**, and "
+            "have been brought to the nearest limit: " + "; ".join(self.adjusted) + ". "
+            "The file itself is unchanged — saving from here would write these values."
+        )
 
 
 def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Session:
@@ -92,12 +122,34 @@ def session_filename(session_name: str) -> str:
     return f"{stem or _FILENAME_FALLBACK}.json"
 
 
+# The six measurements are copied field by field rather than by `getattr` over a list of
+# names. The loop reads shorter, but it types as `Any`, and these two functions are
+# exactly where a field silently going to the wrong slot would cost a measurement —
+# spelled out, mypy checks every one of them (CLAUDE.md: strict on `app/`).
+
+
 def _as_untracked(row: PeakRow) -> UntrackedPeak:
-    return UntrackedPeak(name=row.name, **{name: getattr(row, name) for name in _MEASUREMENTS})
+    return UntrackedPeak(
+        name=row.name,
+        t_r_run1=row.t_r_run1,
+        t_r_run2=row.t_r_run2,
+        area_run1=row.area_run1,
+        area_run2=row.area_run2,
+        w_half_run1=row.w_half_run1,
+        w_half_run2=row.w_half_run2,
+    )
 
 
 def _as_row(peak: Peak | UntrackedPeak) -> PeakRow:
-    return PeakRow(name=peak.name, **{name: getattr(peak, name) for name in _MEASUREMENTS})
+    return PeakRow(
+        name=peak.name,
+        t_r_run1=peak.t_r_run1,
+        t_r_run2=peak.t_r_run2,
+        area_run1=peak.area_run1,
+        area_run2=peak.area_run2,
+        w_half_run1=peak.w_half_run1,
+        w_half_run2=peak.w_half_run2,
+    )
 
 
 def _whole(plate_count: float | None) -> int | None:

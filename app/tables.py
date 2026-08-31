@@ -42,6 +42,9 @@ _MEASUREMENT_FIELDS = {
 }
 PEAK_COLUMNS = (COMPOUND, *_MEASUREMENT_FIELDS)
 
+# Blank rows offered under a restored table, so there is somewhere to keep typing.
+_SPARE_ROWS = 3
+
 N_RATIO = "N run 1 / run 2"
 FIT_COLUMNS = (COMPOUND, "log10 k0", "S", "N", "N from", N_RATIO, "Note")
 FLAGS = "Flags"
@@ -91,24 +94,24 @@ def blank_peak_frame(rows: int = 6) -> pd.DataFrame:
     )
 
 
-def peak_frame_from_rows(rows: Sequence[PeakRow], spare: int = 3) -> pd.DataFrame:
+def peak_frame_from_rows(rows: Sequence[PeakRow]) -> pd.DataFrame:
     """A restored peak table as the editor's frame — the inverse of the read below.
 
     Keeps :func:`blank_peak_frame`'s dtypes exactly, so a loaded session gets the same
     number fields as a fresh one; ``pd.NA`` rather than ``None`` is what makes the
-    Float64 columns stay Float64 when a measurement is missing. ``spare`` empty rows
-    ride along underneath, because a session is reopened to be added to and the
-    editor's dynamic row only appears once there is somewhere to put the cursor.
+    Float64 columns stay Float64 when a measurement is missing. A few empty rows ride
+    along underneath, because a session is reopened to be added to and the editor's
+    dynamic row only appears once there is somewhere to put the cursor.
     """
     if not rows:
         return blank_peak_frame()
-    names = [row.name for row in rows] + [""] * spare
+    names = [row.name for row in rows] + [""] * _SPARE_ROWS
     return pd.DataFrame(
         {
             COMPOUND: pd.Series(names, dtype="string"),
             **{
                 column: pd.Series(
-                    [_na(getattr(row, field)) for row in rows] + [pd.NA] * spare,
+                    [_na(getattr(row, field)) for row in rows] + [pd.NA] * _SPARE_ROWS,
                     dtype="Float64",
                 )
                 for column, field in _MEASUREMENT_FIELDS.items()

@@ -36,6 +36,10 @@ ENTRY_POINT = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 # filled — so every test here starts by filling it, exactly as a user must.
 _DWELL_ML = 0.375
 
+# The candidate slider's upper end. Spelled out rather than imported: importing the
+# entry point runs `main()` at module scope, which is the app, not a constant.
+_MAX_CANDIDATE_TG = 180.0
+
 # A phrase from the dwell gate's own wording, to recognise that screen by.
 _DWELL_REQUIRED_MARK = "Enter the dwell before anything can be predicted"
 
@@ -403,7 +407,7 @@ def test_an_empty_screen_paints_the_numbered_worksheet() -> None:
         assert step in worksheet
 
 
-def test_the_worksheet_gives_way_once_a_session_with_peaks_is_loaded() -> None:
+def test_the_worksheet_gives_way_once_a_session_that_predicts_is_loaded() -> None:
     """SPEC §7's "cockpit layout thereafter", with the peaks arriving via the file —
     which is the only way this suite can fill the peak table at all."""
     app = _running_app()
@@ -411,6 +415,23 @@ def test_the_worksheet_gives_way_once_a_session_with_peaks_is_loaded() -> None:
     app.run()  # type: ignore[attr-defined]
 
     assert _worksheet_html(app) == []
+
+
+def test_a_stuck_screen_keeps_the_worksheet_and_ticks_the_steps_that_are_done() -> None:
+    """The ✅ on steps 2 and 3 is only worth computing if it can reach a screen.
+
+    Two scouting runs at one tG: the peaks are loaded, nothing can be fitted, and the
+    guidance stays up with step 2 open and naming the reason.
+    """
+    stuck = replace(RESTORED, runs=(RESTORED.runs[0], RESTORED.runs[0]))
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(stuck).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    (worksheet,) = _worksheet_html(app)
+    assert "different gradient times" in worksheet
+    assert "✅" in worksheet and "⬜" in worksheet
 
 
 def test_a_loaded_half_paired_row_reaches_the_screen_as_the_untracked_count() -> None:
@@ -422,3 +443,48 @@ def test_a_loaded_half_paired_row_reaches_the_screen_as_the_untracked_count() ->
     (notice,) = [text for text in _messages(app)["info"] if "untracked" in text]
     assert "1 untracked — not fitted" in notice
     assert "Impurity B" in notice
+
+
+# --- a file that is valid but does not fit the screen ---------------------------------
+
+
+def test_a_candidate_beyond_the_sliders_end_is_clamped_rather_than_crashing_the_page() -> None:
+    """Found by `/code-review`. A 500-minute tG is a real method and `load_session` has
+    no reason to refuse it — but the slider stops at 180, and Streamlit raises on a
+    state value above its max, replacing the whole page with a traceback."""
+    wild = replace(RESTORED, candidate=replace(RESTORED.candidate, t_gradient=500.0))
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(wild).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    assert _candidate_tg(app).value == pytest.approx(_MAX_CANDIDATE_TG)
+    (note,) = [text for text in _messages(app)["warning"] if "outside what this screen" in text]
+    assert "candidate tG 500 → 180" in note
+
+
+def test_an_out_of_range_scouting_time_is_clamped_and_named_too() -> None:
+    wild = replace(
+        RESTORED,
+        runs=(
+            replace(
+                RESTORED.runs[0], gradient=replace(RESTORED.runs[0].gradient, t_gradient=900.0)
+            ),
+            RESTORED.runs[1],
+        ),
+    )
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(wild).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    assert _number(app, "Run 1 tG").value == pytest.approx(600.0)
+    assert any("run 1 tG 900 → 600" in text for text in _messages(app)["warning"])
+
+
+def test_a_file_that_fits_the_screen_says_nothing_about_limits() -> None:
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(RESTORED).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+
+    assert not any("outside what this screen" in text for text in _messages(app)["warning"])

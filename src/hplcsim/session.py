@@ -83,10 +83,9 @@ class Session:
     ``candidate`` — the what-if gradient currently on screen — varies tG and the initial
     hold within the same φ0→φf range. The file stores those shared settings once.
 
-    ``peaks`` and ``untracked`` are the peak table split in two, the same split
-    :class:`app.pipeline.Entry` makes on screen: the pairs the engine may fit, and the
-    rows still being typed. ``untracked`` defaults to empty, so every session built
-    before ticket #21 still constructs.
+    ``peaks`` and ``untracked`` are the peak table split in two: the pairs the engine
+    may fit, and the rows still being typed. ``untracked`` defaults to empty, so every
+    session built before ticket #21 still constructs.
     """
 
     method: Method

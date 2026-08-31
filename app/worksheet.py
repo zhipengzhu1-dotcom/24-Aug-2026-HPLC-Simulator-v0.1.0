@@ -9,13 +9,23 @@ bench worksheet's four numbered steps, which are the actual order of the job:
 3. the fit those peaks produce, 4. the candidate gradient predicted from the fit.
 
 Each step reports whether it is done, so the list is a place in the work rather than a
-paragraph of instructions — and steps 3 and 4 stay visibly out of reach until the peaks
-that feed them exist, which is the point being made.
+paragraph of instructions.
+
+**It retires when the prediction arrives, not when the first row is typed.** The
+cockpit's empty state is not "nobody has typed anything" — it is "there is nothing to
+show yet", and the results surfaces stay empty right up until a peak is fitted and
+predicted. Retiring on the first keystroke would have made steps 2, 3 and 4 unreachable:
+each ticks on evidence that only exists once rows are entered, so the list would have
+read ✅⬜⬜⬜ forever and said nothing about a screen that is stuck. Retiring on the
+prediction is what makes "a screen that is stuck says which step is stuck" true — two
+scouting runs at one tG, or a pair the engine refuses, both leave the list on screen
+naming the step that has not happened.
 
 Every one of those judgements is computed here and only *placed* by ``streamlit_app``,
 following what ticket #20 established for :mod:`app.diagnostics`. The wording is here
-too: a step's sentence and the condition that ticks it are the same decision, and
-splitting them across two files is how they come to disagree.
+too — including the block's own title and lead — because a step's sentence and the
+condition that ticks it are the same decision, and splitting them across two files is
+how they come to disagree.
 """
 
 from __future__ import annotations
@@ -23,6 +33,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.pipeline import Cockpit, CockpitInputs
+
+TITLE = "Start here"
+LEAD = "Four steps, in the order the job runs. The screen fills in as you go."
 
 
 @dataclass(frozen=True)
@@ -40,16 +53,15 @@ class Step:
         return "✅" if self.done else "⬜"
 
 
-def is_empty(cockpit: Cockpit) -> bool:
-    """Nothing has been typed into the peak table yet — the guided state, SPEC §7.
+def needs_guidance(cockpit: Cockpit) -> bool:
+    """There is still nothing to show — SPEC §7's empty state, and so the worksheet.
 
-    Blank rows do not count: :func:`~app.pipeline.split_rows` already drops the
-    editor's spares, so the screen goes to the cockpit on the first real row and not
-    on the first keystroke in a spare one. Untracked rows *do* count — a half-typed
-    peak is work in progress, and pulling the worksheet back over it would hide the
-    table it is being typed into.
+    The condition is the absence of a *prediction*, which is exactly what the resolution
+    map, the fit table, the resolution table and the chromatogram are all waiting for.
+    While it holds, every results surface on the cockpit is empty and the guidance has
+    something to say; the moment it lifts, the screen has filled and the guidance goes.
     """
-    return not cockpit.entry.tracked and not cockpit.entry.untracked
+    return cockpit.resolution is None
 
 
 def worksheet_steps(inputs: CockpitInputs, cockpit: Cockpit) -> tuple[Step, ...]:
