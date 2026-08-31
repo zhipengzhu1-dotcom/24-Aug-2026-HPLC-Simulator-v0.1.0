@@ -338,15 +338,91 @@ def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
 
 def _candidate_controls(constants: MethodEntry) -> Gradient:
     st.markdown("### Candidate")
-    t_gradient = st.slider("tG (min)", 1.0, _MAX_CANDIDATE_TG, _TG_CANDIDATE, step=0.5)
-    hold = st.slider(
+    t_gradient = _slider_with_box(
+        "tG (min)",
+        1.0,
+        _MAX_CANDIDATE_TG,
+        _TG_CANDIDATE,
+        slider_step=0.5,
+        box_step=0.1,
+        box_label="Candidate tG (min)",
+        key="candidate_tg",
+    )
+    hold = _slider_with_box(
         "Initial hold (min)",
         0.0,
         _MAX_CANDIDATE_HOLD,
         min(constants.hold, _MAX_CANDIDATE_HOLD),
-        step=0.05,
+        slider_step=0.05,
+        box_step=0.01,
+        box_label="Candidate initial hold (min)",
+        key="candidate_hold",
     )
     return constants.gradient(t_gradient, hold=hold)
+
+
+def _slider_with_box(
+    label: str,
+    min_value: float,
+    max_value: float,
+    default: float,
+    *,
+    slider_step: float,
+    box_step: float,
+    box_label: str,
+    key: str,
+) -> float:
+    """One candidate control as two widgets: a slider to sweep, a box to land exactly.
+
+    The slider is how the shape of the separation is explored — drag it and watch the
+    critical pair move. It cannot express "24.35 min", though, and a method that is about
+    to be written down is a specific number, not a nearby one. So the same value carries a
+    box underneath, stepping ten times finer than the slider and accepting anything typed
+    between the same two bounds.
+
+    They are one value in two widgets, so each writes the other's state back on change.
+    The slider tolerates a value off its own step grid — 24.35 on a 0.5 slider sits where
+    it belongs and drags away from there — which is what lets the box stay the precise one
+    without a second, disagreeing number appearing on screen.
+    """
+    slider_key, box_key, seed_key = f"{key}_slider", f"{key}_box", f"{key}_seed"
+
+    # Re-seed when the caller's default moves — the method's initial hold feeds the
+    # candidate's. Unkeyed widgets got this for free (a changed default is a changed
+    # widget identity); keyed ones hold their value, so the reseed has to be explicit.
+    if st.session_state.get(seed_key) != default:
+        st.session_state[seed_key] = default
+        st.session_state[slider_key] = default
+        st.session_state[box_key] = default
+
+    def _from_slider() -> None:
+        st.session_state[box_key] = st.session_state[slider_key]
+
+    def _from_box() -> None:
+        st.session_state[slider_key] = st.session_state[box_key]
+
+    st.slider(
+        label,
+        min_value,
+        max_value,
+        step=slider_step,
+        key=slider_key,
+        on_change=_from_slider,
+    )
+    # The box is labelled for the accessibility tree and for tests that address a
+    # widget by the name a user reads; on screen the slider's label serves them both, so
+    # `box_label` distinguishes this from the method-page hold input of the same name.
+    st.number_input(
+        box_label,
+        min_value,
+        max_value,
+        step=box_step,
+        format="%.2f",
+        key=box_key,
+        on_change=_from_box,
+        label_visibility="collapsed",
+    )
+    return float(st.session_state[slider_key])
 
 
 def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:

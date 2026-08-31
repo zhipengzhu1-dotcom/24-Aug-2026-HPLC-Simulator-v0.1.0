@@ -121,3 +121,45 @@ def test_a_narrow_scouting_pair_paints_the_spacing_notice_before_any_peak_is_typ
 
     (notice,) = [text for text in _messages(app)["warning"] if "Scouting runs" in text]
     assert "β = 1.33" in notice
+
+
+# --- the candidate's two-widget controls ----------------------------------------------
+#
+# Each candidate control is a slider and a number box over one value, so the pair can
+# disagree in a way no logic-layer test would see: the box writes the slider's state and
+# the slider writes the box's, and either callback going missing leaves a screen showing
+# two different tG values with the prediction quietly following the wrong one.
+
+
+def _candidate_tg(app: object) -> object:
+    return _number(app, "Candidate tG (min)")
+
+
+def test_the_candidate_box_takes_a_value_finer_than_the_slider_can_reach() -> None:
+    """The point of the box: 24.35 min on a slider that steps in halves."""
+    app = _running_app()
+    _candidate_tg(app).set_value(24.35).run()
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert app.slider[0].value == 24.35  # type: ignore[attr-defined]
+    assert _candidate_tg(app).value == 24.35
+    status = [m.value for m in app.markdown if "hs-status-cell" in m.value]  # type: ignore[attr-defined]
+    assert any("tG 24.35 min" in bar for bar in status), "the typed tG never reached the prediction"
+
+
+def test_dragging_the_slider_writes_the_box_back() -> None:
+    app = _running_app()
+    app.slider[0].set_value(60.0).run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert _candidate_tg(app).value == 60.0
+
+
+def test_the_method_hold_still_reseeds_the_candidate_hold() -> None:
+    """Keying the widgets must not cost the seeding the unkeyed ones had for free."""
+    app = _running_app()
+    _number(app, "Initial hold (min)").set_value(2.0).run()
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert app.slider[1].value == 2.0  # type: ignore[attr-defined]
+    assert _number(app, "Candidate initial hold (min)").value == 2.0
