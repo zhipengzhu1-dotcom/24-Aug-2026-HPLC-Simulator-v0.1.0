@@ -3,7 +3,7 @@
 **Date:** 2026-08-30
 **Repo:** `/Users/maracchi/Desktop/Claude/24-Aug-2026 HPLC Simulator v0.1.0`
 **Branch:** `main` @ `b2513a2`, clean tree, pushed to origin
-**Next focus:** **#21**, then **#22** — and a decision on #24 that the last section arms
+**Next focus:** **#21**, then **#22**; #24 is live and the driver is running it
 
 ---
 
@@ -74,64 +74,23 @@ lock and looked exactly like a hung test. Kill stragglers before believing a han
 -p no:cacheprovider`, and clear `__pycache__`, before believing a result that contradicts
 the source.
 
-## The open decision, now with numbers: #24 and the dwell
+## Next after #21 and #22: #24 is live
 
-The driver asked whether **#24** (geometry t0 estimator) is impactful enough to keep in
-v0.1. Measured this session by refitting the lab compounds from runs 1–2 at a range of
-t0 and predicting the held-out runs 3 and 4 — reproducing
-`docs/research/dead-time-from-geometry.md` §6.2 independently, to the third decimal:
+The driver is running **#24** (estimate t0 from column geometry, and check a measured
+one). Its reading is already done — `docs/research/dead-time-from-geometry.md`, 13
+primary references — and the ticket says plainly: do not re-derive it. Note that #24 is
+four things, not one: the estimator, the two porosity constants, the reverse check on a
+*measured* t0, and capturing the marker. The ticket's own framing is that the reverse
+check is worth more than the estimator.
 
-| t0 | Δt0 | run 3 avg / worst | run 4 avg / worst | fitted S (U1) |
-|---|---|---|---|---|
-| 0.360 | −40% | 0.558% / 0.784% | 0.508% / 0.735% | 4.592 |
-| 0.4243 | −29.3% | 0.504% / 0.717% | 0.441% / 0.651% | 4.714 |
-| **0.600** | **0** | **0.355% / 0.534%** | **0.257% / 0.419%** | **5.082** |
-| 0.840 | +40% | 0.179% / 0.281% | 0.060% / 0.095% | 5.681 |
+`docs/research/porosity-for-t0-geometry.md` is a **skeleton save from a killed `/research`
+run** for ticket #33 — section headings with "*(section pending)*" under each. It is
+untracked. Whoever resumes that research should re-save early and after each section;
+`/research` has been killed by machine sleep twice on this project.
 
-**Verdict on the estimator: not impactful for predictions.** SPEC §10's trust bar is 2%
-average / 5% worst. A t0 wrong by 40% still lands ~3.6× inside the worst-case bar. What a
-wrong t0 *does* corrupt is the science readout — S moves ±12% across that range — so the
-case for #24 rests on the reported parameters and on the **reverse check** (its part 3),
-not on the chromatogram.
-
-**But the same experiment turned up something bigger.** Notice that predictions get
-*better* as t0 rises. Holding the measured t0 = 0.6 and varying the **dwell** instead:
-
-| t_D | V_D | run 3 signed | run 4 signed | avg abs |
-|---|---|---|---|---|
-| 0.9375 (**spec sheet, shipped**) | 0.375 mL | **+0.355%** | **−0.257%** | 0.306% |
-| 1.15 | 0.460 mL | +0.173% | −0.033% | 0.132% |
-| **1.25** | **0.500 mL** | **+0.088%** | **+0.074%** | **0.110%** |
-| 1.35 | 0.540 mL | +0.002% | +0.181% | 0.141% |
-
-**SPEC §10 attributes the flipping signed bias (+0.35% / −0.26%) to "mild LSS curvature,
-chromatographically negligible". The data fit an underestimated dwell at least as well.**
-One additive constant nulls the bias on *both* held-out runs simultaneously, and they
-have opposite signs — curvature is not removed by a single additive shift. Moving V_D
-from the spec-sheet 0.375 mL to ~0.50 mL improves held-out accuracy **2.8×**, and
-`validation/method.csv` records the shipped figure as *"from instrument spec sheet, NOT
-measured"*. A 33% understatement is unremarkable for an as-plumbed dwell volume.
-
-**Caveats, stated so nobody over-reads this.** One parameter fitted to two held-out runs
-and three compounds is not a measurement. t0 and dwell are partly degenerate — both enter
-additively — and the only reason to attribute the offset to the dwell is that t0 was
-measured with a marker and the dwell was not. The real answer costs one injection:
-`validation/PROTOCOL.md` §1 already gives the procedure.
-
-**Recommendation, for the driver to accept or reject:**
-
-1. **File and prioritise the dwell ticket** above #24. It is one bench measurement, it is
-   the largest uncorrected error in the validation dataset, and it is not absorbed by the
-   two-run fit.
-2. **Defer #24's estimator; keep its reverse check in view.** The reverse check would
-   have caught the driver's own anomaly — ε_T = 0.6929 on a solid-core column, where a
-   marker time inflated by extra-column volume is one of the tiers it warns on.
-3. **Either way, SPEC §4 needs a decision**, because it promises a geometry estimator
-   v0.1 does not have. Softening it is a one-line diff; building #24 is a ticket.
-4. **SPEC §10's "mild LSS curvature" sentence should not stand unqualified** once the
-   dwell is measured. It is a claim about cause, and the cause is now in doubt.
-
-None of 1–4 was actioned. They are the driver's calls.
+**Closed as not valuable during this session, by the driver:** #37 (two deferred
+fit-confidence diagnostics) and #38 (a record of the fit hang). #38 was paperwork only —
+the fix is in `3faa5ed` and the regression test in `tests/test_fit.py` stands.
 
 ## Conventions worth copying
 
