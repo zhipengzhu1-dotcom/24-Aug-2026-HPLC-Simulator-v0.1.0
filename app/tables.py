@@ -11,10 +11,12 @@ the rule holds, but this is not the only file that crosses the boundary.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pandas as pd
 
+from app.diagnostics import Diagnostic
 from app.pipeline import Cockpit, PeakOutcome, PeakRow
 from hplcsim.model import log10_k0_from_ln_k0, s_base10_from_s_e
 from hplcsim.width import PlateCountSource
@@ -42,7 +44,24 @@ PEAK_COLUMNS = (COMPOUND, *_MEASUREMENT_FIELDS)
 
 N_RATIO = "N run 1 / run 2"
 FIT_COLUMNS = (COMPOUND, "log10 k0", "S", "N", "N from", N_RATIO, "Note")
-PREDICTION_COLUMNS = (COMPOUND, "tR (min)", "W½ (min)", "k at elution")
+FLAGS = "Flags"
+PREDICTION_COLUMNS = (COMPOUND, "tR (min)", "W½ (min)", "k at elution", FLAGS)
+
+# SPEC §6's per-peak badges (diagnostics 2 and 4) as a table cell. The full sentence is
+# rendered beside the selected peak; a table needs a word, and one the eye can scan down
+# a column. Keyed by ``Diagnostic.code`` so re-wording a diagnostic cannot silently
+# empty this column.
+_BADGE_LABEL = {
+    "early_eluter": "early eluter",
+    "prediction_crossing": "crossing",
+}
+
+
+def badge_labels(badges: Sequence[Diagnostic]) -> str:
+    """The short forms of one peak's badges, for the table's Flags cell."""
+    return "; ".join(_BADGE_LABEL.get(badge.code, badge.code) for badge in badges)
+
+
 RESOLUTION_COLUMNS = ("Pair", "ΔtR (min)", "Rs")
 
 # What SPEC §6 diagnostic 5 and the fitted-N badge say when they fire, in the words
@@ -130,10 +149,19 @@ def _fit_note(outcome: PeakOutcome) -> str:
     return "; ".join(notes)
 
 
-def prediction_frame(cockpit: Cockpit) -> pd.DataFrame:
-    """What the candidate gradient is predicted to give, in elution order."""
+def prediction_frame(
+    cockpit: Cockpit, badges: Mapping[str, tuple[Diagnostic, ...]] | None = None
+) -> pd.DataFrame:
+    """What the candidate gradient is predicted to give, in elution order.
+
+    ``badges`` is :attr:`~app.diagnostics.Diagnostics.badges` — SPEC §6's per-peak
+    diagnostics 2 and 4, beside the rows they are about. Left out, the column is
+    present and empty rather than absent, so a caller that has not run the
+    diagnostics still gets the same frame back.
+    """
     if cockpit.resolution is None:
         return pd.DataFrame(columns=PREDICTION_COLUMNS)
+    found = badges or {}
     return pd.DataFrame(
         [
             {
@@ -141,9 +169,11 @@ def prediction_frame(cockpit: Cockpit) -> pd.DataFrame:
                 "tR (min)": peak.retention.t_r,
                 "W½ (min)": peak.width.w_half,
                 "k at elution": peak.retention.k_e,
+                FLAGS: badge_labels(found.get(peak.name, ())),
             }
             for peak in cockpit.resolution.peaks
-        ]
+        ],
+        columns=PREDICTION_COLUMNS,
     )
 
 

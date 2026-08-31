@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from app.chromatogram import Chromatogram, chromatogram
+from app.diagnostics import diagnose
 from app.pipeline import (
     Cockpit,
     CockpitInputs,
@@ -29,6 +30,7 @@ from app.pipeline import (
 from app.tables import (
     COMPOUND,
     FIT_COLUMNS,
+    FLAGS,
     N_RATIO,
     PEAK_COLUMNS,
     PREDICTION_COLUMNS,
@@ -608,3 +610,35 @@ def test_names_that_are_already_distinct_are_left_exactly_as_typed() -> None:
 
     assert [peak.name for peak in entry.tracked] == ["Caffeine", "Theophylline"]
     assert entry.renamed == ()
+
+
+def test_the_prediction_table_carries_each_peaks_badges_beside_it() -> None:
+    """SPEC §6's per-peak badges (diagnostics 2 and 4), as a column the eye can scan.
+
+    The sentence belongs to the selected-peak panel; the table needs one scannable word
+    per row, and an empty string where a peak has nothing wrong with it.
+    """
+    inputs = _lab_inputs()
+    cockpit = run_cockpit(inputs)
+    frame = prediction_frame(cockpit, diagnose(inputs, cockpit).badges)
+
+    assert list(frame.columns) == list(PREDICTION_COLUMNS)
+    assert list(frame[FLAGS]) == ["", "", ""]
+
+
+def test_a_badged_peak_is_labelled_in_the_flags_column() -> None:
+    early = PeakRow(name="Early", t_r_run1=2.458, t_r_run2=2.483)
+    inputs = _lab_inputs(rows=(*(_row(peak) for peak in LAB_MEASURED_PEAKS), early))
+    cockpit = run_cockpit(inputs)
+    frame = prediction_frame(cockpit, diagnose(inputs, cockpit).badges)
+
+    flags = dict(zip(frame[COMPOUND], frame[FLAGS], strict=True))
+    assert flags["Early"] == "early eluter"
+    assert flags["Unknown-1"] == ""
+
+
+def test_the_prediction_table_keeps_its_flags_column_without_any_diagnostics() -> None:
+    """A caller that has not run the diagnostics gets the same frame, not a narrower one."""
+    frame = prediction_frame(run_cockpit(_lab_inputs()))
+    assert list(frame.columns) == list(PREDICTION_COLUMNS)
+    assert list(frame[FLAGS]) == ["", "", ""]

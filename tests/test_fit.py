@@ -374,3 +374,16 @@ def test_a_peak_without_widths_is_fitted_for_retention_only() -> None:
 
     assert fit.plate_count is None
     assert log10_k0_from_ln_k0(fit.params.ln_k0) == pytest.approx(2.76, abs=0.01)
+
+
+def test_a_steeper_run_that_elutes_later_is_refused_rather_than_searched_forever() -> None:
+    """The upper end of §3.3's bracket — the case that used to hang the whole app.
+
+    g'(0) has the sign of (t'_steep − t'_shallow). When the steeper gradient elutes the
+    band later, g never dips below zero, so the root-find's walk down for a lower bound
+    shrinks to 0.0 and stays there. Physically the data are impossible: a steeper
+    gradient elutes a compound earlier, never later. Found while wiring ticket #20's
+    entry checks, where a peak table with its two tR columns transposed reaches it.
+    """
+    with pytest.raises(ValueError, match="later than the shallower run"):
+        fit_peak(LAB_MEASURED_PEAKS[0], LAB_METHOD, LAB_RUN2, LAB_RUN1)
