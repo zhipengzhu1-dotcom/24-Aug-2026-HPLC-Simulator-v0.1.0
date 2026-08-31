@@ -39,6 +39,7 @@ from app.tables import (
     TR_RUN2,
     blank_peak_frame,
     fit_frame,
+    peak_frame_from_rows,
     peak_rows_from_frame,
     prediction_frame,
     resolution_frame,
@@ -459,6 +460,37 @@ def test_an_empty_cell_is_none_not_a_nan_that_reaches_the_engine() -> None:
 def test_the_blank_frame_offers_every_column_the_input_contract_names() -> None:
     """SPEC §4's optional per-peak entries are columns, not a second screen."""
     assert tuple(blank_peak_frame().columns) == PEAK_COLUMNS
+
+
+def test_a_restored_table_goes_back_into_the_editor_as_the_rows_it_came_from() -> None:
+    """Ticket #21's load path: the frame the editor is re-seeded with must read back."""
+    rows = [row for row in _lab_inputs().rows if not row.is_blank]
+    frame = peak_frame_from_rows(rows)
+
+    assert tuple(frame.columns) == PEAK_COLUMNS
+    assert [row for row in peak_rows_from_frame(frame) if not row.is_blank] == rows
+
+
+def test_a_restored_table_keeps_the_dtypes_a_fresh_one_has() -> None:
+    """Otherwise the editor offers text fields for the numbers of a loaded session."""
+    frame = peak_frame_from_rows([PeakRow(name="A", t_r_run1=9.855, t_r_run2=20.831)])
+    assert list(frame.dtypes) == list(blank_peak_frame().dtypes)
+
+
+def test_a_half_paired_row_comes_back_with_its_gap_still_empty() -> None:
+    """The missing tR must return as None, not as a NaN the engine would try to fit."""
+    frame = peak_frame_from_rows([PeakRow(name="P1", t_r_run1=9.855)])
+    restored = peak_rows_from_frame(frame)[0]
+    assert restored == PeakRow(name="P1", t_r_run1=9.855)
+
+
+def test_a_restored_table_carries_spare_rows_to_go_on_typing_into() -> None:
+    frame = peak_frame_from_rows([PeakRow(name="A", t_r_run1=9.855, t_r_run2=20.831)])
+    assert sum(row.is_blank for row in peak_rows_from_frame(frame)) > 0
+
+
+def test_restoring_an_empty_table_is_the_blank_table() -> None:
+    assert peak_frame_from_rows([]).equals(blank_peak_frame())
 
 
 def test_the_fit_table_quotes_the_base10_parameters_a_chromatographer_reads() -> None:

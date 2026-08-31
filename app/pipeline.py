@@ -11,8 +11,9 @@ rows missing a tR "stay visible as untracked — not fitted ... with a visible c
 and "the engine receives only confirmed, complete pairs". :class:`PeakRow` is the
 first line and :class:`~hplcsim.model.Peak` stays the second: a row becomes a ``Peak``
 only when both retention times are there. That was #19's call to make (the ticket
-comment carried it forward from #18); ticket #21 extends the session schema to store
-the incomplete rows.
+comment carried it forward from #18). Ticket #21 took the same split into the session
+file, where :class:`~hplcsim.session.UntrackedPeak` carries the incomplete rows and
+:mod:`app.session_io` translates between the two shapes.
 """
 
 from __future__ import annotations
@@ -161,12 +162,12 @@ class PeakOutcome:
 class CockpitInputs:
     """Everything the widgets hold: the method, the two scouting runs, the candidate.
 
-    Close to :class:`hplcsim.session.Session` but not identical, and ticket #21 should
-    expect the differences rather than the resemblance: the runs are two fields here
-    against Session's ``runs`` pair, ``PeakRow`` stands in for ``Peak`` so half-paired
-    rows have somewhere to live, ``plate_count`` is a float here and an int there, and
-    Session's ``session_name`` has no counterpart because nothing on this screen names
-    a session yet.
+    Close to :class:`hplcsim.session.Session` but not identical: the runs are two
+    fields here against Session's ``runs`` pair, ``PeakRow`` stands in for ``Peak`` so
+    half-paired rows have somewhere to live, ``plate_count`` is a float here and an int
+    there, and Session's ``session_name`` has no counterpart — the name is a property of
+    the file, not of the condition being predicted. :mod:`app.session_io` is where the
+    two are translated into each other, and every one of those differences lives there.
     """
 
     method: Method

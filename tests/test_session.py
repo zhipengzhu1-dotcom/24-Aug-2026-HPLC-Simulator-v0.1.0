@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -19,6 +20,7 @@ from hplcsim.session import (
     SCHEMA_VERSION,
     Session,
     SessionFileError,
+    UntrackedPeak,
     load_session,
     save_session,
 )
@@ -66,6 +68,20 @@ MINIMAL_SESSION = Session(
     candidate=Gradient(phi0=0.05, phif=0.95, t_gradient=25.0),
 )
 
+# Mid-entry: four peaks paired, one still half-tracked. This is the shape the file
+# could not carry before ticket #21, and the moment a chromatographer most often saves.
+HALF_TRACKED_SESSION = Session(
+    method=MINIMAL_SESSION.method,
+    runs=MINIMAL_SESSION.runs,
+    peaks=FULL_SESSION.peaks,
+    untracked=(
+        UntrackedPeak(name="P3", t_r_run1=13.204, area_run1=8801.0),
+        UntrackedPeak(name="P4", t_r_run2=31.006),
+        UntrackedPeak(name="P5"),
+    ),
+    candidate=MINIMAL_SESSION.candidate,
+)
+
 
 def _file_of(session: Session) -> dict[str, Any]:
     """The saved session as parsed JSON, for tests that inspect the file itself."""
@@ -83,7 +99,7 @@ def _mutated(session: Session, mutate: Callable[[dict[str, Any]], object]) -> st
 # --- round trip -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("session", [FULL_SESSION, MINIMAL_SESSION])
+@pytest.mark.parametrize("session", [FULL_SESSION, MINIMAL_SESSION, HALF_TRACKED_SESSION])
 def test_round_trip_is_equality(session: Session) -> None:
     assert load_session(save_session(session)) == session
 
@@ -154,6 +170,77 @@ def test_unset_optional_fields_are_omitted_not_null() -> None:
     assert "plate_count" not in parsed["method"]
     assert "area_run1" not in parsed["peaks"][0]
     assert "name" not in parsed["peaks"][0]
+
+
+# --- half-paired rows (SPEC §5, ticket #21) -----------------------------------------
+#
+# Before this the file had nowhere to put a row missing one tR, so a chromatographer who
+# had paired four peaks of five, saved, and reloaded got four rows back and no word about
+# the fifth. These pin the shape that ended that: a second top-level table, absent when
+# there is nothing in it, holding rows that are the same shape as a peak minus the
+# guarantee of a pair.
+
+
+def test_a_half_paired_row_survives_the_round_trip() -> None:
+    """AC-1's unmet corner from #18: saving mid-entry must lose nothing."""
+    restored = load_session(save_session(HALF_TRACKED_SESSION))
+    assert restored.untracked == HALF_TRACKED_SESSION.untracked
+    assert restored == HALF_TRACKED_SESSION
+
+
+def test_an_untracked_row_keeps_the_measurements_it_does_have() -> None:
+    row = _file_of(HALF_TRACKED_SESSION)["untracked_peaks"][0]
+    assert row["name"] == "P3"
+    assert row["tr_run1_min"] == pytest.approx(13.204)
+    assert row["area_run1"] == pytest.approx(8801.0)
+    # The missing half is absent, not null — the same rule every other unset field follows.
+    assert "tr_run2_min" not in row
+
+
+def test_a_fully_paired_session_writes_no_untracked_table() -> None:
+    """A finished session's file looks exactly as it did before the key existed."""
+    assert "untracked_peaks" not in _file_of(FULL_SESSION)
+
+
+def test_a_file_without_the_untracked_key_loads_as_no_untracked_rows() -> None:
+    """Every session file saved before ticket #21 still opens."""
+    text = _mutated(HALF_TRACKED_SESSION, lambda f: f.pop("untracked_peaks"))
+    assert load_session(text).untracked == ()
+
+
+def test_an_untracked_row_with_both_retention_times_is_refused_on_load() -> None:
+    """It is a tracked peak filed in the wrong list, and the count would then lie."""
+    text = _mutated(
+        HALF_TRACKED_SESSION,
+        lambda f: f["untracked_peaks"][0].__setitem__("tr_run2_min", 28.4),
+    )
+    with pytest.raises(SessionFileError, match=r"untracked_peaks\[0\].*belongs in peaks"):
+        load_session(text)
+
+
+def test_an_untracked_row_with_both_retention_times_is_refused_on_save_too() -> None:
+    """Saving must not write a file this app would then refuse to open."""
+    both = replace(
+        HALF_TRACKED_SESSION,
+        untracked=(UntrackedPeak(name="P3", t_r_run1=13.204, t_r_run2=28.4),),
+    )
+    with pytest.raises(SessionFileError, match="belongs in peaks"):
+        save_session(both)
+
+
+def test_a_negative_measurement_on_an_untracked_row_names_the_row() -> None:
+    text = _mutated(
+        HALF_TRACKED_SESSION,
+        lambda f: f["untracked_peaks"][0].__setitem__("tr_run1_min", -1.0),
+    )
+    with pytest.raises(SessionFileError, match=r"untracked_peaks\[0\]\.tr_run1_min"):
+        load_session(text)
+
+
+def test_an_untracked_table_that_is_not_a_list_is_rejected() -> None:
+    text = _mutated(HALF_TRACKED_SESSION, lambda f: f.__setitem__("untracked_peaks", 3))
+    with pytest.raises(SessionFileError, match="untracked_peaks must be a JSON list"):
+        load_session(text)
 
 
 # --- schema rejection --------------------------------------------------------------

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.panels import Row, panel, resolution_colour, status_bar
+from app.panels import Row, panel, resolution_colour, status_bar, worksheet
 
 
 def test_every_row_reaches_the_panel() -> None:
@@ -121,3 +121,60 @@ def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
     assert "position: sticky" in status_rule
     assert "position: fixed" not in status_rule
     assert "left: 0" not in status_rule
+
+
+# --- the guided empty state and the sticky chromatogram (SPEC §7, ticket #21) ---------
+
+
+def test_every_step_reaches_the_worksheet() -> None:
+    from app.worksheet import Step
+
+    steps = (
+        Step(number=1, title="Method", detail="the sidebar", done=True),
+        Step(number=2, title="Peaks", detail="the table", done=False),
+    )
+    html = worksheet("Start here", "Four steps.", steps)
+
+    for fragment in ("1. Method", "the sidebar", "2. Peaks", "the table", "Start here"):
+        assert fragment in html
+    assert html.count("<li") == 2
+
+
+def test_a_done_step_and_an_undone_one_are_told_apart_on_the_page() -> None:
+    from app.worksheet import Step
+
+    done = worksheet("t", "l", [Step(1, "A", "d", done=True)])
+    undone = worksheet("t", "l", [Step(1, "A", "d", done=False)])
+    assert done != undone
+
+
+def test_a_worksheet_title_is_escaped() -> None:
+    """Nothing user-typed reaches this page today, but the escaping rule is the file's."""
+    html = worksheet("<script>x</script>", "lead", [])
+    assert "<script>" not in html
+
+
+def test_the_chromatogram_is_pinned_without_being_fixed_to_the_viewport() -> None:
+    """SPEC §7's sticky chromatogram, on the status bar's hard-won terms.
+
+    A viewport-fixed element starts at left:0 and runs under Streamlit's sidebar,
+    which is fixed at a higher z-index and paints over it — the defect ticket #19
+    shipped with the status bar. Sticky lays this out inside the main column instead,
+    where it cannot reach the sidebar and degrades to sitting in the flow.
+    """
+    from app.panels import STYLE
+
+    rule = STYLE.split(".st-key-hs-chromatogram {", 1)[1].split("}", 1)[0]
+    assert "position: sticky" in rule
+    assert "position: fixed" not in rule
+    # A transparent sticky element shows the tab content scrolling through it.
+    assert "background: #ffffff" in rule
+
+
+def test_the_pinned_chromatogram_sits_above_the_status_bar_not_over_it() -> None:
+    """Both are sticky to the bottom; the shorter one owns 0 and the taller clears it."""
+    from app.panels import STYLE
+
+    chromatogram_rule = STYLE.split(".st-key-hs-chromatogram {", 1)[1].split("}", 1)[0]
+    assert "bottom: 34px" in chromatogram_rule
+    assert "bottom: 0" in STYLE.split(".hs-status {", 1)[1].split("}", 1)[0]
