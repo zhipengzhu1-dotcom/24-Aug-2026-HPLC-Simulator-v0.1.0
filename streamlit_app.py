@@ -17,18 +17,23 @@ diagnostics have a logic layer to attach to.
 Layout follows the instrument software this tool sits beside (DryLab and its
 relatives), at the driver's direction: a narrow left rail carrying the condition and
 its summary, a tabbed main view with the resolution map first, the chromatogram pinned
-underneath, and a status bar at the foot. SPEC §7 still describes the earlier prototype
-layout, so it needs amending — the diff is with the driver.
+underneath, and a status bar at the foot.
 
 Panels are filled out of render order. Streamlit containers are reserved first and
 written into later, which is how the left rail can summarise a fit that the peak table
-on the right has not yet been rendered to produce.
+on the right has not yet been rendered to produce, and how the sidebar's save button can
+offer a file built from a table further down the page.
 
-Scope: the guided empty state and the sticky chromatogram are ticket #21's. SPEC §6's
-six diagnostics and SPEC §5's entry checks are all computed in :mod:`app.diagnostics`
-and only *placed* here, at the positions SPEC §6's own presentation sentence gives
-them — including diagnostic 5's banner, whose wording ticket #19 wrote in this file and
-ticket #20 moved out to sit beside the other five.
+Nothing here decides anything. SPEC §6's six diagnostics and SPEC §5's entry checks are
+computed in :mod:`app.diagnostics`, SPEC §7's guided empty state in :mod:`app.worksheet`,
+and SPEC §8's file in :mod:`app.session_io` and :mod:`hplcsim.session`; this file places
+them, at the positions SPEC §6's own presentation sentence gives them.
+
+What it does own, and cannot delegate, is **widget identity** (ticket #21). Restoring a
+session means writing values into ``st.session_state`` under the keys the widgets answer
+to, before those widgets are created — so the keys live in :class:`Keys`, the session
+controls are drawn before everything they can overwrite, and a widget whose default is
+fed by another widget needs its seed written too.
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ from collections.abc import Sequence
 
 import streamlit as st
 
-from app import chromatogram, panels, tables
+from app import chromatogram, panels, tables, worksheet
 from app.diagnostics import Diagnostic, Diagnostics, diagnose
 from app.panels import Row
 from app.pipeline import (
@@ -48,6 +53,13 @@ from app.pipeline import (
     dwell_from_volume,
     run_cockpit,
 )
+from app.session_io import (
+    Restore,
+    peak_rows_from_session,
+    session_filename,
+    session_from_inputs,
+)
+from app.worksheet import Step, needs_guidance, worksheet_steps
 from hplcsim.model import (
     Gradient,
     Method,
@@ -56,6 +68,7 @@ from hplcsim.model import (
     percent_b_from_phi,
     s_base10_from_s_e,
 )
+from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
@@ -78,8 +91,77 @@ _PLATE_COUNT = 12_000.0
 _MAX_CANDIDATE_TG = 180.0
 _MAX_CANDIDATE_HOLD = 20.0
 
+# Every bounded widget's range, named once. The widget call spreads it and `_restore`
+# clamps to it, so a file carrying a value past the end of a slider cannot reach the
+# widget — Streamlit raises on that, and the whole page becomes a traceback (found by
+# `/code-review` on this ticket). The two ends have to be the same numbers or the clamp
+# is not a clamp, which is the only reason these are constants.
+_LENGTH_RANGE = (1.0, 1000.0)
+_COLUMN_ID_RANGE = (0.05, 50.0)
+_PARTICLE_RANGE = (0.5, 50.0)
+_FLOW_RANGE = (0.001, 20.0)
+_TEMPERATURE_RANGE = (-20.0, 200.0)
+_T0_RANGE = (0.001, 100.0)
+_DWELL_TIME_RANGE = (0.0, 100.0)
+_HOLD_RANGE = (0.0, 60.0)
+_PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
+_PERCENT_B_RANGE = (0.0, 100.0)
+_TG_RUN_RANGE = (0.1, 600.0)
+_CANDIDATE_TG_RANGE = (1.0, _MAX_CANDIDATE_TG)
+_CANDIDATE_HOLD_RANGE = (0.0, _MAX_CANDIDATE_HOLD)
+
 _MEASURED = "Measured marker"
+_ESTIMATED = "Geometry estimate"
 _BY_VOLUME = "Volume (mL)"
+_BY_TIME = "Time (min)"
+
+_UNTITLED = "Untitled session"
+
+# SPEC §6 diagnostic 6's short form. One wording, wherever an output surface carries it.
+_STAMP_SHORT = "⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6)."
+
+
+class Keys:
+    """Every widget's ``session_state`` key, in one place (ticket #21).
+
+    Loading a session file means writing the restored values into the widgets before
+    they are drawn, so each one needs a name that the loader and the widget agree on.
+    Spelling those names as constants is what keeps the two ends from drifting: a typo
+    in a string literal here does not raise, it silently leaves that one field on its
+    default while every other field loads, which is the worst possible shape for the bug.
+
+    :func:`_slider_with_box` derives three keys of its own from each name below, so a
+    two-widget control's key is a stem rather than a widget id.
+    """
+
+    SESSION_NAME = "session_name"
+    UPLOAD = "session_upload"
+    LOADED_FILE = "loaded_file_id"
+    LOAD_ERROR = "load_error"
+    LOAD_NOTE = "load_note"
+    PEAK_FRAME = "peak_frame"
+    PEAK_TABLE_NONCE = "peak_table_nonce"
+
+    LENGTH = "column_length_mm"
+    COLUMN_ID = "column_id_mm"
+    PARTICLE = "particle_um"
+    FLOW = "flow"
+    TEMPERATURE = "temperature_c"
+    T0_SOURCE = "t0_source"
+    T0 = "t0"
+    DWELL_AS = "dwell_entered_as"
+    DWELL_TIME = "dwell_time"
+    DWELL_VOLUME = "dwell_volume"
+    PERCENT_B_START = "percent_b_start"
+    PERCENT_B_END = "percent_b_end"
+    HOLD = "hold"
+    USE_N_ESTIMATE = "use_plate_count_estimate"
+    PLATE_COUNT = "plate_count"
+    TG_RUN1 = "tg_run1"
+    TG_RUN2 = "tg_run2"
+    CANDIDATE_TG = "candidate_tg"
+    CANDIDATE_HOLD = "candidate_hold"
+
 
 _DWELL_REQUIRED = (
     "**Enter the dwell before anything can be predicted.** It belongs to the instrument, "
@@ -122,6 +204,15 @@ def _notices(diagnostics: Sequence[Diagnostic]) -> None:
 def main() -> None:
     st.set_page_config(page_title="hplcsim — Cockpit", layout="wide")
     st.markdown(panels.STYLE, unsafe_allow_html=True)
+
+    # The session controls come first in the sidebar and, more to the point, before
+    # every other widget is drawn: restoring a file writes the widgets' state, and
+    # state written after a widget has been created for this run is state that widget
+    # never sees. Save is the exception — it needs the peak table, which has not been
+    # rendered yet — so it reserves a slot here and is filled in at the foot of `main`.
+    _load_control()
+    save_slot = st.sidebar.container()
+
     constants = _sidebar()
 
     # SPEC §4 makes the dwell required with no silent default: it belongs to the
@@ -130,6 +221,8 @@ def main() -> None:
     if constants is None:
         st.title("hplcsim")
         st.warning(_DWELL_REQUIRED, icon="⚠️")
+        # Loading still works from here: a file carries its own dwell, which is the
+        # fastest way out of this screen and the reason the uploader is drawn above it.
         return
 
     rail, main_view = st.columns([1.15, 3.0], gap="medium")
@@ -141,12 +234,16 @@ def main() -> None:
         summary_slot = st.container()
 
     with main_view:
+        worksheet_slot = st.container()
         map_tab, peaks_tab, fit_tab, resolution_tab = st.tabs(
             ["Resolution map", "Table of peaks", "Fit parameters", "Resolution"]
         )
         with peaks_tab:
             rows = _peak_table()
-        chromatogram_slot = st.container()
+        # SPEC §7: the chromatogram is pinned beneath the tabs and stays visible while
+        # the entry and results above it scroll. `panels.STYLE` does the pinning, by
+        # this container's key; nothing else in the app is addressed by CSS this way.
+        chromatogram_slot = st.container(key="hs-chromatogram")
 
     inputs = CockpitInputs(
         method=constants.method,
@@ -160,6 +257,15 @@ def main() -> None:
 
     diagnostics = diagnose(inputs, cockpit)
 
+    with save_slot:
+        _save_control(inputs)
+    with worksheet_slot:
+        # SPEC §7's guided empty state, above the tabs rather than instead of them.
+        # Step 2 asks for the peak table and SPEC §4's scouting-spacing warning is
+        # painted on the fit tab before any peak is typed, so both have to stay
+        # reachable — the guidance leads the main view rather than replacing it.
+        if needs_guidance(cockpit):
+            _worksheet(worksheet_steps(inputs, cockpit))
     with candidate_slot:
         # SPEC §6: diagnostic 1 is a "candidate-control inline warning" — it belongs
         # against the slider that caused it, not in a tab the user may not have open.
@@ -180,6 +286,168 @@ def main() -> None:
     _status_bar(cockpit, candidate, diagnostics)
 
 
+# --- sidebar: the session file of SPEC §8 ---------------------------------------------
+
+
+def _load_control() -> None:
+    """The uploader, and the one-shot restore it triggers (SPEC §8).
+
+    Drawn before every other widget, because restoring writes their state and a widget
+    already created this run would ignore it. Streamlit hands the same uploaded file
+    back on every rerun, so the restore is keyed on the file's id: without that, each
+    rerun would overwrite whatever the user had changed since loading, and the app
+    would refuse to be edited.
+    """
+    with st.sidebar:
+        st.header("Session")
+        # The uploader goes first, and the session name below it, because the name is
+        # itself something a file restores — a widget instantiated before the restore
+        # runs has already claimed its key, and writing to it then is an exception
+        # rather than a value that quietly fails to land.
+        uploaded = st.file_uploader("Load a session", type=["json"], key=Keys.UPLOAD)
+
+        if uploaded is not None and st.session_state.get(Keys.LOADED_FILE) != uploaded.file_id:
+            st.session_state[Keys.LOADED_FILE] = uploaded.file_id
+            try:
+                session = load_session(uploaded.getvalue())
+            except SessionFileError as error:
+                # A corrupt or unknown-schema file is a hard error (SPEC §8) — but it
+                # is the *file* that is refused, not the session on screen, which is
+                # left exactly as it was for the user to go on working in.
+                st.session_state[Keys.LOAD_ERROR] = str(error)
+                # Both notices describe the *last file handled*, so a refusal clears the
+                # previous file's out-of-range warning. Left standing it would sit under
+                # this error, naming a number from a session no longer on screen.
+                st.session_state[Keys.LOAD_NOTE] = None
+            else:
+                st.session_state[Keys.LOAD_ERROR] = None
+                _restore(session)
+                st.rerun()
+
+        error = st.session_state.get(Keys.LOAD_ERROR)
+        if error:
+            st.error(error, icon="🚫")
+        note = st.session_state.get(Keys.LOAD_NOTE)
+        if note:
+            # The file was read; some of it just does not fit on screen. That is a
+            # warning, not a refusal (CLAUDE.md's warnings-over-blocks).
+            st.warning(note, icon="⚠️")
+
+        st.text_input("Session name", key=Keys.SESSION_NAME, placeholder=_UNTITLED)
+
+
+def _restore(session: Session) -> None:
+    """Write a loaded session into the widgets, under the keys they answer to.
+
+    This is the half of the round trip :mod:`app.session_io` deliberately does not do:
+    the translation between the file's shape and the screen's is logic and lives there,
+    while *which widget holds which value* is a fact about this file and only this one.
+
+    Every number goes through :class:`~app.session_io.Restore`, against the same
+    ``_*_RANGE`` the widget itself is built from. A file may legitimately hold a value
+    no widget on this screen can display — a 500-minute candidate tG is a real method
+    and the slider stops at 180 — and writing it in raw makes Streamlit raise on the
+    rerun, replacing the page with a traceback rather than saying anything useful.
+    """
+    method, shared = session.method, session.runs[0].gradient
+    restore = Restore()
+    st.session_state.update(
+        {
+            Keys.SESSION_NAME: session.session_name,
+            Keys.LENGTH: restore.within(
+                "column length", method.column_length_mm or _COLUMN_LENGTH_MM, *_LENGTH_RANGE
+            ),
+            Keys.COLUMN_ID: restore.within(
+                "column i.d.", method.column_id_mm or _COLUMN_ID_MM, *_COLUMN_ID_RANGE
+            ),
+            Keys.PARTICLE: restore.within(
+                "particle size", method.particle_um or _PARTICLE_UM, *_PARTICLE_RANGE
+            ),
+            Keys.FLOW: restore.within("flow", method.flow, *_FLOW_RANGE),
+            Keys.TEMPERATURE: restore.within(
+                "temperature",
+                _TEMPERATURE_C if method.temperature_c is None else method.temperature_c,
+                *_TEMPERATURE_RANGE,
+            ),
+            Keys.T0_SOURCE: _MEASURED if method.t0_is_measured else _ESTIMATED,
+            Keys.T0: restore.within("t0", method.t0, *_T0_RANGE),
+            # The file stores the dwell as a time (SPEC §8), so the time is what comes
+            # back. Dividing a volume out of it would be inventing the V_D that was
+            # typed, at whatever the flow happens to be now — the conversion is an
+            # entry boundary and is not meant to run backwards.
+            Keys.DWELL_AS: _BY_TIME,
+            Keys.DWELL_TIME: restore.within("dwell", method.t_dwell, *_DWELL_TIME_RANGE),
+            # %B goes through `restore` like everything else. The file already refuses
+            # anything outside 0–100 (`_check_percent`), so it should never bind — but
+            # being the one documented exception is how a later reader ends up
+            # re-deriving whether that exception is still safe.
+            Keys.PERCENT_B_START: restore.within(
+                "%B start", percent_b_from_phi(shared.phi0), *_PERCENT_B_RANGE
+            ),
+            Keys.PERCENT_B_END: restore.within(
+                "%B end", percent_b_from_phi(shared.phif), *_PERCENT_B_RANGE
+            ),
+            Keys.HOLD: restore.within("initial hold", shared.t_init, *_HOLD_RANGE),
+            Keys.USE_N_ESTIMATE: session.plate_count is None,
+            Keys.TG_RUN1: restore.within(
+                "run 1 tG", session.runs[0].gradient.t_gradient, *_TG_RUN_RANGE
+            ),
+            Keys.TG_RUN2: restore.within(
+                "run 2 tG", session.runs[1].gradient.t_gradient, *_TG_RUN_RANGE
+            ),
+            Keys.PEAK_FRAME: tables.peak_frame_from_rows(peak_rows_from_session(session)),
+            # A fresh identity for the data editor. Its state belongs to its key, so
+            # reusing the key would show the loaded frame's columns with the previous
+            # session's edits still layered over them.
+            Keys.PEAK_TABLE_NONCE: st.session_state.get(Keys.PEAK_TABLE_NONCE, 0) + 1,
+        }
+    )
+    if session.plate_count is not None:
+        st.session_state[Keys.PLATE_COUNT] = restore.within(
+            "plate count N", float(session.plate_count), *_PLATE_COUNT_RANGE
+        )
+    _preset_slider_with_box(
+        Keys.CANDIDATE_TG,
+        seed=_TG_CANDIDATE,
+        value=restore.within("candidate tG", session.candidate.t_gradient, *_CANDIDATE_TG_RANGE),
+    )
+    _preset_slider_with_box(
+        # The candidate hold's default is fed by the method hold, so the seed has to be
+        # the *restored* method hold — seeded with anything else, the reseed in
+        # `_slider_with_box` sees a changed default and overwrites the value just loaded.
+        Keys.CANDIDATE_HOLD,
+        seed=min(st.session_state[Keys.HOLD], _MAX_CANDIDATE_HOLD),
+        value=restore.within(
+            "candidate initial hold", session.candidate.t_init, *_CANDIDATE_HOLD_RANGE
+        ),
+    )
+    st.session_state[Keys.LOAD_NOTE] = restore.note
+
+
+def _save_control(inputs: CockpitInputs) -> None:
+    """The download button of SPEC §8, or the reason there is not one.
+
+    ``save_session`` and ``load_session`` validate identically on purpose (#18), so a
+    save that would write an unopenable file raises instead. That is the right rule for
+    the file and the wrong thing to show a chromatographer as a stack trace, so the
+    refusal is caught and worded here — the gate is in the UI, and the file stays strict.
+    """
+    name = st.session_state.get(Keys.SESSION_NAME, "")
+    try:
+        text = save_session(session_from_inputs(inputs, session_name=name))
+    except SessionFileError as error:
+        st.warning(f"Not saveable yet — {error}", icon="⚠️")
+        return
+    st.download_button(
+        "Save session",
+        data=text,
+        file_name=session_filename(name),
+        mime="application/json",
+        width="stretch",
+    )
+    st.caption("Inputs only — the fit recomputes when the file is reopened.")
+
+
 # --- sidebar: the method constants of SPEC §4 -----------------------------------------
 
 
@@ -189,16 +457,28 @@ def _sidebar() -> MethodEntry | None:
         st.header("Method constants")
         st.caption("Shared by both scouting runs and by the candidate.")
 
-        length = st.number_input("Column length (mm)", 1.0, 1000.0, _COLUMN_LENGTH_MM)
-        column_id = st.number_input("Column i.d. (mm)", 0.05, 50.0, _COLUMN_ID_MM)
-        particle = st.number_input("Particle size (µm)", 0.5, 50.0, _PARTICLE_UM)
-        flow = st.number_input("Flow F (mL/min)", 0.001, 20.0, _FLOW, step=0.05, format="%.3f")
-        temperature = st.number_input("Temperature (°C)", -20.0, 200.0, _TEMPERATURE_C)
+        length = st.number_input(
+            "Column length (mm)", *_LENGTH_RANGE, _COLUMN_LENGTH_MM, key=Keys.LENGTH
+        )
+        column_id = st.number_input(
+            "Column i.d. (mm)", *_COLUMN_ID_RANGE, _COLUMN_ID_MM, key=Keys.COLUMN_ID
+        )
+        particle = st.number_input(
+            "Particle size (µm)", *_PARTICLE_RANGE, _PARTICLE_UM, key=Keys.PARTICLE
+        )
+        flow = st.number_input(
+            "Flow F (mL/min)", *_FLOW_RANGE, _FLOW, step=0.05, format="%.3f", key=Keys.FLOW
+        )
+        temperature = st.number_input(
+            "Temperature (°C)", *_TEMPERATURE_RANGE, _TEMPERATURE_C, key=Keys.TEMPERATURE
+        )
         st.caption("Temperature is metadata in v0.1 — the model is fixed-temperature.")
 
         st.subheader("Dead time")
-        t0_source = st.radio("t0 source", [_MEASURED, "Geometry estimate"], horizontal=True)
-        t0 = st.number_input("t0 (min)", 0.001, 100.0, _T0, step=0.05, format="%.4f")
+        t0_source = st.radio(
+            "t0 source", [_MEASURED, _ESTIMATED], horizontal=True, key=Keys.T0_SOURCE
+        )
+        t0 = st.number_input("t0 (min)", *_T0_RANGE, _T0, step=0.05, format="%.4f", key=Keys.T0)
         if t0_source != _MEASURED:
             st.caption(
                 "Enter the t0 you estimated from the column geometry — the app does not "
@@ -212,9 +492,13 @@ def _sidebar() -> MethodEntry | None:
             return None
 
         st.subheader("Gradient")
-        percent_b_start = st.number_input("%B start", 0.0, 100.0, _PERCENT_B_START)
-        percent_b_end = st.number_input("%B end", 0.0, 100.0, _PERCENT_B_END)
-        hold = st.number_input("Initial hold (min)", 0.0, 60.0, _HOLD, step=0.1)
+        percent_b_start = st.number_input(
+            "%B start", *_PERCENT_B_RANGE, _PERCENT_B_START, key=Keys.PERCENT_B_START
+        )
+        percent_b_end = st.number_input(
+            "%B end", *_PERCENT_B_RANGE, _PERCENT_B_END, key=Keys.PERCENT_B_END
+        )
+        hold = st.number_input("Initial hold (min)", *_HOLD_RANGE, _HOLD, step=0.1, key=Keys.HOLD)
 
         method = Method(
             t0=t0,
@@ -245,11 +529,21 @@ def _dwell(flow: float) -> float | None:
     The only constant that opens empty. SPEC §4: "Dwell | required, no silent default;
     entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance."
     """
-    entered_as = st.radio("Dwell entered as", [_BY_VOLUME, "Time (min)"], horizontal=True)
+    entered_as = st.radio(
+        "Dwell entered as", [_BY_VOLUME, _BY_TIME], horizontal=True, key=Keys.DWELL_AS
+    )
     if entered_as != _BY_VOLUME:
-        return st.number_input("Dwell time t_D (min)", 0.0, 100.0, value=None, format="%.4f")
+        return st.number_input(
+            "Dwell time t_D (min)",
+            *_DWELL_TIME_RANGE,
+            value=None,
+            format="%.4f",
+            key=Keys.DWELL_TIME,
+        )
 
-    volume = st.number_input("Dwell volume V_D (mL)", 0.0, 100.0, value=None, format="%.4f")
+    volume = st.number_input(
+        "Dwell volume V_D (mL)", 0.0, 100.0, value=None, format="%.4f", key=Keys.DWELL_VOLUME
+    )
     with st.expander("How to measure V_D"):
         st.markdown(_DWELL_GUIDANCE)
     if volume is None:
@@ -266,10 +560,13 @@ def _plate_count_knob(method: Method) -> float | None:
     reaches this knob (SPEC §3, ticket #23).
     """
     estimate = default_plate_count(method)
-    if st.checkbox(f"Use the column estimate (N ≈ {estimate:,.0f})", value=True):
+    label = f"Use the column estimate (N ≈ {estimate:,.0f})"
+    if st.checkbox(label, value=True, key=Keys.USE_N_ESTIMATE):
         st.caption("N = L/(2·dp) — geometry, not this instrument's real efficiency.")
         return None
-    return st.number_input("Plate count N", 100.0, 1_000_000.0, _PLATE_COUNT, step=500.0)
+    return st.number_input(
+        "Plate count N", *_PLATE_COUNT_RANGE, _PLATE_COUNT, step=500.0, key=Keys.PLATE_COUNT
+    )
 
 
 # --- entry ----------------------------------------------------------------------------
@@ -282,9 +579,13 @@ def _peak_table() -> list[PeakRow]:
         "Name, areas and W½ are optional; a W½ has its peak's plate count fitted from it."
     )
     three_decimals = st.column_config.NumberColumn(format="%.3f")
+    # A restored table arrives as a frame in state; an unloaded one is the blank frame,
+    # exactly as before. The nonce in the key is what makes a *second* load land: the
+    # editor's edits belong to its key, and reusing the key would leave them on top of
+    # the new data. It is only ever bumped by `_restore`.
     edited = st.data_editor(
-        tables.blank_peak_frame(),
-        key="peak_table",
+        st.session_state.get(Keys.PEAK_FRAME, tables.blank_peak_frame()),
+        key=f"peak_table_{st.session_state.get(Keys.PEAK_TABLE_NONCE, 0)}",
         num_rows="dynamic",
         width="stretch",
         column_config={
@@ -328,8 +629,12 @@ def _entry_notes(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
 def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
     st.markdown("### Scouting runs")
     left, right = st.columns(2)
-    t_gradient1 = left.number_input("Run 1 tG", 0.1, 600.0, _TG_RUN1, step=0.5)
-    t_gradient2 = right.number_input("Run 2 tG", 0.1, 600.0, _TG_RUN2, step=0.5)
+    t_gradient1 = left.number_input(
+        "Run 1 tG", *_TG_RUN_RANGE, _TG_RUN1, step=0.5, key=Keys.TG_RUN1
+    )
+    t_gradient2 = right.number_input(
+        "Run 2 tG", *_TG_RUN_RANGE, _TG_RUN2, step=0.5, key=Keys.TG_RUN2
+    )
     return (
         Run(constants.gradient(t_gradient1), name=f"tG{t_gradient1:g}"),
         Run(constants.gradient(t_gradient2), name=f"tG{t_gradient2:g}"),
@@ -340,23 +645,21 @@ def _candidate_controls(constants: MethodEntry) -> Gradient:
     st.markdown("### Candidate")
     t_gradient = _slider_with_box(
         "tG (min)",
-        1.0,
-        _MAX_CANDIDATE_TG,
+        *_CANDIDATE_TG_RANGE,
         _TG_CANDIDATE,
         slider_step=0.5,
         box_step=0.1,
         box_label="Candidate tG (min)",
-        key="candidate_tg",
+        key=Keys.CANDIDATE_TG,
     )
     hold = _slider_with_box(
         "Initial hold (min)",
-        0.0,
-        _MAX_CANDIDATE_HOLD,
+        *_CANDIDATE_HOLD_RANGE,
         min(constants.hold, _MAX_CANDIDATE_HOLD),
         slider_step=0.05,
         box_step=0.01,
         box_label="Candidate initial hold (min)",
-        key="candidate_hold",
+        key=Keys.CANDIDATE_HOLD,
     )
     return constants.gradient(t_gradient, hold=hold)
 
@@ -423,6 +726,34 @@ def _slider_with_box(
         label_visibility="collapsed",
     )
     return float(st.session_state[slider_key])
+
+
+def _preset_slider_with_box(key: str, *, seed: float, value: float) -> None:
+    """Put a restored value into a two-widget control, reseed and all.
+
+    Setting the two widgets alone is not enough: :func:`_slider_with_box` reseeds
+    whenever the caller's default has moved since it last looked, and on the rerun
+    after a load the default *has* moved — the method hold came out of the file too.
+    Writing the seed here is what tells it the move has already been accounted for.
+    """
+    st.session_state[f"{key}_seed"] = seed
+    st.session_state[f"{key}_slider"] = value
+    st.session_state[f"{key}_box"] = value
+
+
+# --- the guided empty state of SPEC §7 ------------------------------------------------
+
+
+def _worksheet(steps: Sequence[Step]) -> None:
+    """The numbered 1→4 worksheet, painted where the results will later be.
+
+    Placement, and nothing else: which steps are done and what each one says are
+    :mod:`app.worksheet`'s, on the rule ticket #20 set for the diagnostics.
+    """
+    st.markdown(
+        panels.worksheet(worksheet.TITLE, worksheet.LEAD, steps),
+        unsafe_allow_html=True,
+    )
 
 
 def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
@@ -594,20 +925,29 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
 
 
 def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
-    st.subheader(
-        f"Predicted chromatogram — tG {candidate.t_gradient:g} min, hold {candidate.t_init:g} min"
+    """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
+
+    This block is sticky, so its height is screen the reader cannot scroll away. The
+    condition, the area caveat and diagnostic 6's stamp all still have to appear — they
+    are on one caption line beside the title rather than three stacked rows beneath it.
+    """
+    st.markdown(
+        f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
+        f"hold {candidate.t_init:g} min"
     )
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return
     trace = chromatogram.chromatogram(cockpit.resolution.peaks, cockpit.shares)
     st.plotly_chart(chromatogram.figure(trace), width="stretch")
-    _stamp_caption(diagnostics)
-    st.caption(
+    notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
         else "Not every peak carries an area — all peaks drawn to the same height."
-    )
+    ]
+    if diagnostics.stamps:
+        notes.append(_STAMP_SHORT)
+    st.caption("  ·  ".join(notes))
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:
@@ -618,7 +958,7 @@ def _stamp_caption(diagnostics: Diagnostics) -> None:
     no output is read without it and no output is buried under it.
     """
     if diagnostics.stamps:
-        st.caption("⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6).")
+        st.caption(_STAMP_SHORT)
 
 
 main()

@@ -112,6 +112,7 @@ Single human-readable JSON, **inputs only** — the fit recomputes on load. Save
   "peaks": [ { "name": "…", "tr_run1_min": 9.855, "tr_run2_min": 20.831,
                "area_run1": 13352, "area_run2": 13401,
                "w_half_run1_min": 0.033, "w_half_run2_min": 0.061 } ],
+  "untracked_peaks": [ { "name": "…", "tr_run1_min": 13.204, "area_run1": 8801 } ],
   "candidate": { "tg_min": 25, "hold_min": 0.5 }
 }
 ```
@@ -119,9 +120,10 @@ Single human-readable JSON, **inputs only** — the fit recomputes on load. Save
 Mandatory: `schema_version` (exact match, else the file is rejected), `app_version`, and per
 block `flow_ml_min`, `t0_min`, `dwell_min`, `pct_b_start`, `pct_b_end`, each run's `tg_min`,
 each peak's two retention times, and the candidate's `tg_min`. Everything else is optional and
-simply absent when unset. `runs` holds exactly two; the gradient they share is stored once, in
-`method`. Rejection is hard and names the field — a corrupt or unknown-schema *file* has no
-usable reading, which is separate from §4's warnings-over-blocks posture on user entry.
+simply absent when unset — including the whole `untracked_peaks` table, whose own rows have no
+mandatory field. `runs` holds exactly two; the gradient they share is stored once, in `method`.
+Rejection is hard and names the field — a corrupt or unknown-schema *file* has no usable
+reading, which is separate from §4's warnings-over-blocks posture on user entry.
 
 Two decisions taken while building ([#18](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/18)), reflected above:
 
@@ -131,6 +133,19 @@ Two decisions taken while building ([#18](https://github.com/zhipengzhu1-dotcom/
 - **Dwell is stored as `dwell_min`**, not a volume. V_D ÷ F is an entry-boundary conversion
   (§4); keeping it out of the file makes the stored dwell independent of a later flow edit and
   the round trip exact.
+
+And one taken in [#21](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/21):
+
+- **Half-paired rows have their own table, `untracked_peaks`.** §5 keeps a row missing either
+  tR visible as "untracked — not fitted" while insisting the engine receives only complete
+  pairs, so `peaks` cannot hold one and, before this, the file dropped it silently — and
+  mid-entry is exactly when a session gets saved. Its rows are the same shape as a `peaks` row
+  with both retention times optional; **at most one** tR per row, and a row carrying both is
+  refused on save and on load, because it is a tracked peak in the wrong table and the visible
+  count would then be wrong. `schema_version` stays **1**: the key is additive, so every file
+  written before it still loads, and a session with nothing half-paired writes no such table
+  at all. The cost, accepted: a reader older than #21 would take such a file and drop those
+  rows silently — which this app is not, and there is one app.
 
 ## 9. Architecture and stack ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6))
 
@@ -153,6 +168,8 @@ app/              # the Cockpit: depends on the engine, never the reverse
   chromatogram.py # the Gaussian sum, and the v0.2 resolution-map frame
   tables.py       # the display frames; the base-10 display boundary
   panels.py       # the left rail's label/value blocks
+  session_io.py   # §8's file <-> the screen's inputs; the download's filename
+  worksheet.py    # §7's guided empty state: the four steps, and when each is done
 tests/          # three-layer suite (§10)
 validation/     # lab dataset (committed) — protocol + method.csv + run1..4.csv
 docs/research/  # merged research docs (normative math + datasets)

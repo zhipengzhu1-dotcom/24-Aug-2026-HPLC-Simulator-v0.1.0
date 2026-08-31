@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.panels import Row, panel, resolution_colour, status_bar
+from app.panels import Row, panel, resolution_colour, status_bar, worksheet
 
 
 def test_every_row_reaches_the_panel() -> None:
@@ -106,6 +106,15 @@ def test_a_value_column_that_cannot_wrap_would_clip_its_own_numbers() -> None:
     assert "overflow-wrap: anywhere" in STYLE
 
 
+def _rule(selector: str) -> str:
+    """One CSS rule's body, by selector — so a test names the rule it is about."""
+    from app.panels import STYLE
+
+    marker = f"{selector} {{"
+    assert STYLE.count(marker) == 1, f"{selector} is not defined exactly once"
+    return STYLE.split(marker, 1)[1].split("}", 1)[0]
+
+
 def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
     """Pins the fix for a real defect: the sidebar hid the bar's leading fields.
 
@@ -121,3 +130,87 @@ def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
     assert "position: sticky" in status_rule
     assert "position: fixed" not in status_rule
     assert "left: 0" not in status_rule
+
+
+# --- the guided empty state and the sticky chromatogram (SPEC §7, ticket #21) ---------
+
+
+def test_every_step_reaches_the_worksheet() -> None:
+    from app.worksheet import Step
+
+    steps = (
+        Step(number=1, title="Method", detail="the sidebar", done=True),
+        Step(number=2, title="Peaks", detail="the table", done=False),
+    )
+    html = worksheet("Start here", "Four steps.", steps)
+
+    for fragment in ("1. Method", "the sidebar", "2. Peaks", "the table", "Start here"):
+        assert fragment in html
+    assert html.count("<li") == 2
+
+
+def test_a_done_step_and_an_undone_one_are_told_apart_on_the_page() -> None:
+    from app.worksheet import Step
+
+    done = worksheet("t", "l", [Step(1, "A", "d", done=True)])
+    undone = worksheet("t", "l", [Step(1, "A", "d", done=False)])
+    assert done != undone
+
+
+def test_a_worksheet_title_is_escaped() -> None:
+    """Nothing user-typed reaches this page today, but the escaping rule is the file's."""
+    html = worksheet("<script>x</script>", "lead", [])
+    assert "<script>" not in html
+
+
+def test_the_chromatogram_is_pinned_without_being_fixed_to_the_viewport() -> None:
+    """SPEC §7's sticky chromatogram, on the status bar's hard-won terms.
+
+    A viewport-fixed element starts at left:0 and runs under Streamlit's sidebar,
+    which is fixed at a higher z-index and paints over it — the defect ticket #19
+    shipped with the status bar. Sticky lays this out inside the main column instead,
+    where it cannot reach the sidebar and degrades to sitting in the flow.
+    """
+    rule = _rule(".st-key-hs-chromatogram")
+    assert "position: sticky" in rule
+    assert "position: fixed" not in rule
+
+
+def test_the_pinned_chromatogram_clears_the_status_bar_by_a_derived_offset() -> None:
+    """Both are sticky to the bottom. The shorter one owns 0; the taller must clear it.
+
+    The offset is computed from the tokens that give the status bar its height, not
+    measured by eye — a number guessed once goes stale the moment the bar's padding or
+    font size changes, and the two would then overlap with nothing to catch it.
+    """
+    assert "bottom: 0" in _rule(".hs-status")
+    assert "bottom: var(--hs-status-height)" in _rule(".st-key-hs-chromatogram")
+
+    # The derivation and the bar itself must read the same tokens, or it is not derived.
+    root, bar = _rule(":root"), _rule(".hs-status")
+    for token in ("--hs-status-pad", "--hs-status-font", "--hs-status-line"):
+        assert token in root, f"{token} is not defined"
+        assert f"var({token})" in bar, f"the status bar does not use {token}"
+    assert "--hs-status-height: calc(" in root
+
+
+def test_the_pinned_chromatogram_is_opaque() -> None:
+    """A sticky element that is even slightly transparent shows the tabs scroll through."""
+    surface = _rule(":root")
+    assert "--hs-surface: #ffffff" in surface
+    assert "background: var(--hs-surface)" in _rule(".st-key-hs-chromatogram")
+
+
+def test_the_pinned_chromatogram_cannot_grow_to_cover_the_tabs_it_sits_beneath() -> None:
+    """Pinned screen is screen the reader cannot scroll away, so its height is capped.
+
+    Ticket #19 drew the plot at 380 px in normal flow. Pinned, that plus its caption
+    takes over half a laptop viewport — it would cover the tabs SPEC §7 puts it beneath.
+    """
+    from app.chromatogram import CHROMATOGRAM_HEIGHT
+
+    assert CHROMATOGRAM_HEIGHT < 380
+    rule = _rule(".st-key-hs-chromatogram")
+    assert "max-height: 46vh" in rule
+    # Capping without a scroll would clip the plot instead of yielding.
+    assert "overflow: auto" in rule

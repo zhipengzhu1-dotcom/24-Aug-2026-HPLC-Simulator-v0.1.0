@@ -19,6 +19,11 @@ Two places diverge from the schema sketch in SPEC §8, which the spec now record
   as a volume that only becomes a time by dividing by the flow rate. V_D ÷ F is an
   entry-boundary conversion; keeping it out of the file makes the dwell independent of
   a later edit to the flow, and keeps the round trip exact.
+* **Half-paired rows have their own list** (``untracked_peaks``), added by ticket #21.
+  SPEC §5 keeps rows missing a tR visible as "untracked — not fitted" while insisting
+  the engine sees only complete pairs, so :class:`~hplcsim.model.Peak` stays strict and
+  :class:`UntrackedPeak` carries the unfinished ones. Mid-entry is exactly the moment
+  someone saves; before this the unpaired row was dropped from the file in silence.
 """
 
 from __future__ import annotations
@@ -50,18 +55,44 @@ class SessionFileError(ValueError):
 
 
 @dataclass(frozen=True)
+class UntrackedPeak:
+    """A peak table row the user has started but not finished pairing (SPEC §5).
+
+    The same seven fields as :class:`~hplcsim.model.Peak` with every measurement
+    optional — including the retention times, which is the whole difference. A row
+    here is one the engine must never see: it has at most one of the two tRs, so
+    there is no pair to fit. Both present is refused on save and on load, because
+    such a row is a ``Peak`` filed in the wrong list, and the two lists have to keep
+    meaning what they say.
+    """
+
+    name: str = ""
+    t_r_run1: float | None = None
+    t_r_run2: float | None = None
+    area_run1: float | None = None
+    area_run2: float | None = None
+    w_half_run1: float | None = None
+    w_half_run2: float | None = None
+
+
+@dataclass(frozen=True)
 class Session:
     """Everything the user entered: the unit that is saved and restored.
 
     The two scouting runs share every gradient setting but ``t_gradient`` (SPEC §4), and
     ``candidate`` — the what-if gradient currently on screen — varies tG and the initial
     hold within the same φ0→φf range. The file stores those shared settings once.
+
+    ``peaks`` and ``untracked`` are the peak table split in two: the pairs the engine
+    may fit, and the rows still being typed. ``untracked`` defaults to empty, so every
+    session built before ticket #21 still constructs.
     """
 
     method: Method
     runs: tuple[Run, Run]
     peaks: tuple[Peak, ...]
     candidate: Gradient
+    untracked: tuple[UntrackedPeak, ...] = ()
     session_name: str = ""
     plate_count: int | None = None
 
@@ -77,6 +108,9 @@ def save_session(session: Session) -> str:
         "method": _method_block(session, shared),
         "runs": [_run_row(run) for run in session.runs],
         "peaks": [_peak_row(peak) for peak in session.peaks],
+        # Absent rather than empty when everything is paired, like every other unset
+        # field — a finished session's file looks exactly as it did before ticket #21.
+        **_drop_unset({"untracked_peaks": [_peak_row(row) for row in session.untracked] or None}),
         "candidate": {
             "tg_min": session.candidate.t_gradient,
             "hold_min": session.candidate.t_init,
@@ -102,6 +136,7 @@ def load_session(text: str | bytes) -> Session:
         method=_read_method(method_block),
         runs=_read_runs(document.rows("runs"), shared),
         peaks=tuple(_read_peak(row) for row in document.rows("peaks")),
+        untracked=tuple(_read_untracked(row) for row in document.optional_rows("untracked_peaks")),
         candidate=replace(
             shared,
             t_gradient=candidate_block.number("tg_min"),
@@ -142,8 +177,13 @@ def _run_row(run: Run) -> dict[str, Any]:
     return _drop_unset({"tg_min": run.gradient.t_gradient, "name": run.name or None})
 
 
-def _peak_row(peak: Peak) -> dict[str, Any]:
-    """One compound, both runs side by side — the row the peak table shows (SPEC §5)."""
+def _peak_row(peak: Peak | UntrackedPeak) -> dict[str, Any]:
+    """One compound, both runs side by side — the row the peak table shows (SPEC §5).
+
+    One writer for both lists. A ``Peak`` always fills in both retention times and an
+    :class:`UntrackedPeak` never fills in more than one, so ``_drop_unset`` is what
+    makes the two rows differ — the shape of the row itself is the same either way.
+    """
     return _drop_unset(
         {
             "name": peak.name or None,
@@ -197,6 +237,10 @@ class _Fields:
                 raise SessionFileError(f"session file: {path} must be a JSON object")
             rows.append(_Fields(item, path))
         return rows
+
+    def optional_rows(self, key: str) -> list[_Fields]:
+        """A table that may simply be absent, read as empty — never as a missing field."""
+        return [] if self.data.get(key) is None else self.rows(key)
 
     def number(self, key: str) -> float:
         return self._number(key, self.raw(key))
@@ -304,6 +348,19 @@ def _read_peak(row: _Fields) -> Peak:
     )
 
 
+def _read_untracked(row: _Fields) -> UntrackedPeak:
+    """The same row with both retention times optional — the half-paired one of SPEC §5."""
+    return UntrackedPeak(
+        t_r_run1=row.optional_number("tr_run1_min"),
+        t_r_run2=row.optional_number("tr_run2_min"),
+        name=row.text("name", ""),
+        area_run1=row.optional_number("area_run1"),
+        area_run2=row.optional_number("area_run2"),
+        w_half_run1=row.optional_number("w_half_run1_min"),
+        w_half_run2=row.optional_number("w_half_run2_min"),
+    )
+
+
 # --- what a session must hold to be worth writing down -------------------------------
 
 
@@ -327,7 +384,9 @@ def _check_inputs(session: Session) -> None:
     _check_gradient(session.runs)
     _check_candidate(session.candidate, session.runs[0].gradient)
     for index, peak in enumerate(session.peaks):
-        _check_peak(f"peaks[{index}]", peak)
+        _check_measurements(f"peaks[{index}]", peak)
+    for index, row in enumerate(session.untracked):
+        _check_untracked(f"untracked_peaks[{index}]", row)
 
 
 def _check_method(method: Method) -> None:
@@ -366,13 +425,34 @@ def _check_candidate(candidate: Gradient, scouting: Gradient) -> None:
     _check_non_negative("candidate.hold_min", candidate.t_init)
 
 
-def _check_peak(at: str, peak: Peak) -> None:
+def _check_measurements(at: str, peak: Peak | UntrackedPeak) -> None:
+    """Every measurement on a row, whichever list the row is in.
+
+    The checks are per-field and skip what is unset, so the same six lines serve a
+    ``Peak`` (both tRs present, always checked) and an :class:`UntrackedPeak` (at most
+    one, the other skipped).
+    """
     _check_positive(f"{at}.tr_run1_min", peak.t_r_run1)
     _check_positive(f"{at}.tr_run2_min", peak.t_r_run2)
     _check_non_negative(f"{at}.area_run1", peak.area_run1)
     _check_non_negative(f"{at}.area_run2", peak.area_run2)
     _check_positive(f"{at}.w_half_run1_min", peak.w_half_run1)
     _check_positive(f"{at}.w_half_run2_min", peak.w_half_run2)
+
+
+def _check_untracked(at: str, row: UntrackedPeak) -> None:
+    """A half-paired row, and the one thing that makes it not a ``Peak``.
+
+    Checked on save as well as on load: a fully paired row written here would load back
+    as untracked, so the count SPEC §5 shows would be wrong and the peak would never
+    reach the fit — a silent loss of exactly the kind ``untracked_peaks`` exists to end.
+    """
+    if row.t_r_run1 is not None and row.t_r_run2 is not None:
+        raise SessionFileError(
+            f"session file: {at} has a retention time in both runs, so it is a tracked "
+            "peak — it belongs in peaks, not in untracked_peaks"
+        )
+    _check_measurements(at, row)
 
 
 def _check_positive(at: str, value: float | None) -> None:
