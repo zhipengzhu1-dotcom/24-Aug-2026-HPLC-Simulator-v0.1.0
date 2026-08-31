@@ -150,18 +150,18 @@ def _fit_note(outcome: PeakOutcome) -> str:
 
 
 def prediction_frame(
-    cockpit: Cockpit, badges: Mapping[str, tuple[Diagnostic, ...]] | None = None
+    cockpit: Cockpit, badges: Mapping[str, tuple[Diagnostic, ...]]
 ) -> pd.DataFrame:
     """What the candidate gradient is predicted to give, in elution order.
 
     ``badges`` is :attr:`~app.diagnostics.Diagnostics.badges` — SPEC §6's per-peak
-    diagnostics 2 and 4, beside the rows they are about. Left out, the column is
-    present and empty rather than absent, so a caller that has not run the
-    diagnostics still gets the same frame back.
+    diagnostics 2 and 4, beside the rows they are about. Required rather than
+    defaulted: the one caller that renders this table always has them, and a default
+    would only exist to let a caller quietly ship a table with an empty Flags column.
     """
     if cockpit.resolution is None:
         return pd.DataFrame(columns=PREDICTION_COLUMNS)
-    found = badges or {}
+    found = badges
     return pd.DataFrame(
         [
             {

@@ -516,14 +516,14 @@ def test_every_table_keeps_its_columns_when_there_is_nothing_to_put_in_them() ->
     empty = run_cockpit(_lab_inputs(rows=()))
 
     assert tuple(fit_frame(empty).columns) == FIT_COLUMNS
-    assert tuple(prediction_frame(empty).columns) == PREDICTION_COLUMNS
+    assert tuple(prediction_frame(empty, {}).columns) == PREDICTION_COLUMNS
     assert tuple(resolution_frame(empty).columns) == RESOLUTION_COLUMNS
 
 
 def test_the_prediction_and_resolution_tables_are_in_elution_order() -> None:
     """Order is a property of the condition, not of the typed list (research doc §7.4)."""
     cockpit = run_cockpit(_lab_inputs())
-    times = list(prediction_frame(cockpit)["tR (min)"])
+    times = list(prediction_frame(cockpit, {})["tR (min)"])
     pairs = list(resolution_frame(cockpit)["Pair"])
 
     assert times == sorted(times)
@@ -534,7 +534,7 @@ def test_the_resolution_table_agrees_with_the_times_and_widths_beside_it() -> No
     """Rs = ΔtR / 2(σ₁+σ₂) — the same numbers, not a second calculation."""
     cockpit = run_cockpit(_lab_inputs())
     assert cockpit.resolution is not None
-    predicted = prediction_frame(cockpit).set_index(COMPOUND)
+    predicted = prediction_frame(cockpit, {}).set_index(COMPOUND)
     resolutions = resolution_frame(cockpit)
     w_half_per_sigma = math.sqrt(8.0 * math.log(2.0))
 
@@ -635,10 +635,3 @@ def test_a_badged_peak_is_labelled_in_the_flags_column() -> None:
     flags = dict(zip(frame[COMPOUND], frame[FLAGS], strict=True))
     assert flags["Early"] == "early eluter"
     assert flags["Unknown-1"] == ""
-
-
-def test_the_prediction_table_keeps_its_flags_column_without_any_diagnostics() -> None:
-    """A caller that has not run the diagnostics gets the same frame, not a narrower one."""
-    frame = prediction_frame(run_cockpit(_lab_inputs()))
-    assert list(frame.columns) == list(PREDICTION_COLUMNS)
-    assert list(frame[FLAGS]) == ["", "", ""]

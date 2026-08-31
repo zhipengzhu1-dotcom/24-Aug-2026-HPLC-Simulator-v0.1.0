@@ -38,7 +38,7 @@ from collections.abc import Sequence
 import streamlit as st
 
 from app import chromatogram, panels, tables
-from app.diagnostics import Diagnostic, Diagnostics, diagnose, scouting_beta
+from app.diagnostics import Diagnostic, Diagnostics, diagnose
 from app.panels import Row
 from app.pipeline import (
     Cockpit,
@@ -48,7 +48,6 @@ from app.pipeline import (
     dwell_from_volume,
     run_cockpit,
 )
-from hplcsim.fit import classify_spacing
 from hplcsim.model import (
     Gradient,
     Method,
@@ -106,14 +105,18 @@ instrument as plumbed, and it is worth about 1% of systematic bias when it is wr
 # How a diagnostic's severity is painted. SPEC §6 escalates rather than shouts once —
 # an info flag is a fact about the condition, a warning is worth a second look, and a
 # strong one is a reason not to run the method as it stands.
-_PAINT = {"info": st.info, "warning": st.warning, "strong": st.error}
-_ICON = {"info": "ℹ️", "warning": "⚠️", "strong": "🚫"}
+_PAINT = {
+    "info": (st.info, "ℹ️"),
+    "warning": (st.warning, "⚠️"),
+    "strong": (st.error, "🚫"),
+}
 
 
 def _notices(diagnostics: Sequence[Diagnostic]) -> None:
     """Paint a group of diagnostics where the caller has put the cursor."""
     for diagnostic in diagnostics:
-        _PAINT[diagnostic.severity](diagnostic.message, icon=_ICON[diagnostic.severity])
+        paint, icon = _PAINT[diagnostic.severity]
+        paint(diagnostic.message, icon=icon)
 
 
 def main() -> None:
@@ -162,7 +165,7 @@ def main() -> None:
         # against the slider that caused it, not in a tab the user may not have open.
         _notices(diagnostics.candidate)
     with summary_slot:
-        _summary_panels(cockpit, diagnostics, run1, run2)
+        _summary_panels(cockpit, diagnostics)
     with peaks_tab:
         _entry_notes(cockpit, diagnostics)
     with map_tab:
@@ -346,26 +349,17 @@ def _candidate_controls(constants: MethodEntry) -> Gradient:
     return constants.gradient(t_gradient, hold=hold)
 
 
-def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics, run1: Run, run2: Run) -> None:
+def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     """What the condition on screen comes to, and then one peak in detail."""
     if cockpit.blocked is not None:
         st.error(cockpit.blocked)
         return
-    rows = _summary_rows(cockpit) + [_beta_row(run1, run2)]
-    st.markdown(panels.panel("Method summary", rows), unsafe_allow_html=True)
+    st.markdown(panels.panel("Method summary", _summary_rows(cockpit)), unsafe_allow_html=True)
     _peak_detail(cockpit, diagnostics)
-
-
-def _beta_row(run1: Run, run2: Run) -> Row:
-    """The scouting spacing as a value in the rail, coloured by SPEC §4's tiers.
-
-    The sentence version is diagnostic 3's, on the fit tab where SPEC §6 places it.
-    This is the number itself, on the panel that is always on screen — the same
-    ``classify_spacing`` decides the colour, so the two cannot disagree.
-    """
-    beta = scouting_beta(run1, run2)
-    colour = {"ok": None, "warning": "#c77700", "strong": "#c0392b"}[classify_spacing(beta)]
-    return Row("Scouting β", f"{beta:.2f}", colour)
+    # SPEC §6 diagnostic 6 stamps *all* outputs, and the rail's two panels carry tR, k,
+    # W½, N and Rs. The stamp is a caption beneath them rather than a row inside them,
+    # because SPEC §7 enumerates what those panels hold.
+    _stamp_caption(diagnostics)
 
 
 def _summary_rows(cockpit: Cockpit) -> list[Row]:
@@ -484,7 +478,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         return
     # SPEC §6: diagnostic 5 is a "result banner", diagnostic 6 an "output stamp".
     _notices(diagnostics.banners)
-    _stamps(diagnostics)
+    _stamp_caption(diagnostics)
     st.dataframe(
         tables.prediction_frame(cockpit, diagnostics.badges),
         width="stretch",
@@ -532,16 +526,7 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
         return
     trace = chromatogram.chromatogram(cockpit.resolution.peaks, cockpit.shares)
     st.plotly_chart(chromatogram.figure(trace), width="stretch")
-    _stamps(diagnostics)
-    # The trace is where a crossing is easiest to misread — two labels in an order the
-    # scouting runs never showed. The sentence belongs to the badge; what belongs here
-    # is the fact that the labels moved.
-    if any(_is_crossing(b) for badges in diagnostics.badges.values() for b in badges):
-        st.caption(
-            "⚠️ Peak order at this candidate is not the order the scouting runs "
-            "showed — check the labels against the Table of peaks before reading this "
-            "trace."
-        )
+    _stamp_caption(diagnostics)
     st.caption(
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
@@ -549,11 +534,7 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
     )
 
 
-def _is_crossing(badge: Diagnostic) -> bool:
-    return badge.code == "prediction_crossing"
-
-
-def _stamps(diagnostics: Diagnostics) -> None:
+def _stamp_caption(diagnostics: Diagnostics) -> None:
     """SPEC §6 diagnostic 6's short form, on an output surface that is not the fit tab.
 
     A stamp is meant to be short. The fit tab carries the whole explanation once; every

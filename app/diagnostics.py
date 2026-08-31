@@ -23,12 +23,27 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.pipeline import Cockpit, CockpitInputs, Entry, run_cockpit
+from app.pipeline import Cockpit, CockpitInputs, Entry, PeakRow, run_cockpit
 from hplcsim.fit import BETA_STRONG, BETA_WARNING, classify_spacing
 from hplcsim.model import Gradient, Method, Peak, Run
 from hplcsim.resolution import PredictedPeak
 
 Severity = Literal["info", "warning", "strong"]
+
+# Every diagnostic this module can emit. A Literal rather than a bare str because three
+# places downstream switch on it — the table's badge labels, the status bar's stamp, the
+# chromatogram's crossing caption — and a typo in any of them would silently match
+# nothing. SPEC §6's six, then SPEC §5's two entry checks.
+Code = Literal[
+    "tg_extrapolation",
+    "early_eluter",
+    "beta_spacing",
+    "prediction_crossing",
+    "defaulted_width",
+    "estimated_t0",
+    "area_share",
+    "entry_crossing",
+]
 
 # SPEC §6 diagnostic 1: "info flag when candidate tG leaves [tG1, tG2]; strong warning
 # beyond ~2× outside". "Outside" is multiplicative — the candidate's tG against the
@@ -41,6 +56,11 @@ STRONG_EXTRAPOLATION = 2.0
 # peak whose share grows and so the more conservative reading of "relative change".
 AREA_SHARE_THRESHOLD = 0.30
 
+# Research doc §4.3's other early-eluter test, beside t'R < t0: "Report a low-confidence
+# flag when k_e at the fitted parameters is below ~1". The engine already sets
+# `RetentionResult.low_confidence` on it; diagnostic 2 is what puts it on screen.
+_MIN_RETENTION_FACTOR = 1.0
+
 
 @dataclass(frozen=True)
 class Diagnostic:
@@ -52,7 +72,7 @@ class Diagnostic:
     the method or the condition as a whole.
     """
 
-    code: str
+    code: Code
     severity: Severity
     message: str
     peaks: tuple[str, ...] = ()
@@ -97,21 +117,24 @@ def diagnose(
     if cockpit is None:
         cockpit = run_cockpit(inputs)
 
-    # SPEC §4's one impossibility. Nothing was fitted and nothing predicted, so every
-    # check below would be describing a screen that is not there — a β of 1.0 and a
-    # bracket of zero width are consequences of the block, not further findings.
-    if cockpit.blocked is not None:
-        return Diagnostics()
-
     entry = (
         *_area_share_disagreements(cockpit.entry, area_share_threshold),
         *_entry_crossings(cockpit.entry.tracked),
     )
+
+    # SPEC §4's one impossibility, and the line it draws through this function. Two runs
+    # at one tG fit nothing and predict nothing, so a β of 1.0 and a bracket of zero
+    # width are consequences of the block rather than further findings — but SPEC §5's
+    # entry checks read only the rows the user typed, and the peak table is still there
+    # and still worth checking while they go and fix the gradient time.
+    if cockpit.blocked is not None:
+        return Diagnostics(stamps=_zero_or_one(_estimated_t0(inputs.method)), entry=entry)
+
     return Diagnostics(
-        candidate=_optional(_tg_extrapolation(inputs.candidate, inputs.run1, inputs.run2)),
-        fit=_optional(_beta_spacing(inputs.run1, inputs.run2)),
-        stamps=_optional(_estimated_t0(inputs.method)),
-        banners=_optional(_defaulted_widths(cockpit.defaulted_width_names)),
+        candidate=_zero_or_one(_tg_extrapolation(inputs.candidate, inputs.run1, inputs.run2)),
+        fit=_zero_or_one(_beta_spacing(inputs.run1, inputs.run2)),
+        stamps=_zero_or_one(_estimated_t0(inputs.method)),
+        banners=_zero_or_one(_defaulted_widths(cockpit.defaulted_width_names)),
         entry=entry,
         badges=_badges(cockpit, inputs.method, inputs.candidate),
     )
@@ -138,7 +161,8 @@ def _badges(
     }
 
 
-def _optional(diagnostic: Diagnostic | None) -> tuple[Diagnostic, ...]:
+def _zero_or_one(diagnostic: Diagnostic | None) -> tuple[Diagnostic, ...]:
+    """A check that either fires once or stays quiet, as the group the fields hold."""
     return () if diagnostic is None else (diagnostic,)
 
 
@@ -276,15 +300,6 @@ def _estimated_t0(method: Method) -> Diagnostic | None:
 
 
 @dataclass(frozen=True)
-class _AreaRow:
-    """One row's areas, as the tracking check needs them: a name and two numbers."""
-
-    name: str
-    area_run1: float
-    area_run2: float
-
-
-@dataclass(frozen=True)
 class _EnteredRow:
     """One typed row, whichever half of :class:`~app.pipeline.Entry` it came from.
 
@@ -302,25 +317,28 @@ class _EnteredRow:
 
 
 def _entered_rows(entry: Entry) -> list[_EnteredRow]:
-    """Every non-blank row the user typed, tracked or not."""
+    """Every non-blank row the user typed, tracked or not.
+
+    The annotation is load-bearing: ``Peak`` and ``PeakRow`` share no base class, so
+    without it the concatenation infers as ``object`` and every attribute below fails
+    to typecheck.
+    """
+    rows: list[Peak | PeakRow] = [*entry.tracked, *entry.untracked]
     return [
         _EnteredRow(row.name, row.t_r_run1, row.t_r_run2, row.area_run1, row.area_run2)
-        for row in entry.tracked
-    ] + [
-        _EnteredRow(row.name, row.t_r_run1, row.t_r_run2, row.area_run1, row.area_run2)
-        for row in entry.untracked
+        for row in rows
     ]
 
 
-def _area_rows(entry: Entry) -> list[_AreaRow]:
-    """Every non-blank row carrying an area in *both* runs, tracked or not.
+def _area_rows(entry: Entry) -> list[tuple[str, float, float]]:
+    """Every non-blank row carrying an area in *both* runs, as (name, run 1, run 2).
 
     Untracked rows count: they are part of the sample, so leaving them out of the
     normalisation would move everybody else's share. What they cannot do is be
     compared against a prediction, which is a different check.
     """
     return [
-        _AreaRow(name=row.name, area_run1=row.area_run1, area_run2=row.area_run2)
+        (row.name, row.area_run1, row.area_run2)
         for row in _entered_rows(entry)
         if row.area_run1 is not None and row.area_run2 is not None
     ]
@@ -361,18 +379,21 @@ def _area_share_disagreements(entry: Entry, threshold: float) -> list[Diagnostic
     or that one run's integration of it cannot be trusted.
     """
     rows = _area_rows(entry)
-    total1 = sum(row.area_run1 for row in rows)
-    total2 = sum(row.area_run2 for row in rows)
+    total1 = sum(area1 for _, area1, _ in rows)
+    total2 = sum(area2 for _, _, area2 in rows)
     if len(rows) < 2 or total1 <= 0.0 or total2 <= 0.0:
         return []
 
     relaxed = _co_eluting(entry)
     found = []
-    for row in rows:
-        if row.name in relaxed:
+    for name, area1, area2 in rows:
+        if name in relaxed:
             continue
-        share1 = row.area_run1 / total1
-        share2 = row.area_run2 / total2
+        share1 = area1 / total1
+        share2 = area2 / total2
+        # A peak integrated as nothing in run 1 has no share to measure a change
+        # against. Rare, and not a case SPEC §5 gives a rule for — so it is left
+        # unchecked rather than given an invented one.
         if share1 <= 0.0:
             continue
         change = abs(share2 - share1) / share1
@@ -383,7 +404,7 @@ def _area_share_disagreements(entry: Entry, threshold: float) -> list[Diagnostic
                 code="area_share",
                 severity="warning",
                 message=(
-                    f"**{row.name}: area share moves {change:.0%} between the scouting "
+                    f"**{name}: area share moves {change:.0%} between the scouting "
                     f"runs** ({share1:.1%} → {share2:.1%}, past the {threshold:.0%} "
                     "tracking check). A compound is the same fraction of the sample in "
                     "both runs, so either these two rows are not the same peak, or one "
@@ -391,7 +412,7 @@ def _area_share_disagreements(entry: Entry, threshold: float) -> list[Diagnostic
                     "the pairing before trusting this row's fit — and treat its W½ in "
                     "that run with the same suspicion."
                 ),
-                peaks=(row.name,),
+                peaks=(name,),
             )
         )
     return found
@@ -416,15 +437,24 @@ def _early_eluters(
     for peak in peaks:
         t_r_prime = peak.retention.t_r - method.t0 - tau
         in_the_hold = peak.retention.regime == "isocratic_hold"
-        if not in_the_hold and t_r_prime >= method.t0:
+        barely_retained = peak.retention.k_e < _MIN_RETENTION_FACTOR
+        if not in_the_hold and t_r_prime >= method.t0 and not barely_retained:
             continue
-        reason = (
-            "never meets the gradient — it leaves the column while the eluent is still "
-            f"at the starting %B, {tau:.3g} min of dwell and hold"
-            if in_the_hold
-            else f"leaves {t_r_prime:.3g} min after the gradient reaches the column, "
-            f"inside one t0 ({method.t0:g} min) of it"
-        )
+        if in_the_hold:
+            reason = (
+                "never meets the gradient — it leaves the column while the eluent is "
+                f"still at the starting %B, {tau:.3g} min of dwell and hold"
+            )
+        elif t_r_prime < method.t0:
+            reason = (
+                f"leaves {t_r_prime:.3g} min after the gradient reaches the column, "
+                f"inside one t0 ({method.t0:g} min) of it"
+            )
+        else:
+            reason = (
+                f"leaves the column at k = {peak.retention.k_e:.2f}, below the k = "
+                f"{_MIN_RETENTION_FACTOR:g} the model needs to mean much"
+            )
         found[peak.name] = Diagnostic(
             code="early_eluter",
             severity="warning",

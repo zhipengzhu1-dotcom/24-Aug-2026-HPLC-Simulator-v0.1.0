@@ -469,16 +469,50 @@ def test_the_entry_side_beta_is_the_number_the_fit_reports() -> None:
     assert {fit.beta for _, fit in cockpit.fitted} == {scouting_beta(LAB_RUN1, LAB_RUN2)}
 
 
-def test_a_blocked_cockpit_leaves_its_own_message_to_speak_alone() -> None:
+def test_a_blocked_cockpit_says_nothing_the_two_runs_would_have_implied() -> None:
     """Two runs at one tG is SPEC §4's single impossibility, and `Cockpit.blocked` says so.
 
     Nothing is fitted and nothing is predicted, so a β = 1.0 spacing warning and an
     extrapolation flag against a zero-width bracket would be noise stacked on a block.
     """
     inputs = _lab_inputs(run2=replace(LAB_RUN1, name="tG15 again"))
+    diagnostics = _at(inputs)
+
     assert run_cockpit(inputs).blocked is not None
-    assert _at(inputs).all == ()
+    assert (diagnostics.candidate, diagnostics.fit, diagnostics.banners) == ((), (), ())
+    assert diagnostics.badges == {}
+
+
+def test_a_blocked_cockpit_still_checks_the_rows_the_user_typed() -> None:
+    """The §5 entry checks read only typed rows, and the peak table is still on screen.
+
+    Silencing them would mean a chromatographer who has also mis-paired two peaks learns
+    about it only after fixing an unrelated gradient time.
+    """
+    inputs = _lab_inputs(run2=replace(LAB_RUN1, name="tG15 again"), rows=_lab_rows())
+    assert [d.code for d in _at(inputs).entry] == ["area_share"]
 
 
 def test_nothing_entered_at_all_is_a_quiet_screen() -> None:
     assert _at(_lab_inputs(rows=())).all == ()
+
+
+def test_a_peak_that_leaves_at_k_below_one_is_early_however_late_it_looks() -> None:
+    """Research doc §4.3's other early-eluter test, beside t'R < t0: "k_e ... below ~1".
+
+    The fixture isolates that clause rather than riding on the other two. Under a 3 min
+    gradient "Mid" leaves at k = 0.96 but 1.13 min after the ramp arrives — comfortably
+    past t0 = 0.6 min and squarely in the gradient regime, so neither of the other two
+    tests fires. The engine already sets `RetentionResult.low_confidence` on it and
+    nothing in the app read that, which is how a barely-retained peak stayed silent.
+    """
+    rows = _rows_predicted_at(LAB_RUN1, LAB_RUN2, [_MID, _SHALLOW_S])
+    inputs = _lab_inputs(rows=rows, candidate=Gradient(0.05, 0.95, 3.0, 0.5))
+    predicted = run_cockpit(inputs).predicted_by_name["Mid"].retention
+
+    assert predicted.regime == "gradient"
+    assert predicted.k_e < 1.0
+    assert predicted.t_r - LAB_METHOD.t0 - (LAB_METHOD.t_dwell + 0.5) > LAB_METHOD.t0
+
+    (badge,) = [b for b in _at(inputs).badges["Mid"] if b.code == "early_eluter"]
+    assert "k = 0.96" in badge.message

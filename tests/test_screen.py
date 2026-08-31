@@ -102,12 +102,9 @@ def test_an_estimated_t0_stamps_the_status_bar_whatever_tab_is_open() -> None:
     stamped = [m.value for m in app.markdown if "hs-status" in m.value]  # type: ignore[attr-defined]
     assert any("t0 estimated" in bar for bar in stamped)
 
-
-def test_the_scouting_spacing_reaches_the_rail_as_a_value() -> None:
-    """Diagnostic 3's number, on the panel that is on screen whichever tab is open."""
-    app = _running_app()
-    summary = [m.value for m in app.markdown if "Method summary" in m.value]  # type: ignore[attr-defined]
-    assert any("Scouting β" in panel and ">3.00<" in panel for panel in summary)
+    # SPEC §6.6 says *all* outputs, and the rail's panels are outputs too.
+    captions = [c.value for c in app.caption]  # type: ignore[attr-defined]
+    assert any("Estimated t0" in caption for caption in captions)
 
 
 def test_a_narrow_scouting_pair_paints_the_spacing_notice_before_any_peak_is_typed() -> None:
