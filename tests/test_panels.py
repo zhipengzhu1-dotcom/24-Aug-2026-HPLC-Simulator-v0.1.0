@@ -106,6 +106,15 @@ def test_a_value_column_that_cannot_wrap_would_clip_its_own_numbers() -> None:
     assert "overflow-wrap: anywhere" in STYLE
 
 
+def _rule(selector: str) -> str:
+    """One CSS rule's body, by selector — so a test names the rule it is about."""
+    from app.panels import STYLE
+
+    marker = f"{selector} {{"
+    assert STYLE.count(marker) == 1, f"{selector} is not defined exactly once"
+    return STYLE.split(marker, 1)[1].split("}", 1)[0]
+
+
 def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
     """Pins the fix for a real defect: the sidebar hid the bar's leading fields.
 
@@ -162,19 +171,46 @@ def test_the_chromatogram_is_pinned_without_being_fixed_to_the_viewport() -> Non
     shipped with the status bar. Sticky lays this out inside the main column instead,
     where it cannot reach the sidebar and degrades to sitting in the flow.
     """
-    from app.panels import STYLE
-
-    rule = STYLE.split(".st-key-hs-chromatogram {", 1)[1].split("}", 1)[0]
+    rule = _rule(".st-key-hs-chromatogram")
     assert "position: sticky" in rule
     assert "position: fixed" not in rule
-    # A transparent sticky element shows the tab content scrolling through it.
-    assert "background: #ffffff" in rule
 
 
-def test_the_pinned_chromatogram_sits_above_the_status_bar_not_over_it() -> None:
-    """Both are sticky to the bottom; the shorter one owns 0 and the taller clears it."""
-    from app.panels import STYLE
+def test_the_pinned_chromatogram_clears_the_status_bar_by_a_derived_offset() -> None:
+    """Both are sticky to the bottom. The shorter one owns 0; the taller must clear it.
 
-    chromatogram_rule = STYLE.split(".st-key-hs-chromatogram {", 1)[1].split("}", 1)[0]
-    assert "bottom: 34px" in chromatogram_rule
-    assert "bottom: 0" in STYLE.split(".hs-status {", 1)[1].split("}", 1)[0]
+    The offset is computed from the tokens that give the status bar its height, not
+    measured by eye — a number guessed once goes stale the moment the bar's padding or
+    font size changes, and the two would then overlap with nothing to catch it.
+    """
+    assert "bottom: 0" in _rule(".hs-status")
+    assert "bottom: var(--hs-status-height)" in _rule(".st-key-hs-chromatogram")
+
+    # The derivation and the bar itself must read the same tokens, or it is not derived.
+    root, bar = _rule(":root"), _rule(".hs-status")
+    for token in ("--hs-status-pad", "--hs-status-font", "--hs-status-line"):
+        assert token in root, f"{token} is not defined"
+        assert f"var({token})" in bar, f"the status bar does not use {token}"
+    assert "--hs-status-height: calc(" in root
+
+
+def test_the_pinned_chromatogram_is_opaque() -> None:
+    """A sticky element that is even slightly transparent shows the tabs scroll through."""
+    surface = _rule(":root")
+    assert "--hs-surface: #ffffff" in surface
+    assert "background: var(--hs-surface)" in _rule(".st-key-hs-chromatogram")
+
+
+def test_the_pinned_chromatogram_cannot_grow_to_cover_the_tabs_it_sits_beneath() -> None:
+    """Pinned screen is screen the reader cannot scroll away, so its height is capped.
+
+    Ticket #19 drew the plot at 380 px in normal flow. Pinned, that plus its caption
+    takes over half a laptop viewport — it would cover the tabs SPEC §7 puts it beneath.
+    """
+    from app.chromatogram import CHROMATOGRAM_HEIGHT
+
+    assert CHROMATOGRAM_HEIGHT < 380
+    rule = _rule(".st-key-hs-chromatogram")
+    assert "max-height: 46vh" in rule
+    # Capping without a scroll would clip the plot instead of yielding.
+    assert "overflow: auto" in rule

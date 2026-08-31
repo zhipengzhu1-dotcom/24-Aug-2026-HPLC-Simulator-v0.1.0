@@ -116,6 +116,23 @@ def status_bar(fields: Sequence[str]) -> str:
 
 STYLE = """
 <style>
+  /* The status bar's height is *derived* from the tokens that make it, not measured by
+     eye. The pinned chromatogram has to clear that bar exactly, and a number guessed
+     once is a number that goes stale the moment the padding or the font size changes;
+     this way both rules move together. */
+  :root {
+    --hs-status-pad: 4px;
+    --hs-status-font: 0.76rem;
+    --hs-status-line: 1.5;
+    --hs-status-height: calc(
+      var(--hs-status-font) * var(--hs-status-line) + var(--hs-status-pad) * 2 + 1px
+    );
+    /* The app's own page colour, which the pinned chromatogram has to match: a sticky
+       element that is even slightly transparent shows the tabs scrolling through it.
+       This stylesheet is a light palette throughout (#19), and this is its page white. */
+    --hs-surface: #ffffff;
+  }
+
   .block-container { padding-top: 2.2rem; padding-bottom: 1rem; max-width: 100%; }
   section[data-testid="stSidebar"] { border-right: 1px solid #c3ceda; }
   section[data-testid="stSidebar"] .stNumberInput label,
@@ -156,20 +173,27 @@ STYLE = """
   .hs-status {
     position: sticky; bottom: 0; z-index: 90; margin-top: 10px;
     background: #dbe6f2; border-top: 1px solid #b9c6d6;
-    padding: 4px 14px; font-size: 0.76rem; color: #24445f;
+    padding: var(--hs-status-pad) 14px; font-size: var(--hs-status-font);
+    line-height: var(--hs-status-line); color: #24445f;
   }
   .hs-status-cell { margin-right: 22px; font-variant-numeric: tabular-nums; }
 
   /* SPEC §7's sticky chromatogram. Same technique as the status bar and the same
      reason for it: sticky inside the main column, never fixed to the viewport, so it
-     cannot reach under the sidebar and it degrades to sitting in the flow if sticky is
-     defeated. `bottom` clears the status bar, which is sticky at 0 and shorter than
-     this; the opaque background is load-bearing, because a transparent sticky element
-     shows the tab content scrolling through it. Addressed by the container key set in
-     streamlit_app.py — Streamlit turns `key="hs-chromatogram"` into this class. */
+     cannot reach under the sidebar, and it degrades to sitting in the flow if sticky is
+     ever defeated. It sits directly on top of the status bar, which is sticky at 0 —
+     hence the derived offset rather than a measured one. Addressed by the container key
+     set in streamlit_app.py; Streamlit turns `key="hs-chromatogram"` into this class.
+
+     `max-height` is the guard that matters. A pinned block is screen the user cannot
+     scroll out of the way, so a chromatogram that grew tall enough would cover the very
+     tabs it is pinned beneath. The plot is drawn short (see CHROMATOGRAM_HEIGHT) and
+     this caps the whole block regardless — on a short laptop viewport it yields rather
+     than eating the page. */
   .st-key-hs-chromatogram {
-    position: sticky; bottom: 34px; z-index: 80;
-    background: #ffffff; border-top: 1px solid #c3ceda; padding-top: 4px;
+    position: sticky; bottom: var(--hs-status-height); z-index: 80;
+    background: var(--hs-surface); border-top: 1px solid #c3ceda; padding-top: 4px;
+    max-height: 46vh; overflow: auto;
   }
 
   .hs-worksheet {

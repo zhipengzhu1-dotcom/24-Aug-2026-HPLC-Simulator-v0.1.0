@@ -116,6 +116,9 @@ _BY_TIME = "Time (min)"
 
 _UNTITLED = "Untitled session"
 
+# SPEC §6 diagnostic 6's short form. One wording, wherever an output surface carries it.
+_STAMP_SHORT = "⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6)."
+
 
 class Keys:
     """Every widget's ``session_state`` key, in one place (ticket #21).
@@ -910,20 +913,29 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
 
 
 def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
-    st.subheader(
-        f"Predicted chromatogram — tG {candidate.t_gradient:g} min, hold {candidate.t_init:g} min"
+    """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
+
+    This block is sticky, so its height is screen the reader cannot scroll away. The
+    condition, the area caveat and diagnostic 6's stamp all still have to appear — they
+    are on one caption line beside the title rather than three stacked rows beneath it.
+    """
+    st.markdown(
+        f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
+        f"hold {candidate.t_init:g} min"
     )
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return
     trace = chromatogram.chromatogram(cockpit.resolution.peaks, cockpit.shares)
     st.plotly_chart(chromatogram.figure(trace), width="stretch")
-    _stamp_caption(diagnostics)
-    st.caption(
+    notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
         else "Not every peak carries an area — all peaks drawn to the same height."
-    )
+    ]
+    if diagnostics.stamps:
+        notes.append(_STAMP_SHORT)
+    st.caption("  ·  ".join(notes))
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:
@@ -934,7 +946,7 @@ def _stamp_caption(diagnostics: Diagnostics) -> None:
     no output is read without it and no output is buried under it.
     """
     if diagnostics.stamps:
-        st.caption("⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6).")
+        st.caption(_STAMP_SHORT)
 
 
 main()

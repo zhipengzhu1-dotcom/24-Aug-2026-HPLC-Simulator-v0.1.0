@@ -105,7 +105,15 @@ def _grid_points(start: float, stop: float, narrowest_sigma: float) -> int:
     return int(min(max(wanted, _MIN_POINTS), _MAX_POINTS))
 
 
-def figure(trace: Chromatogram, *, height: int = 380) -> Any:
+# SPEC §7 pins the chromatogram beneath the tabs, "always visible". A pinned block is
+# screen the reader cannot scroll out of the way, so its height is not a free choice:
+# ticket #19 drew it at 380 px in normal flow, which pinned would take over half a
+# laptop viewport and cover the tabs it sits beneath. 300 px still shows the peak shapes
+# and the baseline between them, which is what the trace is read for.
+CHROMATOGRAM_HEIGHT = 300
+
+
+def figure(trace: Chromatogram, *, height: int = CHROMATOGRAM_HEIGHT) -> Any:
     """The Plotly figure for a rendered trace — the hero of SPEC §7's Cockpit."""
     fig = go.Figure()
     fig.add_trace(
@@ -142,7 +150,9 @@ def figure(trace: Chromatogram, *, height: int = 380) -> Any:
         )
     fig.update_layout(
         height=height,
-        margin={"l": 10, "r": 10, "t": 44, "b": 10},
+        # The subheader above the plot already names the condition, so the top margin
+        # only has to clear the tallest peak label — every pixel here is pinned screen.
+        margin={"l": 10, "r": 10, "t": 28, "b": 10},
         showlegend=False,
         xaxis_title="time (min)",
         yaxis_title="response (relative)" if trace.scaled_by_area else "response (equal heights)",
