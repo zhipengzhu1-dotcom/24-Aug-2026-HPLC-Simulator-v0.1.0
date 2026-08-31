@@ -52,7 +52,7 @@ Normative detail with derivations, symbol table, and citations: `docs/research/g
 
 ## 5. Peak tracking ([#5](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/5))
 
-Manual and implicit: **one row per compound**, tR(run 1) and tR(run 2) side by side — the chromatographer pairs peaks while typing. The app checks rather than performs the pairing: area-share disagreement warning (default threshold ~30% relative change — the lab dataset's peaks 2–3 exceed it, a good live test); elution-order crossing flags for confirmation; rows missing either tR stay visible as "untracked — not fitted", excluded from fit/prediction/resolution with a visible count; within-run co-elution entry legal (area check relaxes). The engine receives only confirmed, complete pairs.
+Manual and implicit: **one row per compound**, tR(run 1) and tR(run 2) side by side — the chromatographer pairs peaks while typing. The app checks rather than performs the pairing: area-share disagreement warning (default threshold ~30% relative change, measured against the first run's share — on the lab dataset peak 2 moves 40.9% and fires, peak 3 moves 26.7% and does not, peak 1 moves 22.8%; a good live test, and the two peaks the integrator mis-measured are the two the check ranks highest); elution-order crossing flags for confirmation; rows missing either tR stay visible as "untracked — not fitted", excluded from fit/prediction/resolution with a visible count; within-run co-elution entry legal (area check relaxes). The engine receives only confirmed, complete pairs.
 
 ## 6. Diagnostics ([#9](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/9))
 
@@ -149,6 +149,7 @@ streamlit_app.py  # the app's entry point — at the root because `streamlit run
                   # import app.pipeline at all
 app/              # the Cockpit: depends on the engine, never the reverse
   pipeline.py     # entry -> fit -> prediction, Streamlit-free (what the app's tests target)
+  diagnostics.py  # §5's entry checks and §6's six diagnostics, thresholds and wording
   chromatogram.py # the Gaussian sum, and the v0.2 resolution-map frame
   tables.py       # the display frames; the base-10 display boundary
   panels.py       # the left rail's label/value blocks

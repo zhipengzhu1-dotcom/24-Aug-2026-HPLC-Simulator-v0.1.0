@@ -27,8 +27,12 @@ _LOW_K0_LOG10 = 2.1
 # SPEC §4's spacing-ratio tiers — "warning < 2.5, strong < 1.2, never a hard block".
 # Research doc §7.2's table is the evidence behind them: at β = 1.2 a 0.6 s timing
 # error already moves S by 2%, and by β = 1.05 it moves it by 9%.
-_BETA_WARNING = 2.5
-_BETA_STRONG = 1.2
+#
+# Public, and :func:`classify_spacing` with them, because SPEC §4 applies the same two
+# tiers at *entry* — before any peak has been fitted — and ticket #20's entry check
+# would otherwise be a second copy of these two numbers in the app layer.
+BETA_WARNING = 2.5
+BETA_STRONG = 1.2
 
 # The SPEC §3 self-check tolerance: the fit must reproduce both input retention times.
 _MAX_RESIDUAL = 1e-8
@@ -110,7 +114,7 @@ def fit_peak(peak: Peak, method: Method, run1: Run, run2: Run) -> FitResult:
         for run, t_r in ((run1, peak.t_r_run1), (run2, peak.t_r_run2))
     )
     low_k0 = log10_k0_from_ln_k0(params.ln_k0) < _LOW_K0_LOG10
-    beta_spacing = _classify_spacing(oriented.beta)
+    beta_spacing = classify_spacing(oriented.beta)
     return FitResult(
         params=params,
         beta=oriented.beta,
@@ -125,11 +129,11 @@ def fit_peak(peak: Peak, method: Method, run1: Run, run2: Run) -> FitResult:
     )
 
 
-def _classify_spacing(beta: float) -> BetaSpacing:
+def classify_spacing(beta: float) -> BetaSpacing:
     """SPEC §4's spacing-ratio tiers — a warning, never a block."""
-    if beta < _BETA_STRONG:
+    if beta < BETA_STRONG:
         return "strong"
-    if beta < _BETA_WARNING:
+    if beta < BETA_WARNING:
         return "warning"
     return "ok"
 
@@ -165,6 +169,21 @@ def _orient(peak: Peak, method: Method, run1: Run, run2: Run) -> _Oriented:
         raise ValueError(
             "shallower run elutes this peak at a higher %B than the steeper run: "
             "no LSS solution exists — check peak tracking"
+        )
+    # The other end of the same bracket, and the one that used to hang. g'(0) has the
+    # sign of (t'_steep − t'_shallow), so when the steeper run elutes the band *later*
+    # g never dips below zero, the root-find in :func:`_solve_steepness` has nothing to
+    # bracket, and its walk down shrinks the lower bound to 0.0 and spins there. A
+    # steeper gradient cannot elute a compound later than a shallower one, so these data
+    # are inconsistent whatever the cause — found while wiring ticket #20's entry checks,
+    # where swapping the two tR columns reaches it from the screen.
+    if t_prime_steep >= t_prime_shallow:
+        raise ValueError(
+            f"steeper run (tG {steep.gradient.t_gradient:g} min) elutes this peak at "
+            f"t'R = {t_prime_steep:.4g} min, later than the shallower run "
+            f"(tG {shallow.gradient.t_gradient:g} min) at {t_prime_shallow:.4g} min: "
+            "no LSS solution exists — check that the two runs' retention times are the "
+            "right way round, and check peak tracking"
         )
     return _Oriented(
         steep=steep,

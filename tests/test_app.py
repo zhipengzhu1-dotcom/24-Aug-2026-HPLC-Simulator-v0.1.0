@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from app.chromatogram import Chromatogram, chromatogram
+from app.diagnostics import diagnose
 from app.pipeline import (
     Cockpit,
     CockpitInputs,
@@ -29,6 +30,7 @@ from app.pipeline import (
 from app.tables import (
     COMPOUND,
     FIT_COLUMNS,
+    FLAGS,
     N_RATIO,
     PEAK_COLUMNS,
     PREDICTION_COLUMNS,
@@ -514,14 +516,14 @@ def test_every_table_keeps_its_columns_when_there_is_nothing_to_put_in_them() ->
     empty = run_cockpit(_lab_inputs(rows=()))
 
     assert tuple(fit_frame(empty).columns) == FIT_COLUMNS
-    assert tuple(prediction_frame(empty).columns) == PREDICTION_COLUMNS
+    assert tuple(prediction_frame(empty, {}).columns) == PREDICTION_COLUMNS
     assert tuple(resolution_frame(empty).columns) == RESOLUTION_COLUMNS
 
 
 def test_the_prediction_and_resolution_tables_are_in_elution_order() -> None:
     """Order is a property of the condition, not of the typed list (research doc §7.4)."""
     cockpit = run_cockpit(_lab_inputs())
-    times = list(prediction_frame(cockpit)["tR (min)"])
+    times = list(prediction_frame(cockpit, {})["tR (min)"])
     pairs = list(resolution_frame(cockpit)["Pair"])
 
     assert times == sorted(times)
@@ -532,7 +534,7 @@ def test_the_resolution_table_agrees_with_the_times_and_widths_beside_it() -> No
     """Rs = ΔtR / 2(σ₁+σ₂) — the same numbers, not a second calculation."""
     cockpit = run_cockpit(_lab_inputs())
     assert cockpit.resolution is not None
-    predicted = prediction_frame(cockpit).set_index(COMPOUND)
+    predicted = prediction_frame(cockpit, {}).set_index(COMPOUND)
     resolutions = resolution_frame(cockpit)
     w_half_per_sigma = math.sqrt(8.0 * math.log(2.0))
 
@@ -608,3 +610,28 @@ def test_names_that_are_already_distinct_are_left_exactly_as_typed() -> None:
 
     assert [peak.name for peak in entry.tracked] == ["Caffeine", "Theophylline"]
     assert entry.renamed == ()
+
+
+def test_the_prediction_table_carries_each_peaks_badges_beside_it() -> None:
+    """SPEC §6's per-peak badges (diagnostics 2 and 4), as a column the eye can scan.
+
+    The sentence belongs to the selected-peak panel; the table needs one scannable word
+    per row, and an empty string where a peak has nothing wrong with it.
+    """
+    inputs = _lab_inputs()
+    cockpit = run_cockpit(inputs)
+    frame = prediction_frame(cockpit, diagnose(inputs, cockpit).badges)
+
+    assert list(frame.columns) == list(PREDICTION_COLUMNS)
+    assert list(frame[FLAGS]) == ["", "", ""]
+
+
+def test_a_badged_peak_is_labelled_in_the_flags_column() -> None:
+    early = PeakRow(name="Early", t_r_run1=2.458, t_r_run2=2.483)
+    inputs = _lab_inputs(rows=(*(_row(peak) for peak in LAB_MEASURED_PEAKS), early))
+    cockpit = run_cockpit(inputs)
+    frame = prediction_frame(cockpit, diagnose(inputs, cockpit).badges)
+
+    flags = dict(zip(frame[COMPOUND], frame[FLAGS], strict=True))
+    assert flags["Early"] == "early eluter"
+    assert flags["Unknown-1"] == ""
