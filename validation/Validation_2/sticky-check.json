@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "app_version": "0.1.0",
+  "session_name": "Sticky check (Validation_2)",
+  "method": {
+    "column_length_mm": 100.0,
+    "column_id_mm": 2.1,
+    "particle_um": 1.6,
+    "flow_ml_min": 0.4,
+    "temperature_c": 45.0,
+    "t0_min": 0.6,
+    "t0_source": "measured",
+    "dwell_min": 0.9375,
+    "pct_b_start": 5.0,
+    "pct_b_end": 95.0,
+    "hold_min": 0.5
+  },
+  "runs": [
+    {
+      "tg_min": 15.0,
+      "name": "run1"
+    },
+    {
+      "tg_min": 40.0,
+      "name": "run2"
+    }
+  ],
+  "peaks": [
+    {
+      "name": "Unknown-1",
+      "tr_run1_min": 13.219,
+      "tr_run2_min": 28.036,
+      "w_half_run1_min": 0.025,
+      "w_half_run2_min": 0.056
+    },
+    {
+      "name": "Unknown-2",
+      "tr_run1_min": 13.317,
+      "tr_run2_min": 28.296,
+      "w_half_run1_min": 0.023,
+      "w_half_run2_min": 0.054
+    },
+    {
+      "name": "Unknown-3",
+      "tr_run1_min": 13.517,
+      "tr_run2_min": 28.805,
+      "w_half_run1_min": 0.025,
+      "w_half_run2_min": 0.057
+    },
+    {
+      "name": "Unknown-4",
+      "tr_run1_min": 13.584,
+      "tr_run2_min": 28.984,
+      "w_half_run1_min": 0.023,
+      "w_half_run2_min": 0.053
+    }
+  ],
+  "candidate": {
+    "tg_min": 20.0,
+    "hold_min": 0.5
+  }
+}

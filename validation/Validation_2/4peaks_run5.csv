@@ -1,0 +1,23 @@
+﻿tG_min,25,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,31.862,,,
+Unknown-2,32.569,,,
+Unknown-3,34.054,,,
+Unknown-4,34.639,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,85,15
+2,0.5,0.4,85,15
+3,25.5,0.4,45,55
+4,45,0.4,45,55
+5,45.1,0.4,5,95
+6,48,0.4,5,95
+7,48.1,0.4,75,25
+8,52,0.4,75,25
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on 4peaks_run1.csv + 4peaks_run2.csv,,,
+predicted_on,2026-09-02,,,
+confidence,LOW - all four peaks post_gradient (elute in the 55 %B hold not the ramp); s* 0.0096 is outside the scouting bracket 0.0135-0.0360,,,
