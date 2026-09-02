@@ -187,7 +187,7 @@ End-to-end trust bar — **already passed pre-build** on the lab dataset and re-
 
 ## 11. Roadmap ([#10](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/10))
 
-v0.2 resolution map / optimizer (max-of-minimum Rs over swept tG/hold) → v0.3 gradient freedom (changed φ0/φf + multi-segment) → v0.4 CSV import + auto peak-matching + ≥2-run regression (+ isocratic mode) → v0.5 temperature (2×2) → v0.6 colleague hosting + sharing → v0.7 pH (three-run design) → v0.8 column selectivity DB + method transfer → v0.9+ structure-based (pKa/logD) prediction.
+v0.2 gradient freedom (changed φ0/φf + multi-segment) → v0.3 CSV import + auto peak-matching + ≥2-run regression (+ isocratic mode) → v0.4 temperature (2×2) → v0.5 colleague hosting + sharing → v0.6 pH (three-run design) → v0.7 resolution map / optimizer, as a filled map over live axes (tG × φf, temperature, pH) → v0.8 column selectivity DB + method transfer → v0.9+ structure-based (pKa/logD) prediction.
 
 ## 12. Assets
 
