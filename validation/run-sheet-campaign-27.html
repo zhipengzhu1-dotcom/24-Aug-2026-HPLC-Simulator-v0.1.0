@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gradient Freedom Run Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<!-- Printable bench run sheet for campaign #27 (issue #27) and the ticket queue for map #41.
+     Generated 2026-09-02. Open in a browser; Cmd-P to print. -->
+</head>
+<body>
+<style>
+  :root{
+    --paper:#FFFFFF; --ground:#F4F6F2; --sunk:#EBEEE8;
+    --ink:#111614; --ink-2:#495250; --ink-3:#7B8481;
+    --rule:#C9D0C7; --rule-2:#E2E7E0; --hair:#9AA49F;
+    --accent:#0F5E6B; --accent-soft:#DDEBEC;
+    --warn:#9E3C26; --warn-soft:#F6E4DE;
+    --go:#2F6740; --go-soft:#DEEAE0;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#151A18; --ground:#0D110F; --sunk:#1B211E;
+      --ink:#EAF0EB; --ink-2:#A2ADA8; --ink-3:#79837E;
+      --rule:#2C3431; --rule-2:#232A27; --hair:#4A5450;
+      --accent:#5DB5C3; --accent-soft:#13302F;
+      --warn:#E08D75; --warn-soft:#33201B;
+      --go:#7EBD8D; --go-soft:#182B1E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#151A18; --ground:#0D110F; --sunk:#1B211E;
+    --ink:#EAF0EB; --ink-2:#A2ADA8; --ink-3:#79837E;
+    --rule:#2C3431; --rule-2:#232A27; --hair:#4A5450;
+    --accent:#5DB5C3; --accent-soft:#13302F;
+    --warn:#E08D75; --warn-soft:#33201B;
+    --go:#7EBD8D; --go-soft:#182B1E;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font:15px/1.55 "IBM Plex Sans","Helvetica Neue",Arial,sans-serif;}
+  .sheet{max-width:860px;margin:0 auto 26px;background:var(--paper);
+    border:1px solid var(--rule);padding:34px 40px 40px;}
+  .sheet:first-of-type{margin-top:26px;}
+
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
+    border-bottom:2.5px solid var(--ink);padding-bottom:12px;flex-wrap:wrap;}
+  .head h1{margin:0;font:700 30px/1.05 "IBM Plex Sans Condensed",sans-serif;letter-spacing:-.01em;}
+  .head .sub{margin:5px 0 0;font:400 13.5px/1.4 "IBM Plex Sans",sans-serif;color:var(--ink-2);max-width:46ch;}
+  .head .stamp{font:600 10.5px/1.7 "IBM Plex Mono",monospace;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-3);text-align:right;white-space:nowrap;}
+
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+    gap:16px 26px;margin:18px 0 0;}
+  .fld{padding:9px 0 3px;border-bottom:1px solid var(--hair);}
+  .fld span{font:600 9.5px/1 "IBM Plex Mono",monospace;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:20px;}
+
+  h2{font:700 13px/1.2 "IBM Plex Mono",monospace;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--accent);margin:34px 0 4px;padding-bottom:5px;border-bottom:1px solid var(--rule);
+    display:flex;gap:11px;align-items:baseline;}
+  h2 .step{color:var(--ink);font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;flex:none;}
+  h3{font:600 15.5px/1.3 "IBM Plex Sans",sans-serif;margin:22px 0 6px;}
+  p{margin:0 0 11px;max-width:70ch;}
+  .note{font-size:13.5px;color:var(--ink-2);}
+  code,.mono{font-family:"IBM Plex Mono",monospace;font-size:.9em;}
+  code{background:var(--sunk);padding:1px 4px;border-radius:2px;}
+
+  ul.check{list-style:none;padding:0;margin:12px 0 0;}
+  ul.check li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start;
+    padding:6px 0;border-bottom:1px solid var(--rule-2);font-size:14.5px;}
+  ul.check li:last-child{border-bottom:0;}
+  ul.check li::before{content:"";display:block;width:14px;height:14px;margin-top:4px;
+    border:1.5px solid var(--hair);border-radius:2px;}
+
+  .runcard{border:1px solid var(--rule);margin:18px 0 0;background:var(--paper);break-inside:avoid;}
+  .runcard > .rh{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+    padding:10px 14px;background:var(--sunk);border-bottom:1px solid var(--rule);flex-wrap:wrap;}
+  .runcard .rt{font:700 17px/1.2 "IBM Plex Sans Condensed",sans-serif;}
+  .runcard .rt em{font-style:normal;color:var(--ink-2);font-weight:600;font-size:14px;}
+  .runcard .rs{font:500 12px/1.5 "IBM Plex Mono",monospace;color:var(--ink-2);}
+  .runbody{padding:14px;display:grid;grid-template-columns:minmax(230px,1fr) minmax(250px,1.2fr);gap:20px;}
+  .why{font-size:13.5px;line-height:1.5;color:var(--ink-2);margin:0 0 10px;}
+  .why b{color:var(--ink);}
+
+  table{border-collapse:collapse;width:100%;}
+  caption{text-align:left;font:600 9.5px/1 "IBM Plex Mono",monospace;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink-3);padding-bottom:6px;}
+  th{text-align:left;font:600 9.5px/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-3);padding:5px 8px;border-bottom:1px solid var(--rule);}
+  td{padding:6px 8px;border-bottom:1px solid var(--rule-2);font-size:13.5px;}
+  td.n,th.n{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;}
+  tr:last-child td{border-bottom:0;}
+  td.blank{border-bottom:1px solid var(--hair);height:28px;}
+  tr:last-child td.blank{border-bottom:1px solid var(--hair);}
+  .prog td{font-family:"IBM Plex Mono",monospace;font-size:13px;}
+  .tablewrap{overflow-x:auto;}
+
+  /* Record tables: fixed columns so the write-in cells keep usable width
+     instead of collapsing to nothing (they hold no content to size against). */
+  table.rec{table-layout:fixed;min-width:320px;}
+  table.rec th:first-child,table.rec td:first-child{width:28%;}
+  table.rec th:nth-child(2),table.rec td:nth-child(2){width:19%;}
+  table.rec td:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pred{color:var(--ink-3);}
+
+  .flag{border-left:3px solid var(--warn);background:var(--warn-soft);
+    padding:10px 14px;margin:12px 0 0;font-size:13.5px;line-height:1.5;}
+  .flag b{color:var(--warn);}
+  .tip{border-left:3px solid var(--accent);background:var(--accent-soft);
+    padding:10px 14px;margin:12px 0 0;font-size:13.5px;line-height:1.5;}
+
+  .queue{list-style:none;padding:0;margin:16px 0 0;counter-reset:q;}
+  .queue li{display:grid;grid-template-columns:26px 1fr;gap:12px;padding:13px 0;
+    border-bottom:1px solid var(--rule-2);break-inside:avoid;}
+  .queue li:last-child{border-bottom:0;}
+  .queue li::before{counter-increment:q;content:counter(q);
+    font:700 15px/1 "IBM Plex Sans Condensed",sans-serif;color:var(--accent);
+    border:1px solid var(--rule);border-radius:2px;height:26px;
+    display:flex;align-items:center;justify-content:center;}
+  /* Title left, status chip flushed right, rather than the chip trailing the
+     sentence and wrapping into the middle of the column. */
+  .queue .qt{font-weight:600;margin:0 0 3px;display:flex;align-items:baseline;
+    gap:10px;flex-wrap:wrap;}
+  .queue .qt .tag{margin-left:auto;flex:none;}
+  .queue .qd{font-size:13.5px;color:var(--ink-2);margin:0;line-height:1.5;}
+  .tag{font:600 9.5px/1.7 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;
+    padding:1px 6px;border-radius:2px;margin-left:7px;white-space:nowrap;}
+  .t-go{background:var(--go-soft);color:var(--go);}
+  .t-wait{background:var(--sunk);color:var(--ink-3);}
+
+  .sig{display:grid;grid-template-columns:1fr 1fr;gap:0 34px;margin:30px 0 0;}
+  footer{max-width:860px;margin:0 auto 40px;padding:0 40px;
+    font:400 11.5px/1.6 "IBM Plex Mono",monospace;color:var(--ink-3);
+    display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+
+  /* The runbody grid's two columns have min widths that together exceed a phone
+     viewport, which would push the whole body sideways. Stack them instead.
+     Scoped to `screen`: an A4 page box is ~688px wide, so an unscoped
+     max-width query would stack the printed sheet too. */
+  @media screen and (max-width:760px){
+    .sheet{padding:24px 20px 28px;}
+    .sheet:first-of-type{margin-top:16px;}
+    .runbody{grid-template-columns:1fr;gap:16px;}
+    .head h1{font-size:25px;}
+    .head .stamp{text-align:left;}
+    .sig{grid-template-columns:1fr;gap:22px 0;}
+    footer{padding:0 20px;}
+  }
+
+  @media print{
+    :root{--paper:#fff;--ground:#fff;--sunk:#f2f2f2;--ink:#000;--ink-2:#333;--ink-3:#555;
+      --rule:#999;--rule-2:#ccc;--hair:#666;--accent:#000;--accent-soft:#f2f2f2;
+      --warn:#000;--warn-soft:#f2f2f2;--go:#000;--go-soft:#f2f2f2;}
+    @page{margin:14mm;}
+    body{background:#fff;font-size:10.5pt;}
+    .sheet{max-width:none;margin:0;border:0;padding:0;break-after:page;}
+    /* :first-of-type outranks .sheet, so its 26px screen margin survives into
+       print unless it is cleared here at equal specificity. */
+    .sheet:first-of-type{margin-top:0;}
+    .sheet:last-of-type{break-after:auto;}
+    h2{break-after:avoid;} h3{break-after:avoid;}
+    .runcard,.queue li,ul.check li,.flag,.tip{break-inside:avoid;}
+    .flag,.tip{border-left-width:2px;}
+    footer{display:none;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
+<!-- ============================ SHEET 1 ============================ -->
+<div class="sheet">
+  <div class="head">
+    <div>
+      <h1>Gradient Freedom Run Sheet</h1>
+      <p class="sub">Campaign #27 · three held-out gradients that test a changed %B range, plus the two measurements the acceptance bar has been missing.</p>
+    </div>
+    <div class="stamp">hplcsim · map #41<br>issue #27 · 2 Sept 2026<br>sheet 1 of 3</div>
+  </div>
+
+  <div class="fields">
+    <label class="fld"><span>Date</span></label>
+    <label class="fld"><span>Operator</span></label>
+    <label class="fld"><span>Instrument</span></label>
+    <label class="fld"><span>Column / serial</span></label>
+  </div>
+
+  <h2><span class="step">0</span> Before you start</h2>
+  <p class="note">Every one of these must match the scouting runs, or the held-out comparison is void. Only the composition program changes.</p>
+  <ul class="check">
+    <li>Same column as runs 1–2 — Waters CORTECS UPLC Shield RP18, 100 × 2.1 mm, 1.6 µm</li>
+    <li>Flow <b>0.400 mL/min</b>, column <b>45 °C</b>, sample manager <b>20 °C</b></li>
+    <li>Injection volume <b>10 µL</b>, same diluent (50:50 water:ACN)</li>
+    <li>Same mobile phase pair, freshly prepared, same lot if possible</li>
+    <li>Re-equilibrate <b>≥ 10 column volumes</b> between every run</li>
+    <li>Detector settings unchanged; record wavelength on this sheet if it differs</li>
+  </ul>
+
+  <h2><span class="step">1</span> Measure the dwell volume</h2>
+  <p class="note">Do this <b>first</b> — it is quick and everything else is biased if it is wrong. Current value in <code>method.csv</code> is 0.375 mL taken off a spec sheet, never measured. A wrong dwell shifts every prediction in the same direction.</p>
+  <p class="note"><b>Method</b> (PROTOCOL.md §1): replace the column with a zero-dead-volume union. A = water, B = water + ~0.1% acetone. Detector ≈ 265 nm. Program a sharp linear 0 → 100 %B at 0.400 mL/min. Read t<sub>D</sub> at the <b>midpoint</b> of the absorbance rise.</p>
+  <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+    <label class="fld"><span>t_D midpoint (min)</span></label>
+    <label class="fld"><span>Flow (mL/min)</span></label>
+    <label class="fld"><span>V_D = t_D × F (mL)</span></label>
+    <label class="fld"><span>Spec sheet said</span></label>
+  </div>
+  <div class="tip">If the measured V<sub>D</sub> differs from 0.375 mL by more than about 10%, say so before running anything else — every held-out number in SPEC §10 was computed with the old value and would need re-deriving.</div>
+
+  <h2><span class="step">2</span> Spike in a near-critical pair</h2>
+  <p class="note">The sample is three peaks at Rs 30–116. Nothing is close to co-eluting, which is why SPEC §10's Rs ± 0.3 bar is still unmet and the resolution map is parked. <b>All three runs below still predict a critical pair at Rs 32–34</b> — so without a spike, tomorrow adds no resolution evidence at all.</p>
+  <p class="note">Add something that elutes near an existing unknown. A rough co-elution is worth more here than another clean separation. Record what you added and roughly how much.</p>
+  <div class="fields" style="grid-template-columns:2fr 1fr;">
+    <label class="fld"><span>Spike compound</span></label>
+    <label class="fld"><span>Approx. concentration</span></label>
+  </div>
+</div>
+
+<!-- ============================ SHEET 2 ============================ -->
+<div class="sheet">
+  <div class="head">
+    <div><h1>Runs A · B · C</h1>
+      <p class="sub">Fit stays on runs 1–2 only. These three are held out — the engine never sees them.</p></div>
+    <div class="stamp">sheet 2 of 3</div>
+  </div>
+
+  <p class="note" style="margin-top:16px">Elution composition depends on the gradient <b>only through its steepness</b>, <span class="mono">s* = t0·Δφ/tG</span>. That is why these three were chosen on s*, not on how different their %B ranges look. Predicted values below come from the current engine, fitted on runs 1–2 — <b>they are the thing being tested, not a target to match.</b></p>
+
+  <!-- RUN A -->
+  <div class="runcard">
+    <div class="rh">
+      <span class="rt">Run A <em>· the falsification test</em></span>
+      <span class="rs">15 → 95 %B · tG 22.2 min · s* = 0.01892</span>
+    </div>
+    <div class="runbody">
+      <div>
+        <p class="why"><b>Why.</b> s* is matched to run 3 (0.01890) while the composition window moves. If elution really depends only on steepness, this must predict as well as run 3 did — <b>0.35% average</b>. If it does not, the whole φ story is wrong, and better to know now.</p>
+        <div class="tablewrap"><table class="prog"><caption>Gradient program</caption>
+          <tr><td>0.00 min</td><td class="n">15 %B</td></tr>
+          <tr><td>0.50 min</td><td class="n">15 %B</td></tr>
+          <tr><td>22.70 min</td><td class="n">95 %B</td></tr>
+          <tr><td>then wash / re-equilibrate</td><td class="n">—</td></tr>
+        </table></div>
+        <p class="note" style="margin-top:9px;font-size:12.5px">22.0 min instead of 22.2 puts s* 1% off run 3's — acceptable if 0.1-minute steps are awkward.</p>
+      </div>
+      <div>
+        <div class="tablewrap"><table class="rec"><caption>Record · predicted tR in grey</caption>
+          <thead><tr><th>Compound</th><th class="n">pred. tR</th><th class="n">tR</th><th class="n">area</th><th class="n">W½</th></tr></thead>
+          <tbody>
+            <tr><td>Unknown-1</td><td class="n pred">11.10</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-2</td><td class="n pred">13.96</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-3</td><td class="n pred">21.60</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>spike</td><td class="n pred">—</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+          </tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RUN B -->
+  <div class="runcard">
+    <div class="rh">
+      <span class="rt">Run B <em>· the trap</em></span>
+      <span class="rs">15 → 55 %B · tG 25 min · s* = 0.00840</span>
+    </div>
+    <div class="runbody">
+      <div>
+        <p class="why"><b>Why.</b> tG 25 sits inside the scouting bracket [15, 45], so today's SPEC §6 warning stays <b>silent</b> — but s* is below run 2's 0.01050, outside calibration entirely. This is the case that proves the warning has to bracket on s*, not tG.</p>
+        <div class="tablewrap"><table class="prog"><caption>Gradient program</caption>
+          <tr><td>0.00 min</td><td class="n">15 %B</td></tr>
+          <tr><td>0.50 min</td><td class="n">15 %B</td></tr>
+          <tr><td>25.50 min</td><td class="n">55 %B</td></tr>
+          <tr><td>45.00 min</td><td class="n">55 %B</td></tr>
+          <tr><td>45.10 min</td><td class="n">95 %B <em>(wash)</em></td></tr>
+        </table></div>
+      </div>
+      <div>
+        <div class="tablewrap"><table class="rec"><caption>Record · predicted tR in grey</caption>
+          <thead><tr><th>Compound</th><th class="n">pred. tR</th><th class="n">tR</th><th class="n">area</th><th class="n">W½</th></tr></thead>
+          <tbody>
+            <tr><td>Unknown-1</td><td class="n pred">18.23</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-2</td><td class="n pred">24.48</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-3</td><td class="n pred">105.5</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>spike</td><td class="n pred">—</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+          </tbody></table></div>
+      </div>
+    </div>
+    <div class="flag" style="margin:0 14px 14px">
+      <b>Unknown-3 will not elute in this run.</b> At 55 %B the model puts it at <b>105 min</b>, in the post-gradient hold, and flags it low-confidence. Do not wait for it. The wash step at 45.1 min brings it off — <b>record that time but mark it "wash", not a data point</b>: it eluted under a two-segment program the engine cannot yet predict. Unknowns 1 and 2 are the test here, and they are the critical pair anyway.
+    </div>
+  </div>
+
+  <!-- RUN C -->
+  <div class="runcard">
+    <div class="rh">
+      <span class="rt">Run C <em>· raised start</em></span>
+      <span class="rs">25 → 95 %B · tG 25 min · s* = 0.01470</span>
+    </div>
+    <div class="runbody">
+      <div>
+        <p class="why"><b>Why.</b> In-bracket on steepness, so it isolates the effect of lifting φ<sub>0</sub> on its own. The engine's own low-confidence guard does not trip for Unknown-1 until about 50 %B start, so 25 %B should be clean — this run checks that.</p>
+        <div class="tablewrap"><table class="prog"><caption>Gradient program</caption>
+          <tr><td>0.00 min</td><td class="n">25 %B</td></tr>
+          <tr><td>0.50 min</td><td class="n">25 %B</td></tr>
+          <tr><td>25.50 min</td><td class="n">95 %B</td></tr>
+          <tr><td>then wash / re-equilibrate</td><td class="n">—</td></tr>
+        </table></div>
+      </div>
+      <div>
+        <div class="tablewrap"><table class="rec"><caption>Record · predicted tR in grey</caption>
+          <thead><tr><th>Compound</th><th class="n">pred. tR</th><th class="n">tR</th><th class="n">area</th><th class="n">W½</th></tr></thead>
+          <tbody>
+            <tr><td>Unknown-1</td><td class="n pred">9.49</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-2</td><td class="n pred">13.07</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>Unknown-3</td><td class="n pred">22.89</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td>spike</td><td class="n pred">—</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+          </tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip"><b>W½ matters as much as tR.</b> Without half-height widths these runs give a retention comparison only. With them, the held-out <em>resolution</em> comparison becomes possible — which is the bar SPEC §10 still has open. Three decimal places if the software offers them.</div>
+
+  <h3>Deviations and observations</h3>
+  <div class="fld" style="height:104px"><span>Anything that differed from the plan</span></div>
+</div>
+
+<!-- ============================ SHEET 3 ============================ -->
+<div class="sheet">
+  <div class="head">
+    <div><h1>After the bench</h1>
+      <p class="sub">The ticket queue for map #41. Four are takeable at once — that is a frontier, not a to-do list. One per session, in this order.</p></div>
+    <div class="stamp">sheet 3 of 3</div>
+  </div>
+
+  <h2><span class="step">A</span> Get the data in</h2>
+  <ul class="check">
+    <li>Save each run as <code>validation/run5.csv</code>, <code>run6.csv</code>, <code>run7.csv</code> in the existing format — tG header row, then compound / tR / area / W½</li>
+    <li>Record the new %B start and end in each file; the current template assumes one shared range</li>
+    <li>Update <code>method.csv</code> with the measured dwell volume, and note that it is now measured rather than spec-sheet</li>
+    <li>Mark Unknown-3's run B time as wash-eluted, not a fit data point</li>
+  </ul>
+
+  <h2><span class="step">B</span> The queue</h2>
+  <ol class="queue">
+    <li><div>
+      <p class="qt">Ticket #44 — what may a prediction claim outside the fitted window?<span class="tag t-go">next</span></p>
+      <p class="qd">Two parts already decided (per-peak badge; warn, never refuse). Two open: how far is too far — the research proposes gentle to ~0.6 window-widths, strong beyond — and whether SPEC §6 diagnostic 1 brackets on <span class="mono">s*</span> instead of tG. Run B is the evidence for the second.</p>
+    </div></li>
+    <li><div>
+      <p class="qt">Ticket #46 — the v0.2 acceptance bar<span class="tag t-wait">after the bench</span></p>
+      <p class="qd">Deliberately after, because runs A, B and C are exactly the data it needs. Decides what must pass before v0.2.0 tags, and whether the composition guard gets a falsifiable number pinned to it the way SPEC §10 pins the unmet Rs ± 0.3.</p>
+    </div></li>
+    <li><div>
+      <p class="qt">Ticket #45 — how the %B range enters the Cockpit<span class="tag t-go">any time</span></p>
+      <p class="qd">Lowest effort for you: three layouts get built inside the real Cockpit, you flip between them and pick. The question is where the candidate's %B start and end live once they are no longer shared with the scouting runs.</p>
+    </div></li>
+    <li><div>
+      <p class="qt">Tickets #39 and #48 — two doc amendments<span class="tag t-go">any time</span></p>
+      <p class="qd">Both need only your approval of an exact diff. #39 re-baselines the dead-time doc to the corrected t0 of 0.525 min. #48 carries three corrections the research turned up: Neue–Kuss comes off "do not implement", the β = 3 sentence regains its dropped %B clause, and a note that Guillarme's k₀ is our k_w.</p>
+    </div></li>
+    <li><div>
+      <p class="qt">Ticket #47 — assemble the SPEC amendment<span class="tag t-wait">blocked by #44 #45 #46</span></p>
+      <p class="qd">Collapses everything above into one diff against SPEC §§3, 4, 6, 7, 8, 10. <b>Approving it closes the map</b>, and build tickets get cut from there.</p>
+    </div></li>
+  </ol>
+
+  <h2><span class="step">C</span> Standing context</h2>
+  <p class="note">v0.1.0 is tagged and its scope is closed — anything found now gets its own ticket rather than being folded in. v0.2 is gradient freedom: both ends of the composition range, plus multi-segment. The resolution map moved to v0.7, after temperature and pH, because the filled heat map you want needs axes that arrive with those releases. SPEC §11 and §12 record both.</p>
+
+  <div class="sig">
+    <div class="fld" style="height:50px"><span>Completed by</span></div>
+    <div class="fld" style="height:50px"><span>Date</span></div>
+  </div>
+</div>
+
+<footer>
+  <span>hplcsim · github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0</span>
+  <span>print: ⌘P — three pages</span>
+</footer>
+</body>
+</html>

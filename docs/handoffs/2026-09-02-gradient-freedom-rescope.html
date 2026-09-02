@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gradient Freedom Rescope</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<!-- Decision record: the v0.2 rescope from resolution map to gradient freedom (maps #28 -> #41).
+     Generated 2026-09-02. Open in a browser; Cmd-P to print. -->
+</head>
+<body>
+<style>
+  :root{
+    --ground:#F6F8F4; --surface:#FFFFFF; --sunk:#EDF1EA;
+    --ink:#14191A; --ink-2:#4A5553; --ink-3:#7C8785;
+    --rule:#D6DCD3; --rule-2:#E6EAE2;
+    --accent:#0F5E6B; --accent-soft:#DCEAEC;
+    --warn:#A8402A; --warn-soft:#F4E3DE;
+    --go:#356D46; --go-soft:#DFEBE1;
+    --hold:#7A6320; --hold-soft:#F0E9D5;
+    --shadow:0 1px 2px rgba(20,25,26,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1211; --surface:#161B1A; --sunk:#1C2221;
+      --ink:#ECF1EC; --ink-2:#A3AFAC; --ink-3:#77837F;
+      --rule:#2A3230; --rule-2:#222927;
+      --accent:#5BB3C2; --accent-soft:#12312F;
+      --warn:#E08A72; --warn-soft:#33201B;
+      --go:#7FBE8E; --go-soft:#182C1E;
+      --hold:#D6B863; --hold-soft:#2B2513;
+      --shadow:0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1211; --surface:#161B1A; --sunk:#1C2221;
+    --ink:#ECF1EC; --ink-2:#A3AFAC; --ink-3:#77837F;
+    --rule:#2A3230; --rule-2:#222927;
+    --accent:#5BB3C2; --accent-soft:#12312F;
+    --warn:#E08A72; --warn-soft:#33201B;
+    --go:#7FBE8E; --go-soft:#182C1E;
+    --hold:#D6B863; --hold-soft:#2B2513;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font:16px/1.62 "IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:920px;margin:0 auto;padding:0 24px 96px;}
+  .col{max-width:66ch;}
+
+  /* ---- masthead ---- */
+  header.mast{padding:44px 0 26px;border-bottom:2px solid var(--ink);}
+  .eyebrow{
+    font:600 11.5px/1 "IBM Plex Mono",ui-monospace,monospace;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+    display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+  }
+  .eyebrow .dot{color:var(--rule);}
+  h1{
+    font:700 clamp(34px,5.4vw,50px)/1.04 "IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+    letter-spacing:-.015em;margin:14px 0 0;text-wrap:balance;
+  }
+  .stand{margin:12px 0 0;font-size:18px;line-height:1.55;color:var(--ink-2);max-width:60ch;}
+
+  /* ---- sections ---- */
+  section{padding-top:46px;}
+  h2{
+    font:700 15px/1.2 "IBM Plex Mono",ui-monospace,monospace;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+    margin:0 0 6px;display:flex;align-items:baseline;gap:12px;
+  }
+  h2 .n{
+    font-size:12px;color:var(--ink-3);border:1px solid var(--rule);
+    border-radius:2px;padding:2px 6px;letter-spacing:.06em;flex:none;
+  }
+  h3{font:600 20px/1.3 "IBM Plex Sans",sans-serif;margin:30px 0 8px;letter-spacing:-.008em;}
+  .lede{font-size:17.5px;line-height:1.5;color:var(--ink);margin:0 0 20px;max-width:58ch;font-weight:500;}
+  p{margin:0 0 15px;}
+  strong{font-weight:600;}
+  a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px;}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.9em;}
+  code{background:var(--sunk);padding:1px 5px;border-radius:3px;}
+  hr.rule{border:0;border-top:1px solid var(--rule-2);margin:40px 0 0;}
+
+  /* ---- status board ---- */
+  .board{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:1px;background:var(--rule);border:1px solid var(--rule);
+    border-radius:4px;overflow:hidden;margin:22px 0 0;
+  }
+  .cell{background:var(--surface);padding:14px 16px;}
+  .cell .k{
+    font:600 10.5px/1 "IBM Plex Mono",monospace;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3);
+  }
+  .cell .v{font:700 26px/1.15 "IBM Plex Sans Condensed",sans-serif;margin-top:7px;font-variant-numeric:tabular-nums;}
+  .cell .s{font-size:13px;color:var(--ink-2);margin-top:3px;line-height:1.4;}
+
+  /* ---- ticket list ---- */
+  .tix{margin:22px 0 0;border-top:1px solid var(--rule);}
+  .tix li{
+    list-style:none;display:grid;grid-template-columns:96px 1fr auto;
+    gap:14px;align-items:baseline;padding:11px 2px;border-bottom:1px solid var(--rule-2);
+  }
+  .tix .name{font-weight:500;}
+  .tix .meta{font:400 12.5px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);text-align:right;}
+  .pill{
+    font:600 10.5px/1.6 "IBM Plex Mono",monospace;letter-spacing:.08em;
+    text-transform:uppercase;padding:2px 8px;border-radius:2px;white-space:nowrap;text-align:center;
+  }
+  .p-go{background:var(--go-soft);color:var(--go);}
+  .p-hold{background:var(--hold-soft);color:var(--hold);}
+  .p-park{background:var(--warn-soft);color:var(--warn);}
+  .p-run{background:var(--accent-soft);color:var(--accent);}
+
+  /* ---- diff ---- */
+  .diffwrap{margin:20px 0 0;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--surface);}
+  .diffhead{
+    padding:9px 14px;border-bottom:1px solid var(--rule);background:var(--sunk);
+    font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);
+    display:flex;justify-content:space-between;gap:12px;align-items:center;
+  }
+  pre.diff{margin:0;padding:14px;overflow-x:auto;font:400 13px/1.62 "IBM Plex Mono",monospace;}
+  pre.diff .del{color:var(--warn);}
+  pre.diff .add{color:var(--go);}
+
+  /* ---- figure ---- */
+  figure{margin:26px 0 0;border:1px solid var(--rule);border-radius:4px;background:var(--surface);padding:18px 18px 14px;box-shadow:var(--shadow);}
+  figure svg{display:block;width:100%;height:auto;}
+  figcaption{margin-top:12px;font-size:13.5px;line-height:1.5;color:var(--ink-2);border-top:1px solid var(--rule-2);padding-top:10px;}
+
+  /* ---- decisions ---- */
+  .ask{border-left:3px solid var(--accent);padding:2px 0 2px 18px;margin:20px 0;}
+  .ask .q{font-weight:600;margin:0 0 5px;}
+  .ask p{margin:0 0 10px;color:var(--ink-2);}
+  .ask:last-child p:last-child{margin-bottom:0;}
+
+  /* ---- run table ---- */
+  .tablewrap{overflow-x:auto;margin:22px 0 0;border:1px solid var(--rule);border-radius:4px;background:var(--surface);}
+  table{border-collapse:collapse;width:100%;min-width:620px;}
+  caption{
+    text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);background:var(--sunk);
+    font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);
+  }
+  th{
+    text-align:left;font:600 10.5px/1.4 "IBM Plex Mono",monospace;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--ink-3);padding:10px 14px;border-bottom:1px solid var(--rule);
+  }
+  td{padding:11px 14px;border-bottom:1px solid var(--rule-2);vertical-align:middle;font-size:14.5px;}
+  tr:last-child td{border-bottom:0;}
+  td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  tr.have td{color:var(--ink-2);}
+  tr.have td.num{color:var(--ink-2);}
+  .spark{display:block;width:74px;height:30px;}
+
+  /* ---- extras ---- */
+  .extras{display:grid;gap:16px;margin:24px 0 0;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}
+  .extra{border:1px solid var(--rule);border-left:3px solid var(--warn);border-radius:4px;background:var(--surface);padding:15px 17px;}
+  .extra h4{margin:0 0 6px;font:600 16px/1.35 "IBM Plex Sans",sans-serif;}
+  .extra p{margin:0;font-size:14px;line-height:1.55;color:var(--ink-2);}
+
+  /* ---- closing ---- */
+  .close{margin-top:46px;border-top:2px solid var(--ink);padding-top:22px;}
+  .close ol{margin:14px 0 0;padding-left:20px;}
+  .close li{margin-bottom:9px;}
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--rule-2);
+    font:400 12.5px/1.6 "IBM Plex Mono",monospace;color:var(--ink-3);
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
+<div class="page">
+
+<header class="mast">
+  <div class="eyebrow">
+    <span>hplcsim</span><span class="dot">/</span><span>wayfinder</span><span class="dot">/</span>
+    <span>2 Sept 2026</span><span class="dot">/</span><span>v0.1.0 tagged</span>
+  </div>
+  <h1>Gradient Freedom Rescope</h1>
+  <p class="stand">The resolution map is parked. The next cycle moves both ends of the gradient and adds multi-segment programs. Both SPEC diffs are in. Here is what landed, why the run list changed after the research came back, and what to run tomorrow.</p>
+</header>
+
+<section>
+  <h2><span class="n">01</span> What landed</h2>
+  <p class="lede">The old map is closed with its four decisions preserved. A new map is open with six tickets wired.</p>
+
+  <div class="board">
+    <div class="cell"><div class="k">New map</div><div class="v">#41</div><div class="s">Gradient freedom — φ0/φf plus multi-segment</div></div>
+    <div class="cell"><div class="k">Preserved</div><div class="v">4</div><div class="s">Decisions carried over from the parked map</div></div>
+    <div class="cell"><div class="k">Parked</div><div class="v">4</div><div class="s">Map tickets, re-cut when the effort resumes</div></div>
+    <div class="cell"><div class="k">Frontier</div><div class="v">4</div><div class="s">Takeable now, one at a time; only the SPEC amendment is blocked</div></div>
+  </div>
+
+  <ul class="tix">
+    <li><span class="pill p-go">next</span><span class="name">What may a prediction claim outside the fitted window?</span><span class="meta">#44</span></li>
+    <li><span class="pill p-go">open</span><span class="name">The v0.2 acceptance bar — best after tomorrow's data</span><span class="meta">#46</span></li>
+    <li><span class="pill p-go">open</span><span class="name">How the candidate's φ range enters the Cockpit</span><span class="meta">#45</span></li>
+    <li><span class="pill p-go">open</span><span class="name">Two doc amendments (dead-time, gradient-elution-math)</span><span class="meta">#39 #48</span></li>
+    <li><span class="pill p-hold">blocked</span><span class="name">Assemble the v0.2 SPEC amendment — closes the map</span><span class="meta">#47</span></li>
+    <li><span class="pill p-park">parked</span><span class="name">Resolution map, its prototype, honesty and acceptance bar</span><span class="meta">#28 #31 #32 #35 #36</span></li>
+  </ul>
+
+  <h3>Why the map was parked</h3>
+  <p class="col">Two gates, neither passable now. Your target is a filled heat map, and the axes that make one worth drawing — temperature and pH — are late-roadmap. The only second axis available today is the initial hold, which moves the critical Rs by <strong>under 1%</strong> on your data while costing its full length in run time. A filled contour over an inert axis is exactly what SPEC §7 refused when it left the v0.1 map blank rather than mocked.</p>
+  <p class="col">And there is no dataset with a critical pair. <code>validation/</code> is three peaks at Rs 30–116. Building the prototype made that concrete: eight compounds had to be invented before the pane could say anything at all.</p>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="n">02</span> Awaiting your approval</h2>
+  <p class="lede">Both diffs are applied and committed. Your answer moved the map past temperature and pH, so it lands at v0.7 — immediately after the last axis it needs.</p>
+
+  <div class="diffwrap">
+    <div class="diffhead"><span>SPEC.md §11 — Roadmap</span><span>applied · abb9ef7</span></div>
+<pre class="diff"><span class="del">-v0.2 resolution map / optimizer (max-of-minimum Rs over swept tG/hold) → v0.3</span>
+<span class="del">-gradient freedom (changed φ0/φf + multi-segment) → v0.4 CSV import + auto</span>
+<span class="del">-peak-matching + ≥2-run regression (+ isocratic mode) → v0.5 temperature (2×2)</span>
+<span class="del">-→ v0.6 colleague hosting + sharing → v0.7 pH (three-run design) → v0.8 column</span>
+<span class="del">-selectivity DB + method transfer → v0.9+ structure-based (pKa/logD) prediction.</span>
+<span class="add">+v0.2 gradient freedom (changed φ0/φf + multi-segment) → v0.3 CSV import + auto</span>
+<span class="add">+peak-matching + ≥2-run regression (+ isocratic mode) → v0.4 temperature (2×2) →</span>
+<span class="add">+v0.5 colleague hosting + sharing → v0.6 pH (three-run design) → v0.7 resolution</span>
+<span class="add">+map / optimizer, as a filled map over live axes (tG × φf, temperature, pH) →</span>
+<span class="add">+v0.8 column selectivity DB + method transfer → v0.9+ structure-based (pKa/logD)</span>
+<span class="add">+prediction.</span></pre>
+  </div>
+  <p class="col" style="margin-top:14px">A second diff (<span class="mono">d15beca</span>) records your heat-map target and the HTML reference in SPEC §12, so the goal lives in the normative document rather than only in a closed issue.</p>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="n">03</span> The honesty question</h2>
+  <p class="lede">You said you didn't know how to answer this one. Here it is without the jargon.</p>
+
+  <p class="col">You ran two gradients. Each peak came off the column <em>once</em> in each run — at one particular %B. Unknown-1 eluted near 34 %B in the 15-minute run and near 31 %B in the 45-minute run. Those two points are the only places the model has ever been checked for that compound.</p>
+  <p class="col">The model draws a straight line through them. That is what LSS is. Then it will happily evaluate that line anywhere you ask.</p>
+
+  <figure>
+    <svg viewBox="0 0 440 210" role="img" aria-label="Log retention factor against percent B. Two measured points sit three percent apart; the line is dashed everywhere else.">
+      <rect x="185" y="24" width="36" height="126" fill="var(--accent-soft)"></rect>
+      <line x1="62" y1="150" x2="416" y2="150" stroke="var(--rule)" stroke-width="1"></line>
+      <line x1="62" y1="24" x2="62" y2="150" stroke="var(--rule)" stroke-width="1"></line>
+      <path d="M62,42 L185,82" stroke="var(--ink-3)" stroke-width="1.6" stroke-dasharray="5 4" fill="none"></path>
+      <path d="M221,93 L416,157" stroke="var(--ink-3)" stroke-width="1.6" stroke-dasharray="5 4" fill="none"></path>
+      <path d="M185,82 L221,93" stroke="var(--accent)" stroke-width="3" fill="none"></path>
+      <circle cx="185" cy="82" r="4.6" fill="var(--accent)"></circle>
+      <circle cx="221" cy="93" r="4.6" fill="var(--accent)"></circle>
+      <text x="203" y="18" text-anchor="middle" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">tested</text>
+      <text x="203" y="166" text-anchor="middle" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace" font-size="11">31–34 %B</text>
+      <text x="112" y="36" text-anchor="middle" fill="var(--ink-3)" font-family="IBM Plex Sans, sans-serif" font-size="12" font-style="italic">untested</text>
+      <text x="350" y="140" text-anchor="middle" fill="var(--ink-3)" font-family="IBM Plex Sans, sans-serif" font-size="12" font-style="italic">untested</text>
+      <text x="20" y="30" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace" font-size="11">ln k</text>
+      <text x="416" y="182" text-anchor="end" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace" font-size="11">%B at elution →</text>
+      <text x="62" y="182" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace" font-size="11">20</text>
+      <text x="416" y="196" text-anchor="end" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace" font-size="11">50</text>
+    </svg>
+    <figcaption>Unknown-1's whole calibration is the shaded strip. The code already measures it and calls it <code>delta_phi_e</code>, "the conditioning number of the whole fit". The research found it has a closed form — <strong>Δφ<sub>e</sub> = ln β / S<sub>e</sub></strong> — which holds on your fit to about 1%. It depends on β and S<sub>e</sub> only, so <strong>widening the %B range does not widen the window</strong>; doubling it would take β = 9, not a wider ramp.</figcaption>
+  </figure>
+
+  <h3>Three things to decide</h3>
+
+  <div class="ask">
+    <p class="q">a · How far is too far?</p>
+    <p>The research proposes <strong>gentle out to about 0.6 window-widths, strong beyond</strong> — 0.6 preserves today's "2× outside" behaviour at β = 3. The evidence is your own: run 4 sits 0.26 window-widths outside and scored 0.26% average error, <em>better</em> than in-window run 3's 0.35%. No published number exists for where curvature finally bites; the one candidate figure was behind a paywall and correctly went unused. This is the open half of ticket #44.</p>
+  </div>
+  <div class="ask">
+    <p class="q">b · Per peak, or per method? <span class="pill p-go" style="margin-left:6px">decided · per peak</span></p>
+    <p>The research settled it harder than either of us had: your three peaks are calibrated over <strong>42.7–52.4</strong>, <strong>52.9–62.8</strong> and <strong>80.7–90.2 %B</strong>. They do not overlap, so a method-level union is calibrated for no peak at all. It becomes a per-peak badge, alongside the early-eluter and prediction-crossing ones.</p>
+  </div>
+  <div class="ask">
+    <p class="q">c · Warn, or refuse? <span class="pill p-go" style="margin-left:6px">decided · warn</span></p>
+    <p>Warnings over blocks, per CLAUDE.md. This also settles something concrete: <code>session.py::_check_candidate</code> currently <em>raises</em> when the candidate's %B range differs from scouting. It becomes a warning path, and SPEC §4's wording changes with it.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="n">04</span> The Cockpit question</h2>
+  <p class="lede">Open the app and look at the left side. The split you see there is about to break.</p>
+
+  <p class="col">The <strong>sidebar</strong> holds %B start = 5 and %B end = 95. The <strong>left rail</strong> holds the Candidate block: a tG slider and an initial hold slider. That split says something specific — the %B range is a fact about the experiment you ran, and tG is the knob you turn. Both scouting runs and the candidate share the range, which is why it sits up in the constants.</p>
+
+  <p class="col">Gradient freedom makes %B two different things at once:</p>
+  <ul class="col">
+    <li><strong>What you actually ran</strong> — 5→95, fixed, historical, the thing the fit was built from.</li>
+    <li><strong>What you're asking about</strong> — could be 20→60, and now it's a knob.</li>
+  </ul>
+  <p class="col">They cannot stay one widget. Does the Candidate block grow its own %B start and end? Does the sidebar get relabelled "as acquired"? Does the screen show both side by side, so you can see how far you have wandered — which would also be the natural home for the warning from section 03?</p>
+  <p class="col">Multi-segment makes it harder still, because a candidate stops being three numbers and becomes a list: <span class="mono">hold 2 min at 20 %B, ramp to 60 over 15 min, ramp to 95 over 5</span>. That is a small table, not a pair of sliders. Where does it live, and does a %B-versus-time plot appear beside the chromatogram so you can see the program you have built?</p>
+  <p class="col"><strong>You don't design this — you react to it.</strong> I build three versions inside the real Cockpit, you flip between them and say "that one, but with the table from the other."</p>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="n">05</span> Tomorrow at the bench</h2>
+  <p class="lede">The research landed after the first run list was written, and replaced it. Here is why, and what to run instead.</p>
+
+  <p class="col">Where a peak elutes depends on the candidate gradient <strong>only through its steepness</strong>, <span class="mono">s* = t0·Δφ/tG</span> — Guillarme 2022 Eq. 8 and den Uijl 2021 Eq. 10, arrived at independently. Two gradients with different %B ranges but the same s* put every peak at the same composition.</p>
+  <p class="col">So a different %B range does not, by itself, test anything the gradient time does not already test. It moves along the same axis under another name. The first three runs I proposed all landed <em>inside</em> the existing bracket — three more interpolations.</p>
+  <p class="col">The replacements below are chosen on s*, computed from your fitted parameters. Note runs <strong>A</strong> and <strong>3</strong> in the table: their traces are parallel. That is the point of run A.</p>
+
+<div class="tablewrap">
+    <table>
+      <caption>Run list · fit from runs 1–2 only · s* = t0·Δφ/tG</caption>
+      <thead>
+        <tr><th>Program</th><th>%B</th><th>tG</th><th>s*</th><th>What it tests</th></tr>
+      </thead>
+      <tbody>
+        <tr class="have">
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,24.8 L0.7,24.8 L20.2,3.2" fill="none" stroke="var(--ink-3)" stroke-width="1.8"></path></svg></td>
+          <td class="num">5 → 95</td><td class="num">15 min</td><td class="num">0.03150</td><td>scouting (have) — bracket end</td>
+        </tr>
+        <tr class="have">
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,24.8 L0.7,24.8 L59.3,3.2" fill="none" stroke="var(--ink-3)" stroke-width="1.8"></path></svg></td>
+          <td class="num">5 → 95</td><td class="num">45 min</td><td class="num">0.01050</td><td>scouting (have) — bracket end</td>
+        </tr>
+        <tr class="have">
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,24.8 L0.7,24.8 L33.3,3.2" fill="none" stroke="var(--ink-3)" stroke-width="1.8"></path></svg></td>
+          <td class="num">5 → 95</td><td class="num">25 min</td><td class="num">0.01890</td><td>run 3, held out — scored 0.35%</td>
+        </tr>
+        <tr>
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,22.4 L0.7,22.4 L29.6,3.2" fill="none" stroke="var(--accent)" stroke-width="2.3"></path></svg></td>
+          <td class="num">15 → 95</td><td class="num">22.2 min</td><td class="num">0.01892</td><td><strong>A · the falsification test.</strong> s* matched to run 3. Same steepness, different window — must predict as well as run 3 did.</td>
+        </tr>
+        <tr>
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,22.4 L0.7,22.4 L33.3,12.8" fill="none" stroke="var(--warn)" stroke-width="2.3"></path></svg></td>
+          <td class="num">15 → 55</td><td class="num">25 min</td><td class="num">0.00840</td><td><strong>B · the trap.</strong> tG is inside [15, 45] so today's warning stays silent, but s* is below run 2's — outside calibration.</td>
+        </tr>
+        <tr>
+          <td><svg class="spark" viewBox="0 0 62 30" aria-hidden="true"><line x1="0" y1="28" x2="62" y2="28" stroke="var(--rule-2)" stroke-width="1"></line><path d="M0,20 L0.7,20 L33.3,3.2" fill="none" stroke="var(--accent)" stroke-width="2.3"></path></svg></td>
+          <td class="num">25 → 95</td><td class="num">25 min</td><td class="num">0.01470</td><td><strong>C · raised start.</strong> In-bracket on steepness; probes the φ0 floor on its own.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="col" style="margin-top:14px">22.0 min instead of 22.2 puts run A's s* 1% off run 3's — fine if 0.1-minute gradient times are awkward on the instrument. Everything else stays identical: same column, flow, temperature, injection volume, sample. Record <strong>tR, area and W½</strong> on every peak — W½ is what makes a held-out <em>resolution</em> comparison possible instead of retention-only.</p>
+
+  <h3>Two things that would make tomorrow worth much more</h3>
+  <div class="extras">
+    <div class="extra">
+      <h4>A sample with two peaks that nearly touch</h4>
+      <p>Three peaks at Rs 30–116 is why the map is parked and why SPEC §10's Rs ± 0.3 bar is still unmet. Spike in something that elutes close to one of your unknowns. A rough co-elution is worth more here than another clean separation.</p>
+    </div>
+    <div class="extra">
+      <h4>Measure the dwell volume</h4>
+      <p><code>method.csv</code> says the 0.375 mL is "from instrument spec sheet, NOT measured". <code>PROTOCOL.md</code> §1 has the procedure — column replaced by a union, acetone in B, read the midpoint of the rise. A wrong dwell biases every prediction the same way, and it is twenty minutes.</p>
+    </div>
+  </div>
+</section>
+
+<div class="close">
+  <h2 style="color:var(--ink)">What is left for you</h2>
+  <ol>
+    <li><strong>Tomorrow — run A, B and C</strong>, plus a spiked near-critical pair and a measured dwell volume. Nothing else that day.</li>
+    <li><strong>Then ticket #44</strong> — the last open half of the honesty question, plus one new sub-question the research raised: should the extrapolation warning bracket on <span class="mono">s*</span> instead of tG? It has to, once %B can move. Run B is the case that proves it.</li>
+    <li><strong>Then #46</strong>, the acceptance bar — deliberately after the bench, because A, B and C are exactly the data it needs.</li>
+    <li><strong>#45 whenever</strong> — I build three Cockpit layouts, you pick one. Low effort for you.</li>
+    <li><strong>#47 last.</strong> It collapses the other three into a single SPEC diff, and approving it closes the map.</li>
+  </ol>
+  <p class="col" style="margin-top:16px;color:var(--ink-2)">Four tickets are takeable at once. That is what a frontier looks like, not a to-do list — one per session, in this order.</p>
+</div>
+
+<footer>
+  <span>hplcsim · map #41 · SPEC abb9ef7 + d15beca</span>
+  <span>v0.1.0 running on :8501</span>
+</footer>
+
+</div>
+</body>
+</html>
