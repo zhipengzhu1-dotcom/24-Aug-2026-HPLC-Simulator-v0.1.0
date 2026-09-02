@@ -28,6 +28,18 @@ def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
     return method.t0 * gradient.delta_phi * s_e / gradient.t_gradient
 
 
+def gradient_end_time(method: Method, gradient: Gradient) -> float:
+    """When the final composition φf reaches the detector (min from injection).
+
+    The programmed ramp ends at the pump at ``t_init + t_gradient``; it reaches the
+    column head one dwell later and the detector one t0 after that. This is exactly the
+    boundary between the gradient and post-gradient regimes below — a band still on the
+    column at this instant finishes the run isocratically at φf — so the drawn marker
+    and the regime that classifies a peak read the same expression.
+    """
+    return method.t_dwell + gradient.t_init + gradient.t_gradient + method.t0
+
+
 @dataclass(frozen=True)
 class RetentionResult:
     """Predicted retention for one peak under one gradient.
@@ -71,7 +83,7 @@ def predict_retention(
     k_f = k0 * math.exp(-params.s_e * gradient.delta_phi)
     x_gradient_end = tau / (t0 * k0) + (k0 / k_f - 1.0) / (k0 * b_e)
     if x_gradient_end < 1.0:
-        t_r = tau + gradient.t_gradient + t0 + (1.0 - x_gradient_end) * t0 * k_f
+        t_r = gradient_end_time(method, gradient) + (1.0 - x_gradient_end) * t0 * k_f
         return _classify(t_r=t_r, k_e=k_f, regime="post_gradient", t0=t0, tau=tau)
 
     # §2.2: the LSS closed form, valid while the band exits during the ramp.

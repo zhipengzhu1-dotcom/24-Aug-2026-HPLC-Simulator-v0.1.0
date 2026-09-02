@@ -68,6 +68,7 @@ from hplcsim.model import (
     percent_b_from_phi,
     s_base10_from_s_e,
 )
+from hplcsim.retention import gradient_end_time
 from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
 
@@ -161,6 +162,19 @@ class Keys:
     TG_RUN2 = "tg_run2"
     CANDIDATE_TG = "candidate_tg"
     CANDIDATE_HOLD = "candidate_hold"
+
+    # Where the chromatogram's axes begin and end. These are a view onto the prediction,
+    # not an input to it: SPEC §8 keeps the session file to inputs, so they live in
+    # `session_state` and nowhere near `CockpitInputs`.
+    X_AXIS_START = "x_axis_start"
+    X_AXIS_END = "x_axis_end"
+    Y_AXIS_START = "y_axis_start"
+    Y_AXIS_END = "y_axis_end"
+    AXIS_KEYS = (X_AXIS_START, X_AXIS_END, Y_AXIS_START, Y_AXIS_END)
+    # Whether the reader has touched any of the four. Until they have, the boxes follow
+    # the run — a keyed widget keeps its first value across reruns otherwise, and the
+    # window would silently stay the length of the *previous* candidate's run.
+    AXIS_TOUCHED = "axis_touched"
 
 
 _DWELL_REQUIRED = (
@@ -281,7 +295,7 @@ def main() -> None:
     with resolution_tab:
         _resolution_tab(cockpit, diagnostics)
     with chromatogram_slot:
-        _chromatogram(cockpit, candidate, diagnostics)
+        _chromatogram(cockpit, inputs, diagnostics)
 
     _status_bar(cockpit, candidate, diagnostics)
 
@@ -924,13 +938,14 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
-def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
+def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics) -> None:
     """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
 
     This block is sticky, so its height is screen the reader cannot scroll away. The
     condition, the area caveat and diagnostic 6's stamp all still have to appear — they
     are on one caption line beside the title rather than three stacked rows beneath it.
     """
+    candidate = inputs.candidate
     st.markdown(
         f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
         f"hold {candidate.t_init:g} min"
@@ -938,8 +953,17 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return
-    trace = chromatogram.chromatogram(cockpit.resolution.peaks, cockpit.shares)
-    st.plotly_chart(chromatogram.figure(trace), width="stretch")
+    asked = _axis_request()
+    trace = chromatogram.chromatogram(
+        cockpit.resolution.peaks,
+        cockpit.shares,
+        gradient_end=gradient_end_time(inputs.method, candidate),
+        # An x axis asked to end past the run needs trace to draw out there, not just a
+        # wider window onto a baseline that stops halfway across the plot.
+        extend_to=asked.x_end,
+    )
+    view = chromatogram.axis_view(trace, asked)
+    st.plotly_chart(chromatogram.figure(trace, view=view), width="stretch")
     notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
@@ -948,6 +972,78 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
     if diagnostics.stamps:
         notes.append(_STAMP_SHORT)
     st.caption("  ·  ".join(notes))
+    _axis_controls(view)
+
+
+def _axis_request() -> chromatogram.AxisRequest:
+    """What the reader asked of the axes — nothing, until they have touched a box."""
+    if not st.session_state.get(Keys.AXIS_TOUCHED, False):
+        return chromatogram.AxisRequest()
+    return chromatogram.AxisRequest(
+        x_start=st.session_state.get(Keys.X_AXIS_START),
+        x_end=st.session_state.get(Keys.X_AXIS_END),
+        y_start=st.session_state.get(Keys.Y_AXIS_START),
+        y_end=st.session_state.get(Keys.Y_AXIS_END),
+    )
+
+
+def _axis_controls(view: chromatogram.AxisView) -> None:
+    """Both ends of both axes, as four boxes beneath the trace.
+
+    Behind an expander rather than always on show. This block is pinned, so every row
+    added here is screen the reader cannot scroll away from — the same budget that
+    `CHROMATOGRAM_HEIGHT` is spending. Collapsed it costs one line; the reader who wants
+    to crop the baseline off opens it once and it stays open.
+
+    Until the reader touches a box, the boxes are re-seeded from the run every rerun, so
+    a longer candidate grows the window with it. Once touched, the entries stay put —
+    a pinned window is what the reader asked for — until Reset.
+    """
+    touched = st.session_state.get(Keys.AXIS_TOUCHED, False)
+    if not touched:
+        for key in Keys.AXIS_KEYS:
+            st.session_state.pop(key, None)
+    y_step = view.run_y[1] / 20.0 or 0.05
+    boxes = (
+        ("x start (min)", Keys.X_AXIS_START, view.run_x[0], 0.1, "%.2f"),
+        ("x end (min)", Keys.X_AXIS_END, view.run_x[1], 0.1, "%.2f"),
+        ("y start", Keys.Y_AXIS_START, view.run_y[0], y_step, "%.4f"),
+        ("y end", Keys.Y_AXIS_END, view.run_y[1], y_step, "%.4f"),
+    )
+    with st.expander("Axis range", expanded=False):
+        cols = st.columns([1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
+        for col, (label, key, value, step, fmt) in zip(cols, boxes, strict=False):
+            with col:
+                st.number_input(
+                    label,
+                    min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
+                    value=value,
+                    step=step,
+                    format=fmt,
+                    key=key,
+                    on_change=_mark_axis_touched,
+                )
+        with cols[4]:
+            st.button("Reset", on_click=_reset_axis_range, width="stretch")
+        st.caption(
+            f"The run ends at {view.run_x[1]:.2f} min and the tallest peak reaches "
+            f"{view.run_y[1] / chromatogram.Y_HEADROOM:.4g}. An x end past the run draws "
+            "the baseline out to it."
+        )
+    for note in view.notes:
+        st.warning(note, icon="⚠️")
+
+
+def _mark_axis_touched() -> None:
+    """From here on the boxes are the reader's, not the run's."""
+    st.session_state[Keys.AXIS_TOUCHED] = True
+
+
+def _reset_axis_range() -> None:
+    """Back to the whole run. A callback, so it lands before the widgets are redrawn."""
+    st.session_state[Keys.AXIS_TOUCHED] = False
+    for key in Keys.AXIS_KEYS:
+        st.session_state.pop(key, None)
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:
