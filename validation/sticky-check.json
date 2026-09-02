@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "app_version": "0.1.0",
+  "session_name": "Sticky check",
+  "method": {
+    "column_length_mm": 100.0,
+    "column_id_mm": 2.1,
+    "particle_um": 1.6,
+    "flow_ml_min": 0.4,
+    "temperature_c": 45.0,
+    "t0_min": 0.6,
+    "t0_source": "measured",
+    "dwell_min": 0.9375,
+    "pct_b_start": 5.0,
+    "pct_b_end": 95.0,
+    "hold_min": 0.5
+  },
+  "runs": [
+    {
+      "tg_min": 15.0,
+      "name": "tG15"
+    },
+    {
+      "tg_min": 45.0,
+      "name": "tG45"
+    }
+  ],
+  "peaks": [
+    {
+      "name": "Unknown-1",
+      "tr_run1_min": 9.855,
+      "tr_run2_min": 20.831,
+      "w_half_run1_min": 0.033,
+      "w_half_run2_min": 0.087
+    },
+    {
+      "name": "Unknown-2",
+      "tr_run1_min": 11.592,
+      "tr_run2_min": 25.932,
+      "w_half_run1_min": 0.034,
+      "w_half_run2_min": 0.093
+    },
+    {
+      "name": "Unknown-3",
+      "tr_run1_min": 16.159,
+      "tr_run2_min": 39.796,
+      "w_half_run1_min": 0.025,
+      "w_half_run2_min": 0.071
+    }
+  ],
+  "untracked_peaks": [
+    {
+      "name": "Impurity B",
+      "tr_run1_min": 13.204
+    }
+  ],
+  "candidate": {
+    "tg_min": 25.0,
+    "hold_min": 0.5
+  }
+}

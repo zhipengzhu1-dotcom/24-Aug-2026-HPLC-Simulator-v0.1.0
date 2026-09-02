@@ -90,3 +90,72 @@ LAB_MEASURED_TG60 = {
     "Unknown-2": 32.320,
     "Unknown-3": 50.821,
 }
+
+# --- campaign #27: the gradient-freedom runs (issue #27, run sheet 2026-09-02) ---
+#
+# Runs 1–4 all share the 5 → 95 %B window and differ only in tG, which is why the four
+# are keyed by gradient time above. These three each carry their own composition window,
+# so tG no longer identifies a run (6 and 7 are both tG = 25, as is run 3) — they are
+# keyed by file name instead. Held out of the fit exactly as runs 3 and 4 are.
+#
+# Chosen on steepness s* = t0·Δφ/tG rather than on how different the windows look, since
+# elution composition depends on the gradient only through s* (research doc §7):
+#   run5 (A)  15 → 95 %B, tG 22.2  — s* matched to run 3; the falsification test
+#   run6 (B)  15 → 55 %B, tG 25    — tG inside the scouting bracket, s* below it
+#   run7 (C)  25 → 95 %B, tG 25    — raised φ0, in-bracket on s*
+LAB_RUN5 = Run(Gradient(phi0=0.15, phif=0.95, t_gradient=22.2, t_init=0.5), name="run5")
+LAB_RUN6 = Run(Gradient(phi0=0.15, phif=0.55, t_gradient=25.0, t_init=0.5), name="run6")
+LAB_RUN7 = Run(Gradient(phi0=0.25, phif=0.95, t_gradient=25.0, t_init=0.5), name="run7")
+
+LAB_CAMPAIGN27_RUNS = {"run5": LAB_RUN5, "run6": LAB_RUN6, "run7": LAB_RUN7}
+
+# validation/run5.csv, run6.csv, run7.csv. Keyed by compound, so a fixture edit cannot
+# silently transpose peaks. Unknown-3 is absent from run6 by measurement, not omission —
+# see LAB_CAMPAIGN27_WASH_ELUTED. Consumers must not assume three peaks per run.
+LAB_CAMPAIGN27_TR = {
+    "run5": {"Unknown-1": 10.980, "Unknown-2": 13.843, "Unknown-3": 21.495},
+    "run6": {"Unknown-1": 18.164, "Unknown-2": 24.471},
+    "run7": {"Unknown-1": 9.235, "Unknown-2": 12.842, "Unknown-3": 22.770},
+}
+
+# Run 6 ends at 55 %B, where the engine puts Unknown-3 at ~110 min in the post-gradient
+# hold and flags it low-confidence. It was brought off by the 45.1 min wash step instead,
+# under a two-segment programme v0.1 cannot predict, and run6.csv records "wash eluted"
+# with no time. It is therefore not a retention data point and must never be scored as
+# one — but it is not a missing measurement either, and the engine did predict the
+# non-elution correctly, which is itself testable.
+LAB_CAMPAIGN27_WASH_ELUTED = {("run6", "Unknown-3")}
+
+LAB_CAMPAIGN27_AREA = {
+    "run5": {"Unknown-1": 13441.0, "Unknown-2": 14515.0, "Unknown-3": 7448.0},
+    "run6": {"Unknown-1": 14983.0, "Unknown-2": 5707.0},
+    "run7": {"Unknown-1": 14524.0, "Unknown-2": 3058.0, "Unknown-3": 8351.0},
+}
+
+# Half-height widths, the measurement that makes a held-out *resolution* comparison
+# possible rather than a retention-only one (SPEC §10's still-unmet Rs bar). Unknown-2 is
+# the broad one in runs 6 and 7 because both elute it more aqueous than any earlier run
+# (50.9 and 55.3 %B, against 57.5 in run 5 and 62.3 in run 1) — driver-confirmed as real
+# chromatography, not an integration artefact, unlike the tG = 45 area spike in §5.4.
+LAB_CAMPAIGN27_W_HALF = {
+    "run5": {"Unknown-1": 0.05, "Unknown-2": 0.045, "Unknown-3": 0.039},
+    "run6": {"Unknown-1": 0.1, "Unknown-2": 0.132},
+    "run7": {"Unknown-1": 0.071, "Unknown-2": 0.135, "Unknown-3": 0.053},
+}
+
+# These runs export three decimals; the 0.05 and 0.1 above are trailing zeros the export
+# dropped, not two-decimal readings, so they carry run 1/2/4's quantisation rather than
+# run 3's. That inference is worth stating because it is what lets these widths into the
+# §5.4 discriminator at full weight — if it is wrong, run5 and run6 lose most of theirs.
+LAB_CAMPAIGN27_W_HALF_ULP = {"run5": 0.0005, "run6": 0.0005, "run7": 0.0005}
+
+# A property of these three runs worth knowing before a bar is pinned to them. The dwell
+# is the instrument's own 0.375 mL (t_D = V_D / F = 0.9375 min) and stays that way by the
+# driver's decision — see validation/method.csv. Against it, these runs carry a systematic
+# over-prediction that grows with φ0: +0.35 / +0.73 / +1.52% mean at φ0 = 5 / 15 / 25 %B,
+# worst peak 2.50%. Re-scoring at a larger dwell shrinks that (V_D ≈ 0.60 mL would put
+# every run inside ±0.6% and the worst peak at 0.64%), which is why the residual is
+# recorded here as a known offset rather than read as curvature in log k vs φ — the
+# φ0 ordering above is what a dwell term does, not what LSS error looks like. Substituting
+# a data-tuned dwell to make it go away is not on the table; a tripwire on these runs
+# should simply be set where the residual actually sits.
