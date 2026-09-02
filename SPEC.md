@@ -36,7 +36,7 @@ Normative detail with derivations, symbol table, and citations: `docs/research/g
 |---|---|
 | Column length / i.d. / particle | mm / mm / µm; metadata + basis for estimates |
 | Flow F | mL/min |
-| t0 | **measured-first**: marker time (min) primary; geometry estimate as labeled fallback that stamps predictions lower-confidence |
+| t0 | **measured-first**: marker time (min), required in v0.1. A geometry-based estimate as labeled fallback — stamping predictions lower-confidence — is deferred to v0.2 ([#24](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/24)) |
 | Dwell | required, no silent default; entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance |
 | Gradient | %B start, %B end (UI 0–100; φ internal), optional initial hold t_init (min); single linear segment |
 | Temperature | °C, metadata only (fixed-T model); sample-manager temp optional provenance |
