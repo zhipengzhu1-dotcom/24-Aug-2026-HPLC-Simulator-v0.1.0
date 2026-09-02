@@ -193,5 +193,7 @@ v0.2 gradient freedom (changed φ0/φf + multi-segment) → v0.3 CSV import + au
 
 - Research: `research/gradient-math`, `research/validation-datasets` branches (merge into `docs/research/` at build start)
 - UI prototype: `prototype/main-screen` (throwaway; the Cockpit decision is what carries forward)
+- Resolution-map prototype: `prototype/resolution-map` (throwaway; three panes over an engine-computed sweep, built for the parked map — superseded as a design, kept as proof that the sweep, the flip location and the co-elution zone all compute)
+- Resolution-map target (v0.7, driver 2026-09-02): a **filled heat map** — colour = critical Rs over two live axes, dashed contour at Rs 1.5 and solid at 2.0, a rail of Legend / Cursor / Pinned point / Method cards, hover to read, click to pin. Reference: `14-Aug-2026 HPLC Simulator/prototype/resolution-map.html?variant=A`. The axes that make it worth drawing are temperature (v0.4) and pH (v0.6), which is why §11 puts the map after both; the initial hold moves the critical Rs by under 1% on the lab dataset ([#30](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/30)).
 - Lab dataset: `validation/` on main
-- Decision record: [wayfinder map #1](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1) and its ten closed tickets
+- Decision record: [wayfinder map #1](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1) and its ten closed tickets; [map #28](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/28) (resolution map, parked, four decisions preserved); [map #41](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/41) (gradient freedom, current)
