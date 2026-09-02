@@ -46,10 +46,18 @@ VALIDATION2_RUN2 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=40.0, t_init=0.
 VALIDATION2_RUN3 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.5), name="run3")
 
 # 4peaks_run4.csv: tG = 20 again, but starting at 15 %B. Not a second point on the same
-# axis — it moves φ0, which is the axis the scouting pair holds fixed and therefore
-# cannot constrain. The bands still elute at 68.5–70.7 %B, inside the 63.5–74.3 %B the
-# scouting runs covered, so it extrapolates in the *programme* while interpolating in
-# the composition the LSS fit is actually anchored on (research doc §7, ticket #44).
+# axis — and not a clean φ0 change either. Pinning φf while raising φ0 also moves Δφ
+# (0.90 → 0.80) and therefore s* = t0·Δφ/tG (0.0270 → 0.0240), so three things move
+# together and no difference between run3 and run4 may be attributed to φ0 alone.
+#
+# It does not extrapolate the fit. composition-extrapolation.md §7.2 shows the candidate
+# gradient enters the elution composition only through s*, and 0.0240 is inside the
+# scouting bracket [0.0135, 0.0360]; the bands duly elute at 68.5–70.7 %B, inside the
+# 63.5–74.3 %B the scouting runs covered. So run4 is a change of *programme* that leaves
+# the composition interpolated — which is why it is scored on the same bar as run3.
+#
+# #49 records the injection that would separate the three: 5 → 85 %B at tG 20 shares φ0
+# with run3 and Δφ, tG and s* with run4.
 VALIDATION2_RUN4 = Run(Gradient(phi0=0.15, phif=0.95, t_gradient=20.0, t_init=0.5), name="run4")
 
 # Per-peak measured tR and W½ from the scouting pair. All four peaks fit cleanly:
