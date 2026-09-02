@@ -9,13 +9,14 @@ prediction against the engine's own fixtures — an assertion rather than a habi
 from __future__ import annotations
 
 import math
-from dataclasses import replace
+from collections.abc import Sequence
+from dataclasses import fields, replace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from app.chromatogram import Chromatogram, axis_view, chromatogram
+from app.chromatogram import AxisRequest, Chromatogram, axis_view, chromatogram
 from app.diagnostics import diagnose
 from app.pipeline import (
     Cockpit,
@@ -46,8 +47,9 @@ from app.tables import (
 )
 from hplcsim.fit import fit_peaks
 from hplcsim.model import Peak, log10_k0_from_ln_k0, s_base10_from_s_e
-from hplcsim.resolution import ResolutionTable
+from hplcsim.resolution import PredictedPeak, ResolutionTable
 from hplcsim.retention import gradient_end_time, predict_retention
+from hplcsim.session import Session, save_session
 from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
@@ -403,6 +405,15 @@ def test_the_trace_runs_from_injection_so_the_whole_run_is_on_screen() -> None:
     assert (
         trace.signal[trace.time < min(p.retention.t_r for p in resolution.peaks) * 0.9].max() < 1e-3
     )
+    # A 13.9 min lead-in on the lab run must not have spent the peaks' sampling budget.
+    _assert_every_apex_is_drawn(trace, resolution.peaks)
+
+
+def _assert_every_apex_is_drawn(trace: Chromatogram, peaks: Sequence[PredictedPeak]) -> None:
+    for peak in peaks:
+        window = np.abs(trace.time - peak.retention.t_r) < peak.width.sigma
+        own_apex = next(lb.height for lb in trace.labels if lb.name == peak.name)
+        assert trace.signal[window].max() >= own_apex * 0.995
 
 
 def test_the_grid_is_fine_enough_that_the_narrowest_peak_is_drawn_as_a_peak() -> None:
@@ -444,24 +455,27 @@ def test_without_areas_every_peak_is_drawn_to_the_same_height() -> None:
 
 
 def test_the_marker_says_when_the_ramp_reaches_the_detector() -> None:
-    """The same instant the engine uses to call a peak post-gradient (SPEC §3)."""
-    inputs = _lab_inputs()
+    """The same instant the engine uses to call a peak post-gradient (SPEC §3).
+
+    A steep candidate puts the lab peaks on both sides of it: two elute during the ramp,
+    one after. The marker has to fall between them, or it is not the boundary it claims.
+    """
+    steep = replace(LAB_RUN3.gradient, t_gradient=4.0)
+    inputs = _lab_inputs(candidate=steep)
     cockpit = run_cockpit(inputs)
     assert cockpit.resolution is not None
-    end = gradient_end_time(inputs.method, inputs.candidate)
+    end = gradient_end_time(inputs.method, steep)
 
     trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, gradient_end=end)
 
     assert trace.gradient_end == pytest.approx(end)
-    assert end == pytest.approx(
-        inputs.method.t_dwell
-        + inputs.candidate.t_init
-        + inputs.candidate.t_gradient
-        + inputs.method.t0
-    )
+    regimes = {peak.retention.regime for peak in cockpit.resolution.peaks}
+    assert regimes == {"gradient", "post_gradient"}
     for peak in cockpit.resolution.peaks:
         if peak.retention.regime == "post_gradient":
             assert peak.retention.t_r > end
+        else:
+            assert peak.retention.t_r < end
 
 
 def test_a_ramp_that_outlasts_the_peaks_is_still_on_the_axis() -> None:
@@ -472,13 +486,11 @@ def test_a_ramp_that_outlasts_the_peaks_is_still_on_the_axis() -> None:
 
     trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, gradient_end=last + 30.0)
 
-    assert trace.time[-1] >= last + 30.0
+    # Past the marker, not on it: a line on the plot frame is a line nobody sees.
+    assert trace.time[-1] > last + 30.0
     assert trace.time[0] == 0.0
     # The long empty tail must not have starved the peaks of sampling.
-    for peak in cockpit.resolution.peaks:
-        window = np.abs(trace.time - peak.retention.t_r) < peak.width.sigma
-        own_apex = next(lb.height for lb in trace.labels if lb.name == peak.name)
-        assert trace.signal[window].max() >= own_apex * 0.995
+    _assert_every_apex_is_drawn(trace, cockpit.resolution.peaks)
 
 
 def test_without_a_method_the_trace_draws_no_marker_it_cannot_place() -> None:
@@ -500,6 +512,8 @@ def test_by_default_the_window_is_the_whole_run_from_injection_and_from_zero() -
     assert view.y_range[0] == 0.0
     assert view.y_range[1] > float(trace.signal.max())
     assert view.notes == ()
+    # The extents the controls seed from are the ones the ranges defaulted to.
+    assert (view.run_x, view.run_y) == (view.x_range, view.y_range)
 
 
 def test_a_later_start_crops_the_view_without_touching_the_prediction() -> None:
@@ -507,7 +521,7 @@ def test_a_later_start_crops_the_view_without_touching_the_prediction() -> None:
     _, trace = _lab_trace()
     before = trace.signal.copy()
 
-    view = axis_view(trace, x_start=5.0, y_start=0.25)
+    view = axis_view(trace, AxisRequest(x_start=5.0, y_start=0.25))
 
     assert view.x_range == (5.0, float(trace.time[-1]))
     assert view.y_range[0] == 0.25
@@ -518,10 +532,11 @@ def test_a_later_start_crops_the_view_without_touching_the_prediction() -> None:
 def test_both_ends_of_both_axes_are_the_readers_to_set() -> None:
     _, trace = _lab_trace()
 
-    view = axis_view(trace, x_start=5.0, x_end=12.0, y_start=0.1, y_end=0.6)
+    # A window that still holds every lab peak (13.9–24.4 min, equal heights of 1.0).
+    view = axis_view(trace, AxisRequest(x_start=10.0, x_end=30.0, y_start=0.1, y_end=1.2))
 
-    assert view.x_range == (5.0, 12.0)
-    assert view.y_range == (0.1, 0.6)
+    assert view.x_range == (10.0, 30.0)
+    assert view.y_range == (0.1, 1.2)
     assert view.notes == ()
 
 
@@ -531,7 +546,7 @@ def test_an_x_end_past_the_run_draws_the_baseline_out_to_it() -> None:
     assert cockpit.resolution is not None
 
     trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, extend_to=40.0)
-    view = axis_view(trace, x_end=40.0)
+    view = axis_view(trace, AxisRequest(x_end=40.0))
 
     assert trace.time[-1] >= 40.0
     assert view.x_range == (0.0, 40.0)
@@ -539,12 +554,41 @@ def test_an_x_end_past_the_run_draws_the_baseline_out_to_it() -> None:
     assert float(trace.signal[trace.time > 30.0].max()) < 1e-6
 
 
+def test_a_window_that_leaves_a_peak_out_says_so() -> None:
+    """A stale or deliberate crop is honoured, and named — fewer peaks on the plot than
+    in the table must never read as a prediction with fewer peaks."""
+    resolution, trace = _lab_trace()
+    times = sorted(peak.retention.t_r for peak in resolution.peaks)
+    apex = max(label.height for label in trace.labels)
+
+    view = axis_view(trace, AxisRequest(x_end=(times[-1] + times[-2]) / 2.0, y_end=apex / 2.0))
+
+    assert view.x_range[1] < times[-1]
+    assert len(view.notes) == 1
+    assert "outside the x range" in view.notes[0]
+    assert "taller than the y range" in view.notes[0]
+    assert "the prediction still has them" in view.notes[0]
+
+
+def test_the_view_never_reaches_the_session_file() -> None:
+    """SPEC §8: inputs only. The window is not an input, so the file cannot carry it."""
+    session = Session(
+        method=LAB_METHOD,
+        runs=(LAB_RUN1, LAB_RUN2),
+        peaks=tuple(LAB_MEASURED_PEAKS),
+        candidate=LAB_RUN3.gradient,
+    )
+
+    assert not any("axis" in f.name or "view" in f.name for f in fields(Session))
+    assert "axis" not in save_session(session).lower()
+
+
 def test_an_end_below_its_own_start_warns_and_shows_everything_rather_than_a_blank_plot() -> None:
     """CLAUDE.md: warn and annotate; block only on an impossibility."""
     _, trace = _lab_trace()
     full = (float(trace.time[0]), float(trace.time[-1]))
 
-    view = axis_view(trace, x_start=20.0, x_end=3.0, y_start=0.9, y_end=0.2)
+    view = axis_view(trace, AxisRequest(x_start=20.0, x_end=3.0, y_start=0.9, y_end=0.2))
 
     assert view.x_range == full
     assert view.y_range[0] == 0.0

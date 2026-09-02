@@ -51,7 +51,10 @@ _ROOT_TWO_PI = math.sqrt(2.0 * math.pi)
 # Headroom above the tallest apex once the y axis is pinned rather than autoranged.
 # Plotly's own autorange leaves about this much, so cropping the axis from below does
 # not silently change how much air the peak labels get.
-_Y_HEADROOM = 1.08
+Y_HEADROOM = 1.08
+# How far along the x axis the gradient-end marker may sit before its caption, which
+# hangs to the right, would run off the plot and has to hang to the left instead.
+_CAPTION_FLIPS_AT = 0.85
 
 
 @dataclass(frozen=True)
@@ -64,16 +67,35 @@ class PeakLabel:
 
 
 @dataclass(frozen=True)
+class AxisRequest:
+    """Where the reader asked each axis to begin and end; ``None`` means the whole run.
+
+    One object rather than four loose floats, so the app's widgets, its session keys and
+    :func:`axis_view` all name the same quartet once.
+    """
+
+    x_start: float | None = None
+    x_end: float | None = None
+    y_start: float | None = None
+    y_end: float | None = None
+
+
+@dataclass(frozen=True)
 class AxisView:
     """What the plot actually shows, and anything the reader should be told about it.
 
     The trace is the run; this is the window onto it. They are kept apart on purpose —
     cropping the view must never be mistaken for a different prediction, so nothing here
     touches the sampled signal and every value drawn stays drawn.
+
+    ``run_x`` / ``run_y`` are the whole-run extents the ranges default to, kept so the
+    controls that seed from them read the same numbers this view was built from.
     """
 
     x_range: tuple[float, float]
     y_range: tuple[float, float]
+    run_x: tuple[float, float]
+    run_y: tuple[float, float]
     notes: tuple[str, ...] = ()
 
 
@@ -99,8 +121,9 @@ def chromatogram(
     """Sum the predicted peaks into one trace running from injection to the last peak.
 
     ``gradient_end`` is :func:`~hplcsim.retention.gradient_end_time` for the candidate.
-    Where the ramp outlasts the peaks the axis is stretched to reach it, so the marker
-    is never the one thing cropped off the picture it is there to explain.
+    Where the ramp outlasts the peaks the axis is stretched past it by the same margin a
+    peak gets, so the marker is never the one thing cropped off the picture it is there
+    to explain — nor drawn on the frame, where a line is easy to miss.
 
     ``extend_to`` is a reader asking the x axis to end later than the run does. It is
     taken here rather than in :func:`axis_view` because a window wider than the data
@@ -112,9 +135,15 @@ def chromatogram(
 
     sigmas = [peak.width.sigma for peak in peaks]
     times = [peak.retention.t_r for peak in peaks]
-    window_start = max(0.0, min(times) - _MARGIN_SIGMAS * max(sigmas))
-    window_stop = max(times) + _MARGIN_SIGMAS * max(sigmas)
-    stop = max([window_stop, *(e for e in (gradient_end, extend_to) if e is not None)])
+    margin = _MARGIN_SIGMAS * max(sigmas)
+    window_start = max(0.0, min(times) - margin)
+    window_stop = max(times) + margin
+    reaches = [window_stop]
+    if gradient_end is not None:
+        reaches.append(gradient_end + margin)
+    if extend_to is not None:
+        reaches.append(extend_to)
+    stop = max(reaches)
     time = _time_grid(window_start, window_stop, stop, min(sigmas))
 
     heights = _apex_heights(peaks, sigmas, shares)
@@ -133,26 +162,25 @@ def chromatogram(
     )
 
 
-def axis_view(
-    trace: Chromatogram,
-    *,
-    x_start: float | None = None,
-    x_end: float | None = None,
-    y_start: float | None = None,
-    y_end: float | None = None,
-) -> AxisView:
+def axis_view(trace: Chromatogram, request: AxisRequest | None = None) -> AxisView:
     """The drawn window, defaulting to the whole run from injection and from zero.
 
     An end at or below its own start is a typo, not an instruction: it would blank that
     axis and leave nothing on screen to explain why. Per CLAUDE.md the entry is kept,
     the axis falls back to the whole run, and the reader is told — warn, do not block.
-    """
-    full_x = (float(trace.time[0]), float(trace.time[-1]))
-    full_y = (0.0, float(trace.signal.max()) * _Y_HEADROOM)
 
-    x_range, x_note = _span(full_x, x_start, x_end, "x-axis", "{:g} min")
-    y_range, y_note = _span(full_y, y_start, y_end, "y-axis", "{:.4g}")
-    return AxisView(x_range=x_range, y_range=y_range, notes=tuple(n for n in (x_note, y_note) if n))
+    A window that leaves a peak off-screen is honoured — the reader may well want the
+    crop — but it is named, so a plot with fewer peaks than the table is never read as
+    a prediction with fewer peaks.
+    """
+    asked = request if request is not None else AxisRequest()
+    run_x = (float(trace.time[0]), float(trace.time[-1]))
+    run_y = (0.0, float(trace.signal.max()) * Y_HEADROOM)
+
+    x_range, x_note = _span(run_x, asked.x_start, asked.x_end, "x-axis", "{:g} min")
+    y_range, y_note = _span(run_y, asked.y_start, asked.y_end, "y-axis", "{:.4g}")
+    notes = [n for n in (x_note, y_note, _cropped(trace, x_range, y_range)) if n]
+    return AxisView(x_range=x_range, y_range=y_range, run_x=run_x, run_y=run_y, notes=tuple(notes))
 
 
 def _span(
@@ -171,6 +199,22 @@ def _span(
             f"showing the whole run instead."
         )
     return (lo, hi), None
+
+
+def _cropped(
+    trace: Chromatogram, x_range: tuple[float, float], y_range: tuple[float, float]
+) -> str | None:
+    """Which peaks the window leaves out, if any — by apex, since the label sits there."""
+    off_x = [lb.name for lb in trace.labels if not x_range[0] <= lb.t_r <= x_range[1]]
+    off_y = [lb.name for lb in trace.labels if lb.height > y_range[1]]
+    parts = []
+    if off_x:
+        parts.append(f"{', '.join(off_x)} outside the x range")
+    if off_y:
+        parts.append(f"{', '.join(off_y)} taller than the y range")
+    if not parts:
+        return None
+    return "This window leaves " + " and ".join(parts) + " — the prediction still has them."
 
 
 def _apex_heights(
@@ -228,7 +272,8 @@ def figure(
     trace: Chromatogram, *, height: int = CHROMATOGRAM_HEIGHT, view: AxisView | None = None
 ) -> Any:
     """The Plotly figure for a rendered trace — the hero of SPEC §7's Cockpit."""
-    window = view if view is not None else axis_view(trace)
+    if view is None:
+        view = axis_view(trace)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -275,7 +320,7 @@ def figure(
                 "yanchor": "bottom",
             },
             annotation_position="bottom right"
-            if _room_on_the_right(trace.gradient_end, window.x_range)
+            if _room_on_the_right(trace.gradient_end, view.x_range)
             else "bottom left",
         )
     fig.update_layout(
@@ -291,10 +336,10 @@ def figure(
         # a few percent of the span, which on a trace that deliberately starts at
         # injection would put visible negative time on screen — and a pinned axis is
         # also what lets the reader move the start without the plot arguing back.
-        xaxis={"title": "time (min)", "range": list(window.x_range)},
+        xaxis={"title": "time (min)", "range": list(view.x_range)},
         yaxis={
             "title": "response (relative)" if trace.scaled_by_area else "response (equal heights)",
-            "range": list(window.y_range),
+            "range": list(view.y_range),
         },
     )
     return fig
@@ -303,7 +348,7 @@ def figure(
 def _room_on_the_right(gradient_end: float, x_range: tuple[float, float]) -> bool:
     """Whether the marker's caption fits to its right, or has to hang on its left."""
     span = x_range[1] - x_range[0]
-    return span > 0.0 and (gradient_end - x_range[0]) / span < 0.85
+    return span > 0.0 and (gradient_end - x_range[0]) / span < _CAPTION_FLIPS_AT
 
 
 def resolution_map_placeholder(
