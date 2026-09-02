@@ -70,6 +70,7 @@ from hplcsim.model import (
 )
 from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
+from prototype import pane as proto  # PROTOTYPE #31 — leaves with the branch
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
 # scopes v0.1 to a single user locally, so the number inputs open on that user's real
@@ -210,7 +211,19 @@ def main() -> None:
     # state written after a widget has been created for this run is state that widget
     # never sees. Save is the exception — it needs the peak table, which has not been
     # rendered yet — so it reserves a slot here and is filled in at the foot of `main`.
+    # PROTOTYPE #31: the demo restore writes widget state, so like the uploader's
+    # own restore it has to land before any widget it overwrites is created — and
+    # `_load_control` creates one (the session name), so it goes ahead of that too.
+    _wanted = proto.wanted_demo()
+    if _wanted is not None:
+        _restore(proto.demo_session(_wanted))
+        proto.mark_loaded()
+    _pending = proto.pending_candidate()
+    if _pending is not None:
+        _preset_slider_with_box(Keys.CANDIDATE_TG, seed=_TG_CANDIDATE, value=_pending)
+
     _load_control()
+    proto.switcher()
     save_slot = st.sidebar.container()
 
     constants = _sidebar()
@@ -232,6 +245,7 @@ def main() -> None:
         candidate = _candidate_controls(constants)
         candidate_slot = st.container()
         summary_slot = st.container()
+        proto_rail_slot = st.container()  # PROTOTYPE #31 — variant C's readout
 
     with main_view:
         worksheet_slot = st.container()
@@ -275,7 +289,17 @@ def main() -> None:
     with peaks_tab:
         _entry_notes(cockpit, diagnostics)
     with map_tab:
-        _resolution_map(candidate)
+        # PROTOTYPE #31: the v0.1 empty frame is replaced by the variant under test.
+        proto.render(
+            cockpit=cockpit,
+            method=constants.method,
+            tg1=run1.gradient.t_gradient,
+            tg2=run2.gradient.t_gradient,
+            candidate=candidate,
+            plate_count=constants.plate_count,
+            slider=_CANDIDATE_TG_RANGE,
+            rail=proto_rail_slot,
+        )
     with fit_tab:
         _fit_tab(cockpit, diagnostics)
     with resolution_tab:
