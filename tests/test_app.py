@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.chromatogram import Chromatogram, chromatogram
+from app.chromatogram import Chromatogram, axis_view, chromatogram
 from app.diagnostics import diagnose
 from app.pipeline import (
     Cockpit,
@@ -47,7 +47,7 @@ from app.tables import (
 from hplcsim.fit import fit_peaks
 from hplcsim.model import Peak, log10_k0_from_ln_k0, s_base10_from_s_e
 from hplcsim.resolution import ResolutionTable
-from hplcsim.retention import predict_retention
+from hplcsim.retention import gradient_end_time, predict_retention
 from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
@@ -391,6 +391,20 @@ def test_the_trace_spans_every_peak_it_draws() -> None:
     assert trace.time[-1] > max(times)
 
 
+def test_the_trace_runs_from_injection_so_the_whole_run_is_on_screen() -> None:
+    """The axis is the run, not a crop of it: 0.00 min through the last peak."""
+    resolution, trace = _lab_trace()
+    last = max(peak.retention.t_r for peak in resolution.peaks)
+
+    assert trace.time[0] == 0.0
+    # The end is the last peak plus only enough margin for it to come back to baseline.
+    assert last < trace.time[-1] < last + 0.5
+    # The lead-in is empty, which is the point of showing it.
+    assert (
+        trace.signal[trace.time < min(p.retention.t_r for p in resolution.peaks) * 0.9].max() < 1e-3
+    )
+
+
 def test_the_grid_is_fine_enough_that_the_narrowest_peak_is_drawn_as_a_peak() -> None:
     """A 1.6 µm column puts σ near 0.01 min in a 25 min window; a fixed grid aliases it.
 
@@ -427,6 +441,116 @@ def test_without_areas_every_peak_is_drawn_to_the_same_height() -> None:
 
     assert trace.scaled_by_area is False
     assert {label.height for label in trace.labels} == {1.0}
+
+
+def test_the_marker_says_when_the_ramp_reaches_the_detector() -> None:
+    """The same instant the engine uses to call a peak post-gradient (SPEC §3)."""
+    inputs = _lab_inputs()
+    cockpit = run_cockpit(inputs)
+    assert cockpit.resolution is not None
+    end = gradient_end_time(inputs.method, inputs.candidate)
+
+    trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, gradient_end=end)
+
+    assert trace.gradient_end == pytest.approx(end)
+    assert end == pytest.approx(
+        inputs.method.t_dwell
+        + inputs.candidate.t_init
+        + inputs.candidate.t_gradient
+        + inputs.method.t0
+    )
+    for peak in cockpit.resolution.peaks:
+        if peak.retention.regime == "post_gradient":
+            assert peak.retention.t_r > end
+
+
+def test_a_ramp_that_outlasts_the_peaks_is_still_on_the_axis() -> None:
+    """The marker explains the picture, so it must not be the thing cropped out of it."""
+    cockpit = run_cockpit(_lab_inputs())
+    assert cockpit.resolution is not None
+    last = max(peak.retention.t_r for peak in cockpit.resolution.peaks)
+
+    trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, gradient_end=last + 30.0)
+
+    assert trace.time[-1] >= last + 30.0
+    assert trace.time[0] == 0.0
+    # The long empty tail must not have starved the peaks of sampling.
+    for peak in cockpit.resolution.peaks:
+        window = np.abs(trace.time - peak.retention.t_r) < peak.width.sigma
+        own_apex = next(lb.height for lb in trace.labels if lb.name == peak.name)
+        assert trace.signal[window].max() >= own_apex * 0.995
+
+
+def test_without_a_method_the_trace_draws_no_marker_it_cannot_place() -> None:
+    _, trace = _lab_trace()
+
+    assert trace.gradient_end is None
+
+
+# --- the drawn window ----------------------------------------------------------------------
+
+
+def test_by_default_the_window_is_the_whole_run_from_injection_and_from_zero() -> None:
+    _, trace = _lab_trace()
+
+    view = axis_view(trace)
+
+    assert view.x_range == (float(trace.time[0]), float(trace.time[-1]))
+    assert view.x_range[0] == 0.0
+    assert view.y_range[0] == 0.0
+    assert view.y_range[1] > float(trace.signal.max())
+    assert view.notes == ()
+
+
+def test_a_later_start_crops_the_view_without_touching_the_prediction() -> None:
+    """The control is a window onto the run, not a different run."""
+    _, trace = _lab_trace()
+    before = trace.signal.copy()
+
+    view = axis_view(trace, x_start=5.0, y_start=0.25)
+
+    assert view.x_range == (5.0, float(trace.time[-1]))
+    assert view.y_range[0] == 0.25
+    assert view.notes == ()
+    assert np.array_equal(trace.signal, before)
+
+
+def test_both_ends_of_both_axes_are_the_readers_to_set() -> None:
+    _, trace = _lab_trace()
+
+    view = axis_view(trace, x_start=5.0, x_end=12.0, y_start=0.1, y_end=0.6)
+
+    assert view.x_range == (5.0, 12.0)
+    assert view.y_range == (0.1, 0.6)
+    assert view.notes == ()
+
+
+def test_an_x_end_past_the_run_draws_the_baseline_out_to_it() -> None:
+    """A wider window onto a shorter trace would stop the line in mid-air."""
+    cockpit = run_cockpit(_lab_inputs())
+    assert cockpit.resolution is not None
+
+    trace = chromatogram(cockpit.resolution.peaks, cockpit.shares, extend_to=40.0)
+    view = axis_view(trace, x_end=40.0)
+
+    assert trace.time[-1] >= 40.0
+    assert view.x_range == (0.0, 40.0)
+    # Drawn all the way out, and flat once the peaks are done.
+    assert float(trace.signal[trace.time > 30.0].max()) < 1e-6
+
+
+def test_an_end_below_its_own_start_warns_and_shows_everything_rather_than_a_blank_plot() -> None:
+    """CLAUDE.md: warn and annotate; block only on an impossibility."""
+    _, trace = _lab_trace()
+    full = (float(trace.time[0]), float(trace.time[-1]))
+
+    view = axis_view(trace, x_start=20.0, x_end=3.0, y_start=0.9, y_end=0.2)
+
+    assert view.x_range == full
+    assert view.y_range[0] == 0.0
+    assert len(view.notes) == 2
+    assert "x-axis end" in view.notes[0]
+    assert "y-axis end" in view.notes[1]
 
 
 def test_a_chromatogram_of_nothing_is_refused_rather_than_drawn_empty() -> None:

@@ -68,6 +68,7 @@ from hplcsim.model import (
     percent_b_from_phi,
     s_base10_from_s_e,
 )
+from hplcsim.retention import gradient_end_time
 from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
 
@@ -161,6 +162,14 @@ class Keys:
     TG_RUN2 = "tg_run2"
     CANDIDATE_TG = "candidate_tg"
     CANDIDATE_HOLD = "candidate_hold"
+
+    # Where the chromatogram's axes begin and end. These are a view onto the prediction,
+    # not an input to it: SPEC §8 keeps the session file to inputs, so they live in
+    # `session_state` and nowhere near `CockpitInputs`.
+    X_AXIS_START = "x_axis_start"
+    X_AXIS_END = "x_axis_end"
+    Y_AXIS_START = "y_axis_start"
+    Y_AXIS_END = "y_axis_end"
 
 
 _DWELL_REQUIRED = (
@@ -281,7 +290,7 @@ def main() -> None:
     with resolution_tab:
         _resolution_tab(cockpit, diagnostics)
     with chromatogram_slot:
-        _chromatogram(cockpit, candidate, diagnostics)
+        _chromatogram(cockpit, inputs, diagnostics)
 
     _status_bar(cockpit, candidate, diagnostics)
 
@@ -924,13 +933,14 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
-def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
+def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics) -> None:
     """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
 
     This block is sticky, so its height is screen the reader cannot scroll away. The
     condition, the area caveat and diagnostic 6's stamp all still have to appear — they
     are on one caption line beside the title rather than three stacked rows beneath it.
     """
+    candidate = inputs.candidate
     st.markdown(
         f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
         f"hold {candidate.t_init:g} min"
@@ -938,8 +948,22 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return
-    trace = chromatogram.chromatogram(cockpit.resolution.peaks, cockpit.shares)
-    st.plotly_chart(chromatogram.figure(trace), width="stretch")
+    trace = chromatogram.chromatogram(
+        cockpit.resolution.peaks,
+        cockpit.shares,
+        gradient_end=gradient_end_time(inputs.method, candidate),
+        # An x axis asked to end past the run needs trace to draw out there, not just a
+        # wider window onto a baseline that stops halfway across the plot.
+        extend_to=st.session_state.get(Keys.X_AXIS_END),
+    )
+    view = chromatogram.axis_view(
+        trace,
+        x_start=st.session_state.get(Keys.X_AXIS_START),
+        x_end=st.session_state.get(Keys.X_AXIS_END),
+        y_start=st.session_state.get(Keys.Y_AXIS_START),
+        y_end=st.session_state.get(Keys.Y_AXIS_END),
+    )
+    st.plotly_chart(chromatogram.figure(trace, view=view), width="stretch")
     notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
@@ -948,6 +972,71 @@ def _chromatogram(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostic
     if diagnostics.stamps:
         notes.append(_STAMP_SHORT)
     st.caption("  ·  ".join(notes))
+    _axis_controls(trace, view)
+
+
+def _axis_controls(trace: chromatogram.Chromatogram, view: chromatogram.AxisView) -> None:
+    """Both ends of both axes, as four boxes beneath the trace.
+
+    Behind an expander rather than always on show. This block is pinned, so every row
+    added here is screen the reader cannot scroll away from — the same budget that
+    `CHROMATOGRAM_HEIGHT` is spending. Collapsed it costs one line; the reader who wants
+    to crop the baseline off opens it once and it stays open.
+
+    The boxes read back the drawn window rather than the raw entry, so the pair that a
+    warning has just refused shows what is actually on screen instead of the typo.
+    """
+    peak_top = float(trace.signal.max())
+    with st.expander("Axis range", expanded=False):
+        cols = st.columns([1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
+        with cols[0]:
+            st.number_input(
+                "x start (min)",
+                min_value=0.0,
+                value=float(trace.time[0]),
+                step=0.1,
+                format="%.2f",
+                key=Keys.X_AXIS_START,
+            )
+        with cols[1]:
+            st.number_input(
+                "x end (min)",
+                min_value=0.0,
+                value=float(trace.time[-1]),
+                step=0.1,
+                format="%.2f",
+                key=Keys.X_AXIS_END,
+            )
+        with cols[2]:
+            st.number_input(
+                "y start",
+                value=0.0,
+                step=peak_top / 20.0 or 0.05,
+                format="%.4f",
+                key=Keys.Y_AXIS_START,
+            )
+        with cols[3]:
+            st.number_input(
+                "y end",
+                value=view.y_range[1],
+                step=peak_top / 20.0 or 0.05,
+                format="%.4f",
+                key=Keys.Y_AXIS_END,
+            )
+        with cols[4]:
+            st.button("Reset", on_click=_reset_axis_range, width="stretch")
+        st.caption(
+            f"Peaks run to {float(trace.time[-1]):.2f} min and the tallest reaches "
+            f"{peak_top:.4g}. An x end past the run draws the baseline out to it."
+        )
+    for note in view.notes:
+        st.warning(note, icon="⚠️")
+
+
+def _reset_axis_range() -> None:
+    """Back to the whole run. A callback, so it lands before the widgets are redrawn."""
+    for key in (Keys.X_AXIS_START, Keys.X_AXIS_END, Keys.Y_AXIS_START, Keys.Y_AXIS_END):
+        st.session_state.pop(key, None)
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:
