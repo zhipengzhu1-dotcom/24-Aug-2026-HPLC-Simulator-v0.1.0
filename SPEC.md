@@ -36,7 +36,7 @@ Normative detail with derivations, symbol table, and citations: `docs/research/g
 |---|---|
 | Column length / i.d. / particle | mm / mm / µm; metadata + basis for estimates |
 | Flow F | mL/min |
-| t0 | **measured-first**: marker time (min) primary; geometry estimate as labeled fallback that stamps predictions lower-confidence |
+| t0 | **measured-first**: marker time (min), required in v0.1. A geometry-based estimate as labeled fallback — stamping predictions lower-confidence — is deferred to v0.2 ([#24](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/24)) |
 | Dwell | required, no silent default; entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance |
 | Gradient | %B start, %B end (UI 0–100; φ internal), optional initial hold t_init (min); single linear segment |
 | Temperature | °C, metadata only (fixed-T model); sample-manager temp optional provenance |
@@ -63,7 +63,7 @@ All six ship in v0.1:
 3. **β-spacing escalation** on fit results.
 4. **Prediction crossing flags** (order at candidate differs from scouting runs).
 5. **Width/Rs caveat banner**. The G convention is settled (§3, #17) and N is fitted wherever widths exist (#23), so the banner is scoped to peaks whose N is *defaulted*: a geometry estimate runs 0.69–0.92× on measured lab widths and 18–39% optimistic on Rs at held-out conditions, where a fitted N lands at 0.99–1.16× and −4 to −10%. The engine stamps every width with `PeakWidth.plate_count_source` (`"default"` / `"supplied"` / `"fitted"`); the banner reads `"default"`. A fitted N's `FittedPlateCount.low_confidence` (its only width came from the post-gradient regime; such a width is left out whenever the other run's is usable) is a per-peak badge, not a banner. Wording is ticket #19's. Absolute widths and Rs are caveated for defaulted peaks; the critical *pair* is not — it is identified correctly at both held-out conditions under either N.
-6. **Estimated-t0 stamp** on all outputs when the geometry fallback was used.
+6. **Estimated-t0 stamp** on all outputs when t0 is entered as an estimate rather than a measured marker time.
 
 Presentation: per-peak badges (2, 4), fit-page notices (3), result banners (5), output stamps (6), candidate-control inline warnings (1).
 
