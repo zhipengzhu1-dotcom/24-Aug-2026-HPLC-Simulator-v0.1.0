@@ -1,0 +1,62 @@
+section,1 - PASTE BLOCK for the app's Peak table,,,,,
+note,"select the 3 x 7 range below (Compound .. W-half run 2) and paste onto the first cell of the Peak table",,,,,
+pairing,run 1 = tG 15 min (run1.csv); run 2 = tG 45 min (run2.csv) - the scouting pair; beta = 3.0,,,,,
+Compound,tR run 1 (min),tR run 2 (min),Area run 1,Area run 2,W½ run 1 (min),W½ run 2 (min)
+Unknown-1,9.855,20.831,13352,14299,0.033,0.087
+Unknown-2,11.592,25.932,4829,9437,0.034,0.093
+Unknown-3,16.159,39.796,4013,7057,0.025,0.071
+,,,,,,
+section,2 - ALTERNATE PASTE BLOCK (runs 3 and 4),,,,,
+pairing,run 1 = tG 25 min (run3.csv); run 2 = tG 60 min (run4.csv) - beta = 2.4; below the beta >= 2.5 the protocol asks for,,,,,
+Compound,tR run 1 (min),tR run 2 (min),Area run 1,Area run 2,W½ run 1 (min),W½ run 2 (min)
+Unknown-1,13.787,25.587,13648,14412,0.05,0.114
+Unknown-2,16.658,32.32,5642,4872,0.05,0.103
+Unknown-3,24.358,50.821,4441,4573,0.04,0.085
+,,,,,,
+section,3 - ALL FOUR RUNS (reference; one row per compound per run),,,,,
+note,"runs 3 and 4 are the confirmation runs - fit from 1+2, set the candidate tG to 25 (or 60) and compare",,,,,
+run,tG_min,role,compound,tR_min,area,W_half_min
+run1,15,scouting (fit input),Unknown-1,9.855,13352,0.033
+run1,15,scouting (fit input),Unknown-2,11.592,4829,0.034
+run1,15,scouting (fit input),Unknown-3,16.159,4013,0.025
+run2,45,scouting (fit input),Unknown-1,20.831,14299,0.087
+run2,45,scouting (fit input),Unknown-2,25.932,9437,0.093
+run2,45,scouting (fit input),Unknown-3,39.796,7057,0.071
+run3,25,confirmation (inside bracket),Unknown-1,13.787,13648,0.05
+run3,25,confirmation (inside bracket),Unknown-2,16.658,5642,0.05
+run3,25,confirmation (inside bracket),Unknown-3,24.358,4441,0.04
+run4,60,confirmation (outside bracket),Unknown-1,25.587,14412,0.114
+run4,60,confirmation (outside bracket),Unknown-2,32.32,4872,0.103
+run4,60,confirmation (outside bracket),Unknown-3,50.821,4573,0.085
+,,,,,,
+section,4 - SIDEBAR VALUES (shared by every run; from method.csv),,,,,
+field,value,units,notes,,,
+column_length,100,mm,,,,
+column_id,2.1,mm,,,,
+particle_size,1.6,um,,,,
+flow,0.4,mL/min,,,,
+temperature,45,C,metadata only in v0.1,,,
+percentB_start,5,%,,,,
+percentB_end,95,%,,,,
+initial_hold,0.5,min,t_init,,,
+dwell_time,0.9375,min,"VD 0.375 mL / F; required - a wrong dwell biases every prediction",,,
+t0,0.525,min,"solvent front, run1-chromatogram.png; fits/fixtures still use 0.6 - see #24",,,
+t0_marker,solvent front,,no marker compound injected,,,
+injection_volume,10,uL,constant across runs,,,
+instrument,Waters UPLC Acquity H-Class,,,,,
+column_name,Waters CORTECS UPLC Shield RP18,,,,,
+,,,,,,
+section,5 - GRADIENT PROGRAM (as run on the instrument; wash and re-equilibration are not modeled),,,,,
+run,Time (min),Flow (mL/min),%A,%B,,
+run1,0,0.4,95,5,,
+run1,0.5,0.4,95,5,,
+run1,15.5,0.4,5,95,,
+run1,18.5,0.4,5,95,,
+run1,18.6,0.4,95,5,,
+run1,22.6,0.4,95,5,,
+run2,0,0.4,95,5,,
+run2,0.5,0.4,95,5,,
+run2,45.5,0.4,5,95,,
+run2,48.5,0.4,5,95,,
+run2,48.6,0.4,95,5,,
+run2,52.6,0.4,95,5,,
