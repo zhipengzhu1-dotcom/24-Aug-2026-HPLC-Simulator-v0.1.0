@@ -1,0 +1,24 @@
+﻿Replicate-1,,,,
+tG_min,20,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,16.372,635888,0.031,
+Unknown-2,16.503,423345,0.029,
+Unknown-3,16.767,789737,0.031,
+Unknown-4,16.857,628829,0.029,
+,,,,
+Replicate-2,,,,
+tG_min,20,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,16.371,635779,0.031,
+Unknown-2,16.502,422724,0.029,
+Unknown-3,16.766,790949,0.032,
+Unknown-4,16.856,627788,0.029,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,95,5
+2,0.5,0.4,95,5
+3,20.5,0.4,5,95
+4,23.5,0.4,5,95
+5,23.6,0.4,95,5
+6,27.6,0.4,95,5
