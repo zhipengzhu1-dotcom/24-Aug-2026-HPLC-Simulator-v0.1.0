@@ -36,11 +36,12 @@ is the extrapolation to pure water (§1, §1.1). Two of the sources this documen
 leans on hardest use $k_0$ for the *other* quantity. Guillarme et al. (2022) write
 $k_0$ for *"the (extrapolated) value of k in pure water"* — our $k_w$ — and $k_i$
 for *"the retention factor under initial gradient conditions"* — our $k_0$. den Uijl
-et al. (2021, *J. Chromatogr. A* 1636) likewise write $\ln k_0$ for the pure-water
-intercept throughout their model table (§7.5). Anyone implementing Guillarme
-Eqs. 8–10 or den Uijl Eqs. 1–5 against §1's symbol table will silently swap two
-parameters, and the swap is not small: the two differ by $S_e\varphi_0$ in the log,
-a factor of $10^{S\varphi_0}$ in $k$ — ×1.8 at 5 %B and ×32 at 30 %B for $S = 5$.
+et al. (2021a, the review, ref. 4; 2021b, ref. 16) likewise write $\ln k_0$ —
+*"often also denoted $\ln k_w$"* — for the pure-water intercept throughout their
+model tables (§7.5). Anyone implementing Guillarme Eqs. 8–10 or den Uijl 2021b
+Eqs. 1–5 against §1's symbol table will silently swap two parameters, and the swap
+is not small: the two differ by $S_e\varphi_0$ in the log, a factor of
+$10^{S\varphi_0}$ in $k$ — ×1.8 at 5 %B and ×32 at 30 %B for $S = 5$.
 The rule is the same as for the log base: **read the source's definition of $k_0$
 before lifting an equation, and translate at the boundary, never inside the maths.**
 Found by #43 (`composition-extrapolation.md` §1, §4.3, §8 item 5).
@@ -58,7 +59,7 @@ Found by #43 (`composition-extrapolation.md` §1, §4.3, §8 item 5).
 | $\varphi_e$ | composition the band experiences **at the moment it elutes** | dimensionless | |
 | $k$ | retention factor, $(t_R - t_0)/t_0$ | dimensionless | |
 | $k_w$ | $k$ extrapolated to pure water ($\varphi = 0$) | dimensionless | a **fitting parameter, not a physical constant** — see §1.2 |
-| $k_0$ | $k$ at the initial gradient composition $\varphi_0$; also written $k_i$, $k'_0$ | dimensionless | the parameter the two-run fit actually determines well. **Not** the $k_0$ of Guillarme et al. (2022) or den Uijl et al. (2021), which is this document's $k_w$ — §0 |
+| $k_0$ | $k$ at the initial gradient composition $\varphi_0$; also written $k_i$, $k'_0$ | dimensionless | the parameter the two-run fit actually determines well. **Not** the $k_0$ of Guillarme et al. (2022) or den Uijl et al. (2021a, 2021b), which is this document's $k_w$ — §0 |
 | $k_e$ | $k$ at the instant the band leaves the column; also $k_f$, $k^*$-adjacent | dimensionless | $\approx 1/b_e$ for well-retained solutes |
 | $S$ | solvent-strength parameter, base-10 convention | dimensionless | ~1.7–6.3 for small molecules (§1.2); much larger for proteins |
 | $S_e$ | solvent-strength parameter, natural-log convention | dimensionless | $=2.303\,S$ |
@@ -727,19 +728,19 @@ the two scouting gradients to bracket the gradients you intend to predict, and $
 is a good default, not a law.**
 
 **The same Molnár sentence carries a composition number — read it for what it is.**
-Its *"15–20% change in %B"* clause is the φ half of the $\beta = 3$ recommendation,
+Its *"15–20% change in %B"* clause is the $\varphi$ half of the $\beta = 3$ recommendation,
 and it is tempting to read it as a licence: "an LSS fit is good for 15–20 %B either
 side of what it was fitted on". It is not. The claim is about *experimental design*
 — how far two variables may be varied while still being treated as independent in
-a factorial model, the φ analogue of "how far apart to put the two runs" — not
+a factorial model, the $\varphi$ analogue of "how far apart to put the two runs" — not
 about how far a fitted line may be extrapolated past its calibration. What a
 $\beta = 3$ pair actually calibrates is the elution-composition window
 $\Delta\varphi_e = \ln\beta / S_e$ (Guillarme et al. 2022 Eq. 16;
-`composition-extrapolation.md` §1–2): 9–16 %B across the small-molecule $S$ range
-and ~9.4 %B on this project's own data. Snyder's span is therefore the same order
-as the calibrated window and roughly twice it — a design width, not a margin
-beyond it. Molnár cites Dolan, Lommen & Snyder (*J. Chromatogr.* 535) for the
-numbers; neither this document nor #43 has read them.
+`composition-extrapolation.md` §1–2): 7.5–28 %B over §1.2's small-molecule $S$
+range of 1.7–6.3, and ~9.4 %B on this project's own data ($S \approx 5$). Snyder's
+span is therefore the same order as the calibrated window — roughly twice it for
+this sample — a design width, not a margin beyond it. Molnár cites Dolan, Lommen &
+Snyder (ref. 17) for the numbers; neither this document nor #43 has read them.
 
 ### 7.2 Fit degeneracy when the runs are too similar
 
@@ -820,9 +821,10 @@ is *"only applicable to the narrow linear range"*. Their practical advice for
 LSS users: *"if an LSS model is used it is better to omit data for $\ln k < 0$."*
 Poole & Atapattu (2022) likewise treat the linear region as a bounded regime.
 
-The alternatives, if v0.2 wants them (den Uijl et al. 2021 review Eqs. 7–11; the
-same five models are den Uijl et al. 2021, *J. Chromatogr. A* 1636, Eqs. 1–5, against
-which every row below was verified by #43):
+The alternatives, if v0.2 wants them (den Uijl et al. 2021a, the review, Eqs. 6–11;
+the same five models are Eqs. 1–5 of den Uijl et al. 2021b, ref. 16, which #43
+checked the rows against — the adsorption row keeps the review's $k_0$, $n$ where
+2021b writes $k_1$, $R$):
 
 | Model | Equation | Runs needed |
 |---|---|---|
@@ -832,18 +834,24 @@ which every row below was verified by #43):
 | Mixed-mode | $\ln k = \ln k_0 + S_1\varphi + S_2\ln\varphi$ | 3+ |
 | Neue–Kuss | $\ln k = \ln k_0 + 2\ln(1+S_2\varphi) - \dfrac{S_1\varphi}{1+S_2\varphi}$ | 3+ |
 
-(Two notes on the table. **Symbols:** $k_0$ here is den Uijl's — the intercept at
-$\varphi = 0$, i.e. this document's $k_w$, not its $k_0$; see §0. Their model zoo is
-natural-log throughout, so the rows lift into the engine's internal convention
-without a 2.303. **Neue–Kuss:** this row was originally reconstructed from a
-mangled extraction and flagged unverified. #43 verified it against den Uijl et al.
-2021, *J. Chromatogr. A* 1636, Eq. 5: the grouping was right — the parameter inside
-the logarithm is the one in the denominator — and the subscripts were swapped. The
-row now carries the verified form: den Uijl's $S_{2,\text{NK}}$ inside the logarithm
-and the denominator, $S_{1,\text{NK}}$ in the numerator. §10 item 10.) den Uijl et al.
-note that *"when a
-limited number of input experiments was desirable, good fits could be found for the
-two-parameter models (LSS and ADS)"*, which is a fair defence of a two-run v0.1;
+(Two notes on the table. **Symbols:** in the LSS, quadratic and Neue–Kuss rows
+$k_0$ is den Uijl's intercept at $\varphi = 0$ — *"often also denoted $\ln k_w$"* —
+i.e. this document's $k_w$, not its $k_0$; see §0. The adsorption row's intercept
+sits at $\varphi = 1$ (2021b writes $k_1$), and the mixed-mode $k_0$ is neither. The
+zoo is natural-log throughout, so the rows lift into the engine's internal
+convention without a 2.303. **Neue–Kuss:** this row was originally reconstructed
+from a mangled extraction of the review's Eq. 11 and flagged unverified. #43
+verified it against 2021b Eq. 5, which extracts cleanly: the grouping was right —
+the parameter inside the logarithm is the one in the denominator — and, against
+2021b's labels, the subscripts were swapped. The row now follows 2021b:
+$S_{2,\text{NK}}$ inside the logarithm and the denominator, $S_{1,\text{NK}}$ in the
+numerator. The review's Eq. 11 still renders unreliably (re-checked 2026-09-03),
+so whether it labels the pair the other way is not settled [could not verify];
+implement from 2021b. §10 item 10.)
+
+den Uijl et al. note that *"when a limited number of input experiments was
+desirable, good fits could be found for the two-parameter models (LSS and ADS)"*,
+which is a fair defence of a two-run v0.1;
 with more measurements the adsorption model fit best in their comparison.
 
 **The honest framing for v0.1:** two runs buy exactly two parameters. LSS is the
@@ -1090,13 +1098,14 @@ weaker than the rest of the document.
     this table; go to the source.
 
     **Update (ticket #43, applied under #48): RESOLVED — see §7.5.** #43 went to
-    the source — den Uijl et al. 2021, *J. Chromatogr. A* 1636, Eq. 5, extracted
-    cleanly. The grouping was right and the subscripts were swapped; §7.5 now
-    carries the verified form and the table is implementable as a stated
-    alternative model. The caveat that remains is den Uijl's own measurement, not
-    a typography doubt: Neue–Kuss *"results in a poor description when the input
-    data is limited to three gradient durations"* and is less robust to fit than
-    the two-parameter models — so it is a ≥ 4-run model, not a two-run one
+    the source — den Uijl et al. 2021b (ref. 16) Eq. 5, which extracts cleanly. The
+    grouping was right and the subscripts were swapped; §7.5 now carries the
+    verified form and the table is implementable as a stated alternative model.
+    The caveat that remains is den Uijl's own measurement, not a typography doubt:
+    Neue–Kuss *"results in a poor description when the input data is limited to
+    three gradient durations"* and is less robust to fit than the two-parameter
+    models. Three parameters means three runs by count; expect it to want more
+    [derived: poor at three input gradients, good at eight]
     (`composition-extrapolation.md` §4.1, §5.3).
 11. **DryLab's internal solver** — whether it uses a closed form, Newton iteration,
     or something else is proprietary. Molnár (2002) documents the *workflow* and the
@@ -1250,9 +1259,15 @@ Ordered roughly by how load-bearing they are here.
     [author PDF](https://pure.uva.nl/ws/files/54095340/2021_Den_Uijl_PROMISE.pdf) —
     Eqs. 1–5, the five retention models of §7.5 in natural-log form, against which
     that table (the Neue–Kuss row in particular) was verified by #43; the source of
-    the $k_0$-means-$k_w$ note in §0. Added 2026-09-03 under #48.
+    the $k_0$-means-$k_w$ note in §0. Cited as *2021b*; ref. 4, the review, is
+    *2021a*. Added 2026-09-03 under #48.
+17. **Dolan, J. W.; Lommen, D. C.; Snyder, L. R.** *J. Chromatogr.* **535** —
+    cited by Molnár (2002) §8 as the source of the design spans quoted in §7.1
+    (15–20 %B, a factor of three in gradient time, 20–30 °C, 0.5–0.6 pH units).
+    **Not read**; volume as Molnár cites it, year/title/pages not verified. Added
+    2026-09-03 under #48.
 
 ---
 
 *Compiled 2026-08-24 for issue #2. Branch: `research/gradient-math`. Amended
-2026-09-03 under #48 with #43's corrections: §0, §1, §7.1, §7.5, §10 item 10, ref. 16.*
+2026-09-03 under #48 with #43's corrections: §0, §1, §7.1, §7.5, §10 item 10, refs. 16–17.*
