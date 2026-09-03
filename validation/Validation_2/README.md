@@ -13,7 +13,10 @@ critical pair at Rs ≈ 1.75, which is what SPEC §10's `Rs ± 0.3` bar always n
 | `4peaks_run2.csv` | tG 40, 5 → 95 %B | scouting |
 | `4peaks_run3.csv` | tG 20, 5 → 95 %B | held out |
 | `4peaks_run4.csv` | tG 20, 15 → 95 %B | held out — raised φ0 |
+| `4peaks_run5.csv` | tG 25, 15 → 55 %B, 20 min hold at 55 | held out — the trap run: s* 0.35 window-widths below the scouting bracket, all four peaks in the hold (pre-registered as `../run-sheets/4peaks_run5-predicted.csv`) |
+| `4peaks_run6.csv` | tG 25, 25 → 95 %B | held out — raised φ0 by 20 %B, in-bracket on s* |
+| `E1.csv` | tG 20, 5 → 85 %B | held out — the axis test (#52 §5.2): shares φ0 with run3 and Δφ / tG / s* with run4 |
 | `sticky-check.json` | scouting pair as a session file | loads the set into the app |
 
 Pre-registered predictions for runs not yet made live in `../run-sheets/`, never here.
-Fixtures: `tests/validation2_data.py`.
+Fixtures: `tests/validation2_data.py` (runs 1–4; runs 5, 6 and E1 are scored on #46 and not yet wired).
