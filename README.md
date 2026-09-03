@@ -71,4 +71,5 @@ Sessions save and reload as a JSON file from within the app (SPEC §8). The file
 | [CLAUDE.md](CLAUDE.md) | Repo standards: architecture rules, units, tooling, process |
 | `docs/research/` | The science behind the model, with citations |
 | `docs/handoffs/` | Session-by-session build record |
+| [docs/running-the-app.md](docs/running-the-app.md) | How to start, open, and stop the app and the prototype branches |
 | `validation/` | Real instrument data and the protocol that produced it |
