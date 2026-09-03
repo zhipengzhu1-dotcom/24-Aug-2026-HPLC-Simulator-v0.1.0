@@ -2,7 +2,7 @@ tG_min,25,,,
 compound,tR_min,area_pct,W_half_min,
 Unknown-1,18.164,14983,0.1,
 Unknown-2,24.471,5707,0.132,
-Unknown-3,wash eluted,,,
+Unknown-3,46.8,,,
 ,,,,
 Gradient,,,,
 #,Time,Flow (mL/min),%A,%B
@@ -14,3 +14,5 @@ Gradient,,,,
 6,48.1,0.4,5,95
 7,48.2,0.4,75,25
 8,52.2,0.4,75,25
+,,,,
+"NOTE: Unknown-3 eluted in the 95 %B wash (row 5 onward); tR 46.8 read by the driver from the chromatogram on 2026-09-03 (#46). Area and W_half of the wash peak not recorded. Pre-registered hand-walked estimate 47.0 (#46, before the reading).",,,,

@@ -1,0 +1,19 @@
+﻿tG_min,25,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,32.202,683768,0.158,
+Unknown-2,32.955,496847,0.16,
+Unknown-3,34.565,768642,0.198,
+Unknown-4,35.202,643506,0.186,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,85,15
+2,0.5,0.4,85,15
+3,25.5,0.4,45,55
+4,45,0.4,45,55
+5,45.1,0.4,5,95
+6,48,0.4,5,95
+7,48.1,0.4,75,25
+8,52,0.4,75,25
+,,,,
+"NOTE: This is a trap test, delibrately holds %B at 55% for 20 minutes, then washes at 95% B for 2.9min, and equilibrates at 25% B for Run 6.",,,,

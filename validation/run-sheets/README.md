@@ -13,5 +13,5 @@ the run sheet here unchanged — overwriting it destroys the pre-registration.
 
 | file | condition | status |
 |---|---|---|
-| `4peaks_run5-predicted.csv` | Validation_2 sample, tG 25, 15 → 55 %B | awaiting measurement |
+| `4peaks_run5-predicted.csv` | Validation_2 sample, tG 25, 15 → 55 %B | measured 2026-09-03 as `../Validation_2/4peaks_run5.csv` — mean −1.33 %, regime and order as predicted (#46) |
 | `4peaks_run6-predicted.csv` | Validation_2 sample, tG 25, 25 → 95 %B | awaiting measurement |
