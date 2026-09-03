@@ -71,6 +71,7 @@ from hplcsim.model import (
 from hplcsim.retention import gradient_end_time
 from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
+from prototype import entry as proto  # PROTOTYPE #45 — leaves with the branch
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
 # scopes v0.1 to a single user locally, so the number inputs open on that user's real
@@ -224,7 +225,18 @@ def main() -> None:
     # state written after a widget has been created for this run is state that widget
     # never sees. Save is the exception — it needs the peak table, which has not been
     # rendered yet — so it reserves a slot here and is filled in at the foot of `main`.
+    # PROTOTYPE #45: the demo restore writes widget state, so it lands before any
+    # widget it overwrites is created — the same rule the #31 prototype followed.
+    _wanted = proto.wanted_demo()
+    if _wanted is not None:
+        _restore(_wanted)
+        proto.mark_loaded()
+    _pending = proto.pending_candidate()
+    if _pending is not None:
+        _preset_slider_with_box(Keys.CANDIDATE_TG, seed=_TG_CANDIDATE, value=_pending)
+
     _load_control()
+    proto.switcher()  # PROTOTYPE #45
     save_slot = st.sidebar.container()
 
     constants = _sidebar()
@@ -243,7 +255,12 @@ def main() -> None:
 
     with rail:
         run1, run2 = _scouting_runs(constants)
-        candidate = _candidate_controls(constants)
+        # PROTOTYPE #45: the variant under test owns the candidate block.
+        candidate = (
+            proto.candidate_controls(constants, _proto_plumbing(constants), (run1, run2))
+            if proto.active()
+            else _candidate_controls(constants)
+        )
         candidate_slot = st.container()
         summary_slot = st.container()
 
@@ -270,6 +287,7 @@ def main() -> None:
     cockpit = run_cockpit(inputs)
 
     diagnostics = diagnose(inputs, cockpit)
+    diagnostics = proto.amend(diagnostics, inputs, cockpit)  # PROTOTYPE #45
 
     with save_slot:
         _save_control(inputs)
@@ -283,7 +301,8 @@ def main() -> None:
     with candidate_slot:
         # SPEC §6: diagnostic 1 is a "candidate-control inline warning" — it belongs
         # against the slider that caused it, not in a tab the user may not have open.
-        _notices(diagnostics.candidate)
+        # PROTOTYPE #45: variant C paints these as panel rows, A and B as boxes.
+        proto.candidate_notices(diagnostics, _notices, constants=constants, candidate=candidate)
     with summary_slot:
         _summary_panels(cockpit, diagnostics)
     with peaks_tab:
@@ -678,6 +697,20 @@ def _candidate_controls(constants: MethodEntry) -> Gradient:
     return constants.gradient(t_gradient, hold=hold)
 
 
+def _proto_plumbing(constants: MethodEntry) -> proto.Plumbing:
+    """PROTOTYPE #45: lend the variants this file's two-widget control and its keys."""
+    return proto.Plumbing(
+        slider_with_box=_slider_with_box,
+        preset=_preset_slider_with_box,
+        tg_key=Keys.CANDIDATE_TG,
+        hold_key=Keys.CANDIDATE_HOLD,
+        tg_range=_CANDIDATE_TG_RANGE,
+        hold_range=_CANDIDATE_HOLD_RANGE,
+        default_tg=_TG_CANDIDATE,
+        default_hold=min(constants.hold, _MAX_CANDIDATE_HOLD),
+    )
+
+
 def _slider_with_box(
     label: str,
     min_value: float,
@@ -781,6 +814,8 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     # W½, N and Rs. The stamp is a caption beneath them rather than a row inside them,
     # because SPEC §7 enumerates what those panels hold.
     _stamp_caption(diagnostics)
+    if (stamp := proto.stamp_caption()) is not None:  # PROTOTYPE #45
+        st.caption(f"⚠️ {stamp}")
 
 
 def _summary_rows(cockpit: Cockpit) -> list[Row]:
@@ -802,6 +837,7 @@ def _summary_rows(cockpit: Cockpit) -> list[Row]:
         Row("Run time", f"{max(p.retention.t_r for p in resolution.peaks):.2f} min"),
         Row("Min. k", f"{min(p.retention.k_e for p in resolution.peaks):.2f}"),
     ]
+    rows += proto.summary_rows()  # PROTOTYPE #45
     if cockpit.defaulted_width_names:
         rows.append(
             Row("N estimated for", f"{len(cockpit.defaulted_width_names)} peak(s)", "#c77700")
@@ -880,7 +916,7 @@ def _fit_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         st.caption("Nothing fitted yet — enter a tR in both runs for at least one peak.")
         return
     st.dataframe(
-        tables.fit_frame(cockpit),
+        proto.fit_frame(tables.fit_frame(cockpit)),  # PROTOTYPE #45
         width="stretch",
         hide_index=True,
         column_config={
@@ -891,6 +927,11 @@ def _fit_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         },
     )
     st.caption("log10 k0 is quoted at the scouting φ0; S is the base-10 slope (SPEC §3).")
+    if (windows := proto.window_frame()) is not None:  # PROTOTYPE #45
+        st.markdown("**Calibrated composition windows at this candidate**")
+        st.dataframe(windows, width="stretch", hide_index=True)
+    if (note := proto.fit_caption()) is not None:  # PROTOTYPE #45
+        st.caption(note)
 
 
 def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
@@ -931,6 +972,7 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     if critical is not None:
         fields.append(f"Rs {critical.rs:.2f}")
     fields.append("RP gradient — linear, single segment")
+    fields.extend(proto.status_fields())  # PROTOTYPE #45
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.
     if any(stamp.code == "estimated_t0" for stamp in diagnostics.stamps):
@@ -963,7 +1005,9 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
         extend_to=asked.x_end,
     )
     view = chromatogram.axis_view(trace, asked)
-    st.plotly_chart(chromatogram.figure(trace, view=view), width="stretch")
+    fig = chromatogram.figure(trace, view=view)
+    proto.overlay(fig, inputs, cockpit, view)  # PROTOTYPE #45 — variant B only
+    st.plotly_chart(fig, width="stretch")
     notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
