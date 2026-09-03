@@ -119,6 +119,22 @@ _BY_TIME = "Time (min)"
 
 _UNTITLED = "Untitled session"
 
+# PROTOTYPE #45: the always-open axis strip beneath the chromatogram (driver's request).
+_AXIS_STRIP_STYLE = """
+<style>
+  .st-key-hs-axis {
+    border-top: 1px solid #c3ceda; margin-top: 4px; padding: 4px 0 2px;
+  }
+  .st-key-hs-axis .stNumberInput label { font-size: 0.72rem; }
+  .st-key-hs-axis .stNumberInput input { font-size: 0.8rem; padding: 0.25rem 0.5rem; }
+  .st-key-hs-axis .stButton button { padding: 0.25rem 0.5rem; font-size: 0.8rem; min-height: 0; }
+  .hs-axis-title {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #24445f;
+  }
+  .hs-axis-note { font-size: 0.72rem; color: #6b7a8c; font-variant-numeric: tabular-nums; }
+</style>
+"""
+
 # SPEC §6 diagnostic 6's short form. One wording, wherever an output surface carries it.
 _STAMP_SHORT = "⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6)."
 
@@ -219,6 +235,7 @@ def _notices(diagnostics: Sequence[Diagnostic]) -> None:
 def main() -> None:
     st.set_page_config(page_title="hplcsim — Cockpit", layout="wide")
     st.markdown(panels.STYLE, unsafe_allow_html=True)
+    st.markdown(_AXIS_STRIP_STYLE, unsafe_allow_html=True)  # PROTOTYPE #45
 
     # The session controls come first in the sidebar and, more to the point, before
     # every other widget is drawn: restoring a file writes the widgets' state, and
@@ -1010,7 +1027,9 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
         extend_to=asked.x_end,
     )
     view = chromatogram.axis_view(trace, asked)
-    fig = proto.decorate_chromatogram(chromatogram.figure(trace, view=view), cockpit)  # PROTOTYPE #45
+    # PROTOTYPE #45: 250 px rather than 300 so the always-open axis strip fits inside the
+    # pinned block's 46vh budget on a 900 px viewport.
+    fig = proto.decorate_chromatogram(chromatogram.figure(trace, height=250, view=view), cockpit)
     st.plotly_chart(fig, width="stretch")
     notes = [
         "Peak areas scaled by the measured area shares."
@@ -1062,9 +1081,17 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
         # the run's value into session state pushes it to the browser instead.
         for _label, key, value, _step, _fmt in boxes:
             st.session_state[key] = value
-    with st.expander("Axis range", expanded=False):
-        cols = st.columns([1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
-        for col, (label, key, value, step, fmt) in zip(cols, boxes, strict=False):
+    # PROTOTYPE #45 (driver, 2026-09-03): the axis range is its own strip beneath the
+    # trace, always open — no expander — so where each axis starts and ends is on show.
+    with st.container(key="hs-axis"):
+        cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
+        with cols[0]:
+            st.markdown(
+                "<div class='hs-axis-title'>Axis range</div>"
+                f"<div class='hs-axis-note'>run ends {view.run_x[1]:.2f} min</div>",
+                unsafe_allow_html=True,
+            )
+        for col, (label, key, value, step, fmt) in zip(cols[1:], boxes, strict=False):
             with col:
                 st.number_input(
                     label,
@@ -1075,13 +1102,8 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
                     key=key,
                     on_change=_mark_axis_touched,
                 )
-        with cols[4]:
+        with cols[5]:
             st.button("Reset", on_click=_reset_axis_range, width="stretch")
-        st.caption(
-            f"The run ends at {view.run_x[1]:.2f} min and the tallest peak reaches "
-            f"{view.run_y[1] / chromatogram.Y_HEADROOM:.4g}. An x end past the run draws "
-            "the baseline out to it."
-        )
     for note in view.notes:
         st.warning(note, icon="⚠️")
 

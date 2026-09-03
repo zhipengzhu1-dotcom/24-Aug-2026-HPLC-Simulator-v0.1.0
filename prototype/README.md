@@ -16,9 +16,11 @@ Then flip with the URL, or the switcher at the foot of the sidebar:
 | `?variant=A` | **Range beside the sliders** — sidebar keeps the scouting %B ("as run"); the rail's Candidate block gains a %B range slider under tG and hold, plus a "↺ scouting" reset; extra segments in an expander table; the programme drawn as a small φ-vs-time sparkline in the rail |
 | `?variant=B` | **Programme table, paired** — the ACD/DryLab shape (#56): the scouting programme leaves the sidebar and becomes a No./Time/%B table at the top of the rail (two time columns — one programme at two speeds); the candidate is a second table of the same shape beneath it, dynamic rows, **no sliders**; the programme is the table and nothing else |
 | `?variant=C` | **Segments stacked, drawn on the chromatogram** — start %B, hold, then one block per segment ("to %B over min") with ＋/−; the programme is overlaid on the pinned chromatogram on a right-hand %B axis — candidate solid, scouting dashed — with each peak's elution composition as a diamond and its calibrated window as the whisker |
+| `?variant=D` | **The pick** (driver, 2026-09-03) — B's paired tables with C's overlay: no slider pairs, scouting programmes dashed on the chromatogram beside the candidate's solid line, per-peak window whiskers always on, segments as rows, no tG slider |
 | `?data=lab` | `validation/` runs 1+2 — three peaks, 5→95 %B, tG 15/45 (default) |
 | `?data=v2` | `validation/Validation_2` runs 1+2 — four peaks inside 0.5 min, near-critical pair, tG 15/40 |
 | `?data=own` | whatever is typed in; no demo load |
+| `&b0=15&b1=55&tg=25` | seed the candidate table on load (B and D) — #44's trap case: tG inside the bracket, s\* outside |
 
 All three variants carry the four surfaces #44 decided, in the places it decided:
 
@@ -38,6 +40,11 @@ narrow the range to 15→55 at tG 25 (inside the tG bracket, outside the s\* bra
 #44's worked example); add a second segment to 95 %B over 5 min and watch the late peak
 move off the ramp end; on Validation_2, push the start until a peak earns the low-k0
 badge.
+
+Two Cockpit changes the driver asked for while reviewing D, both marked `PROTOTYPE #45` and
+candidates for the build ticket rather than decisions of this one: the **axis range is its own
+always-open strip** beneath the chromatogram (no expander; x start, x end, y start, y end and
+Reset on show), and the plot is drawn at 250 px so the strip fits the pinned block's budget.
 
 ## What is real and what is not
 
