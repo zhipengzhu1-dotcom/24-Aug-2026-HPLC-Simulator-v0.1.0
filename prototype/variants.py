@@ -39,6 +39,7 @@ NAMES = {
     "A": "Range beside the sliders",
     "B": "Programme table, paired",
     "C": "Segments stacked, drawn on the chromatogram",
+    "D": "The pick — B's paired tables with C's overlay",
 }
 
 _SCOUT = "#8d99a8"
@@ -271,11 +272,18 @@ def rail_b(ctx: RailContext) -> Programme:
     st.markdown("### Candidate programme — predicted")
     c = ctx.constants
     scout = (float(c.percent_b_start), float(c.percent_b_end), float(c.hold))
-    if st.session_state.get("p45_b_seed") != scout:
-        st.session_state["p45_b_seed"] = scout
+    # `?b0=&b1=&tg=` seed the candidate on load (the other branch's convention), so a
+    # trap case can be linked to; the seeds ride in the seed tuple and so re-key the table.
+    q = st.query_params
+    seeds = (q.get("b0"), q.get("b1"), q.get("tg"))
+    if st.session_state.get("p45_b_seed") != (scout, seeds):
+        st.session_state["p45_b_seed"] = (scout, seeds)
         st.session_state["p45_b_nonce"] = st.session_state.get("p45_b_nonce", 0) + 1
     phi0, phif, hold = scout
     tg = _restored_tg(ctx)
+    if seeds[0] is not None: phi0 = float(seeds[0])
+    if seeds[1] is not None: phif = float(seeds[1])
+    if seeds[2] is not None: tg = float(seeds[2])
     # No "No." column here: the dynamic editor spends a gutter on its row handle, and the
     # rail has room for two numeric columns beside it. Rows read in time order.
     base = pd.DataFrame([[0.0, phi0], [hold, phi0], [hold + tg, phif]], columns=["Time (min)", "%B"])

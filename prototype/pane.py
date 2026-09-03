@@ -25,7 +25,7 @@ from prototype import demo_data, diag, programme as prog, variants
 from prototype.programme import Programme
 from prototype.variants import NAMES, RailContext
 
-ORDER = ["A", "B", "C"]
+ORDER = ["A", "B", "C", "D"]
 DATASETS = {
     "lab": "validation/ runs 1+2 (three peaks)",
     "v2": "Validation_2 runs 1+2 (four peaks, near-critical pair)",
@@ -84,8 +84,8 @@ def demo_session(key: str) -> Any:
 
 
 def scouting_in_rail() -> bool:
-    """Variant B moves the scouting %B / hold out of the sidebar into the rail."""
-    return current_variant() == "B"
+    """Variants B and D move the scouting %B / hold out of the sidebar into the rail."""
+    return current_variant() in ("B", "D")
 
 
 def switcher() -> None:
@@ -114,7 +114,7 @@ def switcher() -> None:
 
 def scouting_runs(ctx: RailContext, fallback: Any) -> tuple[Run, Run]:
     CTX.rail = ctx
-    if current_variant() == "B":
+    if current_variant() in ("B", "D"):
         runs = variants.scouting_b(ctx)
     else:
         runs = fallback(ctx.constants)
@@ -124,7 +124,7 @@ def scouting_runs(ctx: RailContext, fallback: Any) -> tuple[Run, Run]:
 
 def candidate_controls(ctx: RailContext) -> Programme:
     v = current_variant()
-    programme = {"A": variants.rail_a, "B": variants.rail_b, "C": variants.rail_c}[v](ctx)
+    programme = {"A": variants.rail_a, "B": variants.rail_b, "C": variants.rail_c, "D": variants.rail_b}[v](ctx)
     CTX.programme = programme
     CTX.rail = ctx
     return programme
@@ -259,6 +259,6 @@ def fit_tab_readout() -> None:
 
 
 def decorate_chromatogram(fig: Any, cockpit: Cockpit) -> Any:
-    if current_variant() == "C" and CTX.programme is not None and CTX.rail is not None:
+    if current_variant() in ("C", "D") and CTX.programme is not None and CTX.rail is not None:
         return variants.decorate_c(fig, CTX.programme, CTX.rail, cockpit, CTX.comp)
     return fig
