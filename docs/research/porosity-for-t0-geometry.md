@@ -17,6 +17,13 @@ particles. Monoliths are out of scope for v0.1.
 **Headline recommendation** (details in §5): fully porous $\varepsilon_{total} = 0.62$
 (band 0.52–0.70); superficially porous $\varepsilon_{total} = 0.52$ (band 0.45–0.60).
 
+> **Amended 2026-09-03 (map ticket #39).** The lab column's measured $t_0$ that §4.3–§4.4
+> were written against — 0.6 min — was retracted by the driver on 2026-08-30 (read from the
+> wrong time point) and re-read on 2026-08-31 as **0.525 min** (solvent front,
+> `validation/run1-chromatogram.png`; `validation/method.csv`). §4.3, §4.4, §5.2, §5.3 and
+> §7 item 13 are rewritten accordingly. The defaults and bands in §5.1 are unchanged; the
+> fully-porous *default-when-unknown* of §5.3 is overridden by map ticket #34.
+
 ---
 
 ## 1. Why $\varepsilon_{total}$, and the three porosities
@@ -416,70 +423,80 @@ phase and the plumbing. The estimator cannot resolve this — it can only presen
 
 ### 4.3 [derived] The worked check: the lab CORTECS column
 
+> **Provenance (amended 2026-09-03).** First written against
+> `t0,0.6,min,measured marker time`. The driver retracted 0.6 on 2026-08-30 — read from the
+> wrong time point — and re-read the value on 2026-08-31 as **0.525 min**, the solvent
+> front in `validation/run1-chromatogram.png`; `method.csv` now records `t0,0.525` and
+> `t0_marker,solvent front`. The arithmetic below is redone at 0.525; the retracted 0.693
+> is kept only where it is the point.
+
 From `validation/method.csv`: Waters CORTECS UPLC Shield RP18, 2.1 × 100 mm, 1.6 µm
-(core–shell), $F$ = 0.4 mL/min, `t0,0.6,min,measured marker time`, on a Waters ACQUITY
-UPLC H-Class. The `t0_marker` field is **blank** — the marker's identity was never
-recorded.
+(core–shell), $F$ = 0.4 mL/min, $t_0$ = 0.525 min (solvent front), on a Waters ACQUITY
+UPLC H-Class.
 
 $$V_{col} = \pi r^2 L = \pi (0.105\;\text{cm})^2 (10\;\text{cm}) = 0.34636\;\text{mL}$$
-$$V_M^{apparent} = t_0 F = 0.6 \times 0.4 = 0.240\;\text{mL}$$
-$$\varepsilon_{total}^{apparent} = 0.240/0.34636 = \mathbf{0.693}$$
+$$V_M^{apparent} = t_0 F = 0.525 \times 0.4 = 0.210\;\text{mL}$$
+$$\varepsilon_{total}^{apparent} = 0.210/0.34636 = \mathbf{0.606}$$
 
-**0.693 is above the core–shell band (0.45–0.60), above the fully porous default (0.62),
-and above every core–shell measurement in §3.4 except the 1.0 mm outlier.** It is not a
-plausible porosity for this column. Three independent arguments:
+**0.606 sits just above the core–shell band (0.45–0.60) and below the fully porous default
+(0.62)** — exactly where §4.1 says a marker-measured value should sit, since it carries
+$V_{ec}$ on top of the column's own void. Three checks:
 
-1. **It exceeds what the architecture can hold.** Inverting §1.2 at a well-packed
-   $\varepsilon_e$ = 0.40 gives a required whole-particle porosity
-   $\varepsilon_p = (0.693-0.40)/(1-0.40) = 0.488$; even at a loose $\varepsilon_e$ = 0.45
-   it needs 0.442. Fully porous silica measures 0.42–0.50 (§2.1) — so 0.693 would require
-   a core–shell particle to be *as porous as or more porous than a fully porous one*, when
-   25–40% of its volume is solid glass (§3.2). Impossible.
-2. **The same particle measures lower on the same hardware family.** Ref. 11 measured
-   2.1 mm × 50 mm Waters columns including 1.6 µm CORTECS-C18+ at a hold-up volume of
-   80–90 µL, i.e. $\varepsilon_{total}$ = 0.46–0.52 **[derived]** — a third below 0.693.
-3. **The excess volume is the right size for plumbing.** [derived] At the recommended
-   $\varepsilon$ = 0.52 the column holds 180 µL, leaving 240 − 180 = **60 µL** unaccounted.
-   At the top of the band, $\varepsilon$ = 0.60 → 208 µL, leaving **32 µL**. Ref. 13's
-   standard-configuration ACQUITY I-Class Plus measured 26.4 µL and their five-system range
-   was 26–78 µL. So 32–60 µL of extra-column volume is entirely ordinary for a UPLC in
-   stock configuration.
+1. **The architecture can hold it, once plumbing is removed.** For any $V_{ec}$ in
+   ref. 13's 26–78 µL range, the column's own porosity is $(0.210 - V_{ec})/0.3464$ =
+   **0.38–0.53** — inside or below the core–shell band, never in the fully porous one.
+   (Inverting §1.2 on the *apparent* 0.606 at $\varepsilon_e$ = 0.40 would need
+   $\varepsilon_p$ = 0.34, above any measured core–shell particle — the sign that the
+   apparent value contains something that is not column void.)
+2. **The same particle measures in range on the same hardware family.** Ref. 11's
+   2.1 × 50 mm Waters columns including 1.6 µm CORTECS-C18+ give $\varepsilon_{total}$ =
+   0.46–0.52 **[derived]** — consistent with a column porosity near 0.52 plus ~30 µL of
+   plumbing here.
+3. **The excess volume is the right size for plumbing.** At the recommended
+   $\varepsilon$ = 0.52 the column holds 180 µL, leaving 210 − 180 = **30 µL**; at the band
+   ceiling 0.60 → 208 µL, leaving **2 µL**; at the band floor 0.45 → 156 µL, leaving
+   **54 µL**. Ref. 13's stock-configuration ACQUITY I-Class Plus measured 26.4 µL and their
+   five-system range was 26–78 µL.
 
 **What the estimator would predict** at each porosity, for this column:
 
-| $\varepsilon_{total}$ | column void (µL) | predicted $t_0$ (min) | vs measured 0.6 |
-|---|---|---|---|
-| 0.45 (band floor) | 156 | 0.390 | −35% |
-| 0.52 (**default**) | 180 | **0.450** | −25% |
-| 0.60 (band ceiling) | 208 | 0.520 | −13% |
-| 0.62 (fully porous default, wrong architecture) | 215 | 0.537 | −11% |
-| 0.693 (apparent) | 240 | 0.600 | 0% |
+| $\varepsilon_{total}$ | column void (µL) | predicted $t_0$ (min) | vs measured 0.525 | implied $V_{ec}$ (µL) |
+|---|---|---|---|---|
+| 0.45 (band floor) | 156 | 0.390 | −26% | +54 |
+| 0.52 (**default**) | 180 | **0.450** | **−14%** | **+30** |
+| 0.60 (band ceiling) | 208 | 0.520 | −1% | +2 |
+| 0.606 (apparent) | 210 | 0.525 | 0% | 0 |
+| 0.62 (fully porous default, wrong architecture) | 215 | 0.537 | +2% | **−5 — impossible** |
+| 0.693 (apparent under the retracted 0.6) | 240 | 0.600 | +14% | **−30 — impossible** |
 
 ### 4.4 Reading the discrepancy honestly
 
-Four contributions, none of which can be separated with the data recorded:
+The 30 µL between the core–shell default and the measured time has the same four possible
+contributors as before, but none of them now has to carry anything unusual:
 
-1. **Extra-column volume** (§4.1): 26–78 µL on stock UHPLC (ref. 13). Explains most of
-   the 32–60 µL gap, and possibly all of it if the H-Class was plumbed with a standard
-   flow cell.
-2. **Precision of "0.6"**. One significant figure. Read as 0.55–0.65 min, the apparent
-   porosity is 0.635–0.751 **[derived]** — the imprecision alone is ±8%, and even the
-   bottom of that range is out of band.
-3. **Unrecorded marker.** `t0_marker` is blank. If $t_0$ was read from a slightly retained
-   marker, or from a solvent disturbance under the 5% B initial conditions, it is biased —
-   in either direction (§4.2). Without the marker identity the measurement is not
-   auditable. **This is the cheapest fix available**: record the marker.
-4. **Packing.** Ref. 13's 2.1 mm/1.0 mm pair (0.48 vs 0.67 by pycnometry) shows that
-   nominally identical narrow-bore packings genuinely differ. A loosely packed 2.1 mm bed
-   would raise $\varepsilon_e$ and with it $\varepsilon_{total}$ — but not to 0.693 (see
-   argument 1 above).
+1. **Extra-column volume** (§4.1): 26–78 µL on stock UHPLC (ref. 13). Accounts for the
+   whole gap on its own. The H-Class's own $V_{ec}$ has never been measured (§7 item 13).
+2. **Precision of the read.** 0.525 was read from a chromatogram image; the precision of
+   that read is not recorded. At ±0.01 min the apparent porosity spans 0.595–0.618
+   **[derived]** — ±2%, and no conclusion here moves.
+3. **The marker is a solvent front.** No marker compound was injected; `t0_marker` reads
+   "solvent front". Ref. 16 and `dead-time-from-geometry.md` §5.2 record that solvent
+   disturbances are discouraged as hold-up markers, and they may read early or late (§4.2).
+   A uracil injection with the time-point convention written down would make the value
+   audit-grade; it is on the bench follow-up list.
+4. **Packing.** Ref. 13's 2.1 mm / 1.0 mm pair (0.48 vs 0.67 by pycnometry) shows that
+   nominally identical narrow-bore packings genuinely differ; a column porosity anywhere in
+   0.45–0.53 is consistent with the measurement.
 
-**Judgement.** The lab column's true $\varepsilon_{total}$ is most likely 0.50–0.58 and the
-0.693 is an artefact of extra-column volume plus a one-significant-figure, unattributed
-marker time. The measured $t_0$ = 0.6 min should still be used — SPEC §4 is measured-first
-and the marker time is what the instrument actually delivers to the detector, which is the
-$t_0$ the retention model needs. But the geometry fallback should not be tuned upward to
-reproduce it.
+**Judgement.** The lab column's true $\varepsilon_{total}$ is most likely 0.45–0.53 and the
+measured 0.525 min is that void plus roughly 30 µL of plumbing. The measured $t_0$ should be
+used — SPEC §4 is measured-first, and the marker time is what the instrument delivers to
+the detector, which is the $t_0$ the retention model needs — and the geometry fallback
+should not be tuned to reproduce it. The first version of this section, written against
+the retracted 0.6, attributed a 32–60 µL gap entirely to extra-column volume; the #24
+comment of 2026-08-30 flagged that attribution as confounded by the mis-read, and it was:
+roughly 30 µL of the apparent gap was the wrong time point, and the remainder is ordinary
+plumbing.
 
 ### 4.5 What this implies for how the estimator presents its number
 
@@ -528,15 +545,22 @@ fully porous 0.62 → $V_M$ = 215 µL, $t_0$ = 0.537 min (band 0.45–0.61 min).
   $t_0$ should read *below* a marker $t_0$ (§4.1). Warn if it does not.
 - **Do not fit the porosity to a marker.** If a marker exists it wins outright (SPEC §4);
   back-solving $\varepsilon$ from it just relabels the extra-column volume as porosity, as
-  the 0.693 of §4.3 shows.
+  the retracted 0.693 of §4.3 showed — and as the corrected 0.606 still shows, sitting
+  above the core–shell band by exactly the plumbing.
 
 ### 5.3 Which knob a user should get
 
 Architecture is the only split the evidence supports. Recommended input model:
 
-1. A two-value choice — *fully porous* / *core–shell* — defaulting to fully porous, since
-   it is the larger installed base and the higher (more conservative against a marker
-   $t_0$) value.
+1. A two-value choice — *fully porous* / *core–shell* — **with no default**. This document
+   originally recommended defaulting to fully porous (the larger installed base, and the
+   higher, hence more conservative against a marker $t_0$, value). Map ticket #34
+   (2026-08-31) overrode that: undeclared architecture makes the estimator refuse, with a
+   typed error naming the field. The reason is on the lab column itself — at the corrected
+   $t_0$ every fully porous constant puts the geometry estimate *above* the measured time
+   (implied $V_{ec}$ −5 µL at 0.62), which is impossible, and a silent fully-porous default
+   would have compared the apparent 0.606 against 0.62 and reported nothing, when the true
+   comparison is against 0.52 (`dead-time-from-geometry.md` §7.2).
 2. An optional numeric override for $\varepsilon_{total}$, validated against 0.30–0.80 and
    warned outside each architecture's band (warnings over blocks).
 3. No attempt to infer architecture from the column name string. Vendor naming is not a
@@ -736,16 +760,20 @@ partial page as stated.
 12. **No source recommends a default $\varepsilon_{total}$ for software.** None was found —
     not a textbook, not a vendor, not a modelling paper. Every value in §5 is [derived]
     consensus over §2–§3 plus the design judgement stated in §5.4.
-13. **The lab column's own numbers are not auditable.** `validation/method.csv` records
-    `t0,0.6,min,measured marker time` with `t0_marker` blank, and its dwell volume is flagged
-    "from instrument spec sheet, NOT measured". The extra-column volume of that specific
-    ACQUITY H-Class was never measured, so §4.4's attribution of the 32–60 µL excess to
-    plumbing is inference from ref. 13's measurements on *other* instruments (including an
-    I-Class Plus, not an H-Class), not a measurement of this one.
+13. **The lab column's own numbers are not fully auditable.** `validation/method.csv` now
+    records `t0,0.525` (driver-read 2026-08-31 from the run-1 chromatogram, superseding the
+    retracted 0.6) with `t0_marker,solvent front` — no marker compound was injected, and the
+    precision of the read is not recorded. The dwell volume is the instrument's own value by
+    the driver's decision of 2026-09-02, not a measurement. The extra-column volume of that
+    specific ACQUITY H-Class was never measured, so §4.4's attribution of the ~30 µL excess
+    to plumbing is inference from ref. 13's measurements on *other* instruments (including
+    an I-Class Plus, not an H-Class), not a measurement of this one.
 14. **Pharmacopoeias carry nothing on this.** USP ⟨621⟩ (read in full for
     `plate-count-from-widths.md`) defines no column porosity and offers no geometric $t_0$
     estimate; the question does not arise there. Ph. Eur. 2.2.46 not read.
 
 ---
 
-*Compiled 2026-08-30 for wayfinder ticket #33. Research only; no engine changes.*
+*Compiled 2026-08-30 for wayfinder ticket #33. Amended 2026-09-03 (map ticket #39): §4.3,
+§4.4, §5.2, §5.3 and §7 item 13 rewritten to the re-read $t_0$ = 0.525 min and the #34
+decision. Research only; no engine changes.*
