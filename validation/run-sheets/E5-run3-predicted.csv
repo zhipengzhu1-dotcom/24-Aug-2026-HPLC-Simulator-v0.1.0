@@ -1,0 +1,22 @@
+tG_min,25,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,13.861,,,
+Unknown-2,16.729,,,
+Unknown-3,24.383,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,95,5
+2,0.5,0.4,95,5
+3,25.5,0.4,5,95
+4,28.5,0.4,5,95
+5,28.6,0.4,95,5
+6,35,0.4,95,5
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on validation/run1.csv + run2.csv (t0 0.6; dwell 0.375 mL = 0.9375 min),,,
+predicted_on,2026-09-03,,,
+experiment,E5 (issue #53; research section 5.6) - repeat of validation/run3.csv (measured 2026-08-27: 13.787 / 16.658 / 24.358) back to back with run5 - the s*-matched pair (s* 0.0216 both),,,
+confidence,HIGH on the condition (tG inside the 15-45 bracket); the engine over-predicted the original by 0.074 / 0.071 / 0.025 min. Unknown-3 elutes at 85.4 %B - keep phi_f at 95.,,,
+programme_note,re-equilibration 6.4 min (10.7 CV at t0 0.6) per PROTOCOL.md; the original used 4.0 min. Sample and injection volume identical to runs 1-7 of validation/.,,,
