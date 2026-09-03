@@ -73,3 +73,7 @@ Sessions save and reload as a JSON file from within the app (SPEC §8). The file
 | `docs/handoffs/` | Session-by-session build record |
 | [docs/running-the-app.md](docs/running-the-app.md) | How to start, open, and stop the app and the prototype branches |
 | `validation/` | Real instrument data and the protocol that produced it |
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). The science it implements is published theory, cited in `docs/research/`; no code was taken from projects under non-commercial or copyleft terms (the survey in `docs/research/github-hplc-simulators.md` records which those are).

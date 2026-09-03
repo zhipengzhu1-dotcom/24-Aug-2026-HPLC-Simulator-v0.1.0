@@ -3,6 +3,8 @@ name = "hplcsim"
 version = "0.1.0"
 description = "HPLC gradient method simulator: two-run LSS fit and prediction for working chromatographers"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["numpy>=1.26", "scipy>=1.11"]
 
