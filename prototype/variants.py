@@ -99,8 +99,13 @@ def rail_a(ctx: RailContext) -> Programme:
     hold = _hold_slider(ctx)
 
     scout = (float(ctx.constants.percent_b_start), float(ctx.constants.percent_b_end))
+    # Streamlit drops a widget's session state on any run that does not draw it, so
+    # coming back from variant B or C finds the seed but not the slider's pair. Reseed
+    # from the last pair this variant saw (a plain key, which survives), else scouting.
     if st.session_state.get("p45_a_seed") != scout:
         _a_reset(scout)
+    elif not isinstance(st.session_state.get("p45_a_range"), (tuple, list)):
+        _a_reset(scout, st.session_state.get("p45_a_last", scout))
 
     def _from_range() -> None:
         lo, hi = st.session_state["p45_a_range"]
@@ -123,6 +128,7 @@ def rail_a(ctx: RailContext) -> Programme:
         on_change=_from_boxes, label_visibility="collapsed",
     )
     lo, hi = st.session_state["p45_a_range"]
+    st.session_state["p45_a_last"] = (float(lo), float(hi))
     cap, btn = st.columns([2.2, 1.0], vertical_alignment="center")
     cap.caption(f"Scouting ran **{scout[0]:g} → {scout[1]:g} %B** (sidebar).")
     btn.button("↺", key="p45_a_reset", on_click=_a_reset, args=(scout,), width="stretch", help="Match the scouting range again")
@@ -146,10 +152,12 @@ def rail_a(ctx: RailContext) -> Programme:
     return Programme(lo / 100.0, hold, tuple(segments))
 
 
-def _a_reset(scout: tuple[float, float]) -> None:
+def _a_reset(scout: tuple[float, float], pair: tuple[float, float] | None = None) -> None:
+    pair = tuple(pair) if pair is not None else scout
     st.session_state["p45_a_seed"] = scout
-    st.session_state["p45_a_range"] = scout
-    st.session_state["p45_a_lo"], st.session_state["p45_a_hi"] = scout
+    st.session_state["p45_a_range"] = pair
+    st.session_state["p45_a_lo"], st.session_state["p45_a_hi"] = pair
+    st.session_state["p45_a_last"] = pair
 
 
 def extras_a(
@@ -333,16 +341,23 @@ def rail_c(ctx: RailContext) -> Programme:
     scout = (float(c.percent_b_start), float(c.percent_b_end))
     if st.session_state.get("p45_c_seed") != scout:
         st.session_state["p45_c_seed"] = scout
-        st.session_state["p45_c_phi0"] = scout[0]
-        st.session_state["p45_c_to1"] = scout[1]
+        st.session_state["p45_c_vals"] = {"phi0": scout[0], "to1": scout[1]}
         st.session_state["p45_c_extra"] = []
         for k in [k for k in st.session_state if k.startswith("p45_c_to") or k.startswith("p45_c_over")]:
-            if k not in ("p45_c_to1",):
-                st.session_state.pop(k, None)
+            st.session_state.pop(k, None)
+    # Widget keys are dropped on any run that does not draw them (variant B or A on
+    # show); `p45_c_vals` is plain state and survives, so refill from it.
+    vals: dict[str, float] = st.session_state["p45_c_vals"]
+    st.session_state.setdefault("p45_c_phi0", vals["phi0"])
+    st.session_state.setdefault("p45_c_to1", vals["to1"])
+    for n in st.session_state["p45_c_extra"]:
+        st.session_state.setdefault(f"p45_c_to{n}", vals.get(f"to{n}", scout[1]))
+        st.session_state.setdefault(f"p45_c_over{n}", vals.get(f"over{n}", 2.0))
 
     hold = _hold_slider(ctx)
     s1, s2 = st.columns([1.0, 1.0])
     phi0 = s1.number_input("Start %B", 0.0, 100.0, step=0.5, format="%.1f", key="p45_c_phi0")
+    vals["phi0"] = float(phi0)
     s2.markdown(
         f"<div style='font-size:.72rem;color:#4a5768;padding-top:1.9rem'>scouting: "
         f"<b>{scout[0]:g} → {scout[1]:g} %B</b><br>dashed on the chromatogram</div>",
@@ -352,6 +367,7 @@ def rail_c(ctx: RailContext) -> Programme:
     st.markdown("**Segment 1**")
     tg = _tg_slider(ctx, "over (min)")
     to1 = st.number_input("to %B", 0.0, 100.0, step=0.5, format="%.1f", key="p45_c_to1")
+    vals["to1"] = float(to1)
     segments = [Segment(tg, to1 / 100.0)]
 
     extra: list[int] = st.session_state["p45_c_extra"]
@@ -360,6 +376,7 @@ def rail_c(ctx: RailContext) -> Programme:
         c1, c2 = st.columns(2)
         to = c1.number_input("to %B", 0.0, 100.0, step=0.5, format="%.1f", key=f"p45_c_to{n}")
         over = c2.number_input("over (min)", 0.1, 600.0, step=0.5, format="%.1f", key=f"p45_c_over{n}")
+        vals[f"to{n}"], vals[f"over{n}"] = float(to), float(over)
         segments.append(Segment(float(over), float(to) / 100.0))
 
     b1, b2 = st.columns(2)
@@ -376,6 +393,8 @@ def _c_add(scout: tuple[float, float]) -> None:
     # chromatographer usually adds first; edit "to %B" to make it a ramp.
     st.session_state[f"p45_c_to{n}"] = float(last_to)
     st.session_state[f"p45_c_over{n}"] = 2.0
+    st.session_state["p45_c_vals"][f"to{n}"] = float(last_to)
+    st.session_state["p45_c_vals"][f"over{n}"] = 2.0
     extra.append(n)
 
 
@@ -383,8 +402,10 @@ def _c_drop() -> None:
     extra: list[int] = st.session_state["p45_c_extra"]
     if extra:
         n = extra.pop()
-        st.session_state.pop(f"p45_c_to{n}", None)
-        st.session_state.pop(f"p45_c_over{n}", None)
+        for k in (f"p45_c_to{n}", f"p45_c_over{n}"):
+            st.session_state.pop(k, None)
+        for k in (f"to{n}", f"over{n}"):
+            st.session_state["p45_c_vals"].pop(k, None)
 
 
 def decorate_c(
