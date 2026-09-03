@@ -216,7 +216,7 @@ _B_SCOUT_COLS = ["No.", "Time run 1 (min)", "Time run 2 (min)", "%B"]
 
 def scouting_b(ctx: RailContext) -> tuple[Run, Run]:
     """The scouting programme as a No./Time/%B table with two time columns."""
-    st.markdown("### Scouting programme — as run")
+    st.markdown("### Scouting — as run")
     K = ctx.keys
     c = ctx.constants
     tg1 = float(st.session_state.get(K.TG_RUN1, 15.0))
@@ -254,14 +254,15 @@ def scouting_b(ctx: RailContext) -> tuple[Run, Run]:
     st.data_editor(
         pd.DataFrame(rows, columns=_B_SCOUT_COLS), key=key, hide_index=True, width="stretch",
         disabled=["No."], on_change=_apply,
+        row_height=28,
         column_config={
-            "No.": st.column_config.NumberColumn(width="small"),
-            "Time run 1 (min)": st.column_config.NumberColumn("t, run 1", format="%.1f", step=0.5),
-            "Time run 2 (min)": st.column_config.NumberColumn("t, run 2", format="%.1f", step=0.5),
-            "%B": st.column_config.NumberColumn(format="%.0f", step=1.0, min_value=0.0, max_value=100.0),
+            "No.": st.column_config.NumberColumn("#", width=34),
+            "Time run 1 (min)": st.column_config.NumberColumn("t₁ min", format="%.1f", step=0.5, width=62),
+            "Time run 2 (min)": st.column_config.NumberColumn("t₂ min", format="%.1f", step=0.5, width=62),
+            "%B": st.column_config.NumberColumn("%B", format="%.0f", step=1.0, min_value=0.0, max_value=100.0, width=50),
         },
     )
-    st.caption(f"One programme at two speeds: tG {tg1:g} and {tg2:g} min, hold {hold:g} min. Row 2 follows row 1's %B.")
+    st.caption(f"tG {tg1:g} / {tg2:g} min, hold {hold:g} min; row 2 follows row 1's %B.")
     return (
         Run(c.gradient(tg1), name=f"tG{tg1:g}"),
         Run(c.gradient(tg2), name=f"tG{tg2:g}"),
@@ -269,7 +270,7 @@ def scouting_b(ctx: RailContext) -> tuple[Run, Run]:
 
 
 def rail_b(ctx: RailContext) -> Programme:
-    st.markdown("### Candidate programme — predicted")
+    st.markdown("### Candidate — predicted")
     c = ctx.constants
     scout = (float(c.percent_b_start), float(c.percent_b_end), float(c.hold))
     # `?b0=&b1=&tg=` seed the candidate on load (the other branch's convention), so a
@@ -289,10 +290,10 @@ def rail_b(ctx: RailContext) -> Programme:
     base = pd.DataFrame([[0.0, phi0], [hold, phi0], [hold + tg, phif]], columns=["Time (min)", "%B"])
     df = st.data_editor(
         base, num_rows="dynamic", key=f"p45_b_cand_{st.session_state['p45_b_nonce']}",
-        width="stretch", hide_index=True,
+        width="stretch", hide_index=True, row_height=28,
         column_config={
-            "Time (min)": st.column_config.NumberColumn("t (min)", format="%.1f", step=0.5, min_value=0.0, width="small"),
-            "%B": st.column_config.NumberColumn(format="%.0f", step=1.0, min_value=0.0, max_value=100.0, width="small"),
+            "Time (min)": st.column_config.NumberColumn("t (min)", format="%.1f", step=0.5, min_value=0.0, width=90),
+            "%B": st.column_config.NumberColumn(format="%.0f", step=1.0, min_value=0.0, max_value=100.0, width=70),
         },
     )
     programme, note = _parse_table(df, fallback_tg=tg)

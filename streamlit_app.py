@@ -122,7 +122,21 @@ _UNTITLED = "Untitled session"
 # PROTOTYPE #45: the always-open axis strip beneath the chromatogram (driver's request).
 _AXIS_STRIP_STYLE = """
 <style>
-  :root { --hs-axis-height: 92px; }
+  :root { --hs-axis-height: 84px; }
+  /* Compact spacing (driver's request): Streamlit's 1rem block gap and heading margins
+     are what the white gaps were. */
+  .block-container { padding-top: 2.6rem !important; }
+  div[data-testid="stVerticalBlock"] { gap: 0.4rem; }
+  div[data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"] { margin: 0; }
+  h3 { margin: 0.35rem 0 0.05rem !important; }
+  div[data-testid="stCaptionContainer"] p { margin: 0; font-size: 0.74rem; line-height: 1.3; }
+  div[data-testid="stMarkdownContainer"] p { margin-bottom: 0.2rem; }
+  div[data-testid="stTabs"] { margin-top: -0.4rem; }
+  .hs-panel { margin-bottom: 4px; }
+  .hs-table td { padding: 2px 8px; }
+  div[data-testid="stNumberInput"] label, div[data-testid="stSlider"] label { font-size: 0.76rem; }
+  div[data-testid="stSelectbox"] > div, div[data-testid="stNumberInput"] > div { min-height: 0; }
+  section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.6rem; }
   /* Its own pinned strip between the chromatogram block and the status bar — the same
      sticky-in-column technique as both neighbours. Fixed height so the block above can
      sit exactly on top of it. */
@@ -275,7 +289,7 @@ def main() -> None:
         # fastest way out of this screen and the reason the uploader is drawn above it.
         return
 
-    rail, main_view = st.columns([1.15, 3.0], gap="medium")
+    rail, main_view = st.columns([1.45, 3.0], gap="medium")  # PROTOTYPE #45: room for a 4-column table
 
     with rail:
         # PROTOTYPE #45: the scouting runs and the candidate controls are the variant's.
