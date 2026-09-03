@@ -71,6 +71,7 @@ from hplcsim.model import (
 from hplcsim.retention import gradient_end_time
 from hplcsim.session import Session, SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
+from prototype import pane as proto  # PROTOTYPE #45 — leaves with the branch
 
 # The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
 # scopes v0.1 to a single user locally, so the number inputs open on that user's real
@@ -224,7 +225,15 @@ def main() -> None:
     # state written after a widget has been created for this run is state that widget
     # never sees. Save is the exception — it needs the peak table, which has not been
     # rendered yet — so it reserves a slot here and is filled in at the foot of `main`.
+    # PROTOTYPE #45: the demo restore writes widget state, so it lands before any
+    # widget it overwrites is created — ahead of `_load_control`, which creates one.
+    _wanted = proto.wanted_demo()
+    if _wanted is not None:
+        _restore(proto.demo_session(_wanted))
+        proto.mark_loaded()
+
     _load_control()
+    proto.switcher()  # PROTOTYPE #45
     save_slot = st.sidebar.container()
 
     constants = _sidebar()
@@ -242,9 +251,23 @@ def main() -> None:
     rail, main_view = st.columns([1.15, 3.0], gap="medium")
 
     with rail:
-        run1, run2 = _scouting_runs(constants)
-        candidate = _candidate_controls(constants)
+        # PROTOTYPE #45: the scouting runs and the candidate controls are the variant's.
+        rail_ctx = proto.RailContext(
+            constants=constants,
+            run1=None,
+            run2=None,
+            slider_with_box=_slider_with_box,
+            keys=Keys,
+            tg_range=_CANDIDATE_TG_RANGE,
+            hold_range=_CANDIDATE_HOLD_RANGE,
+            tg_default=_TG_CANDIDATE,
+            max_hold=_MAX_CANDIDATE_HOLD,
+        )
+        run1, run2 = proto.scouting_runs(rail_ctx, _scouting_runs)
+        programme = proto.candidate_controls(rail_ctx)
+        candidate = programme.as_gradient()
         candidate_slot = st.container()
+        proto_rail_slot = st.container()  # PROTOTYPE #45 — variant A's sparkline
         summary_slot = st.container()
 
     with main_view:
@@ -268,8 +291,10 @@ def main() -> None:
         plate_count=constants.plate_count,
     )
     cockpit = run_cockpit(inputs)
+    cockpit = proto.repredict(cockpit, inputs)  # PROTOTYPE #45 — multi-segment only
 
     diagnostics = diagnose(inputs, cockpit)
+    diagnostics = proto.rediagnose(diagnostics, cockpit, inputs)  # PROTOTYPE #45
 
     with save_slot:
         _save_control(inputs)
@@ -284,6 +309,8 @@ def main() -> None:
         # SPEC §6: diagnostic 1 is a "candidate-control inline warning" — it belongs
         # against the slider that caused it, not in a tab the user may not have open.
         _notices(diagnostics.candidate)
+    with proto_rail_slot:
+        proto.rail_extras(cockpit)  # PROTOTYPE #45
     with summary_slot:
         _summary_panels(cockpit, diagnostics)
     with peaks_tab:
@@ -505,14 +532,24 @@ def _sidebar() -> MethodEntry | None:
         if t_dwell is None:
             return None
 
-        st.subheader("Gradient")
-        percent_b_start = st.number_input(
-            "%B start", *_PERCENT_B_RANGE, _PERCENT_B_START, key=Keys.PERCENT_B_START
-        )
-        percent_b_end = st.number_input(
-            "%B end", *_PERCENT_B_RANGE, _PERCENT_B_END, key=Keys.PERCENT_B_END
-        )
-        hold = st.number_input("Initial hold (min)", *_HOLD_RANGE, _HOLD, step=0.1, key=Keys.HOLD)
+        # PROTOTYPE #45: variant B moves the scouting programme into the rail; the
+        # other variants keep it here, labelled as the runs that were acquired.
+        if proto.scouting_in_rail():
+            st.subheader("Gradient")
+            st.caption("Programmes are in the rail — scouting as run, candidate as predicted.")
+            percent_b_start = float(st.session_state.get(Keys.PERCENT_B_START, _PERCENT_B_START))
+            percent_b_end = float(st.session_state.get(Keys.PERCENT_B_END, _PERCENT_B_END))
+            hold = float(st.session_state.get(Keys.HOLD, _HOLD))
+        else:
+            st.subheader("Scouting gradient — as run")
+            percent_b_start = st.number_input(
+                "%B start", *_PERCENT_B_RANGE, _PERCENT_B_START, key=Keys.PERCENT_B_START
+            )
+            percent_b_end = st.number_input(
+                "%B end", *_PERCENT_B_RANGE, _PERCENT_B_END, key=Keys.PERCENT_B_END
+            )
+            hold = st.number_input("Initial hold (min)", *_HOLD_RANGE, _HOLD, step=0.1, key=Keys.HOLD)
+            st.caption("The candidate's own range is set in the rail.")
 
         method = Method(
             t0=t0,
@@ -775,7 +812,11 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     if cockpit.blocked is not None:
         st.error(cockpit.blocked)
         return
-    st.markdown(panels.panel("Method summary", _summary_rows(cockpit)), unsafe_allow_html=True)
+    st.markdown(
+        panels.panel("Method summary", proto.summary_rows(_summary_rows(cockpit))),  # PROTOTYPE #45
+        unsafe_allow_html=True,
+    )
+    proto.stamp_caption()  # PROTOTYPE #45 — the Rs stamp
     _peak_detail(cockpit, diagnostics)
     # SPEC §6 diagnostic 6 stamps *all* outputs, and the rail's two panels carry tR, k,
     # W½, N and Rs. The stamp is a caption beneath them rather than a row inside them,
@@ -891,6 +932,7 @@ def _fit_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         },
     )
     st.caption("log10 k0 is quoted at the scouting φ0; S is the base-10 slope (SPEC §3).")
+    proto.fit_tab_readout()  # PROTOTYPE #45 — the per-peak composition-window readout
 
 
 def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
@@ -900,6 +942,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     # SPEC §6: diagnostic 5 is a "result banner", diagnostic 6 an "output stamp".
     _notices(diagnostics.banners)
     _stamp_caption(diagnostics)
+    proto.stamp_caption()  # PROTOTYPE #45
     st.dataframe(
         tables.prediction_frame(cockpit, diagnostics.badges),
         width="stretch",
@@ -931,6 +974,10 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     if critical is not None:
         fields.append(f"Rs {critical.rs:.2f}")
     fields.append("RP gradient — linear, single segment")
+    # PROTOTYPE #45: the condition on show is the programme, not two numbers.
+    fields = proto.status_fields(
+        fields, rs_text=None if critical is None else f"Rs {critical.rs:.2f}"
+    )
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.
     if any(stamp.code == "estimated_t0" for stamp in diagnostics.stamps):
@@ -947,9 +994,9 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
     """
     candidate = inputs.candidate
     st.markdown(
-        f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
-        f"hold {candidate.t_init:g} min"
-    )
+        "**Predicted chromatogram** — "
+        + proto.title_text(f"tG {candidate.t_gradient:g} min, hold {candidate.t_init:g} min")
+    )  # PROTOTYPE #45
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return
@@ -963,7 +1010,8 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
         extend_to=asked.x_end,
     )
     view = chromatogram.axis_view(trace, asked)
-    st.plotly_chart(chromatogram.figure(trace, view=view), width="stretch")
+    fig = proto.decorate_chromatogram(chromatogram.figure(trace, view=view), cockpit)  # PROTOTYPE #45
+    st.plotly_chart(fig, width="stretch")
     notes = [
         "Peak areas scaled by the measured area shares."
         if trace.scaled_by_area
@@ -1000,9 +1048,6 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
     a pinned window is what the reader asked for — until Reset.
     """
     touched = st.session_state.get(Keys.AXIS_TOUCHED, False)
-    if not touched:
-        for key in Keys.AXIS_KEYS:
-            st.session_state.pop(key, None)
     y_step = view.run_y[1] / 20.0 or 0.05
     boxes = (
         ("x start (min)", Keys.X_AXIS_START, view.run_x[0], 0.1, "%.2f"),
@@ -1010,6 +1055,13 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
         ("y start", Keys.Y_AXIS_START, view.run_y[0], y_step, "%.4f"),
         ("y end", Keys.Y_AXIS_END, view.run_y[1], y_step, "%.4f"),
     )
+    if not touched:
+        # PROTOTYPE #45 — workaround, not this ticket's fix. Popping the keys (main's
+        # code) leaves a keyed widget's *browser-held* value in charge on the next run,
+        # so the window froze at the first run length once the candidate changed. Writing
+        # the run's value into session state pushes it to the browser instead.
+        for _label, key, value, _step, _fmt in boxes:
+            st.session_state[key] = value
     with st.expander("Axis range", expanded=False):
         cols = st.columns([1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
         for col, (label, key, value, step, fmt) in zip(cols, boxes, strict=False):
