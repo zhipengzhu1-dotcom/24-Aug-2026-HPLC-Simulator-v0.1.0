@@ -122,8 +122,18 @@ _UNTITLED = "Untitled session"
 # PROTOTYPE #45: the always-open axis strip beneath the chromatogram (driver's request).
 _AXIS_STRIP_STYLE = """
 <style>
+  :root { --hs-axis-height: 92px; }
+  /* Its own pinned strip between the chromatogram block and the status bar — the same
+     sticky-in-column technique as both neighbours. Fixed height so the block above can
+     sit exactly on top of it. */
   .st-key-hs-axis {
-    border-top: 1px solid #c3ceda; margin-top: 4px; padding: 4px 0 2px;
+    position: sticky; bottom: var(--hs-status-height); z-index: 85;
+    height: var(--hs-axis-height); overflow: hidden; box-sizing: border-box;
+    background: var(--hs-surface); border-top: 1px solid #c3ceda; padding: 6px 0 0;
+  }
+  .st-key-hs-chromatogram {
+    bottom: calc(var(--hs-status-height) + var(--hs-axis-height)) !important;
+    border-bottom: none;
   }
   .st-key-hs-axis .stNumberInput label { font-size: 0.72rem; }
   .st-key-hs-axis .stNumberInput input { font-size: 0.8rem; padding: 0.25rem 0.5rem; }
@@ -298,6 +308,9 @@ def main() -> None:
         # the entry and results above it scroll. `panels.STYLE` does the pinning, by
         # this container's key; nothing else in the app is addressed by CSS this way.
         chromatogram_slot = st.container(key="hs-chromatogram")
+        # PROTOTYPE #45 (driver): the axis range is its own pinned strip, outside the
+        # chromatogram block, so it never needs the plot scrolled to be reached.
+        axis_slot = st.container(key="hs-axis")
 
     inputs = CockpitInputs(
         method=constants.method,
@@ -339,7 +352,10 @@ def main() -> None:
     with resolution_tab:
         _resolution_tab(cockpit, diagnostics)
     with chromatogram_slot:
-        _chromatogram(cockpit, inputs, diagnostics)
+        view = _chromatogram(cockpit, inputs, diagnostics)
+    with axis_slot:
+        if view is not None:
+            _axis_controls(view)  # PROTOTYPE #45 — drawn here, not inside the plot block
 
     _status_bar(cockpit, candidate, diagnostics)
 
@@ -1002,7 +1018,9 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
-def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics) -> None:
+def _chromatogram(
+    cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics
+) -> chromatogram.AxisView | None:
     """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
 
     This block is sticky, so its height is screen the reader cannot scroll away. The
@@ -1016,7 +1034,7 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
     )  # PROTOTYPE #45
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
-        return
+        return None
     asked = _axis_request()
     trace = chromatogram.chromatogram(
         cockpit.resolution.peaks,
@@ -1039,7 +1057,7 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
     if diagnostics.stamps:
         notes.append(_STAMP_SHORT)
     st.caption("  ·  ".join(notes))
-    _axis_controls(view)
+    return view  # PROTOTYPE #45: the axis strip is drawn by the caller, in its own slot
 
 
 def _axis_request() -> chromatogram.AxisRequest:
@@ -1083,27 +1101,26 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
             st.session_state[key] = value
     # PROTOTYPE #45 (driver, 2026-09-03): the axis range is its own strip beneath the
     # trace, always open — no expander — so where each axis starts and ends is on show.
-    with st.container(key="hs-axis"):
-        cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
-        with cols[0]:
-            st.markdown(
-                "<div class='hs-axis-title'>Axis range</div>"
-                f"<div class='hs-axis-note'>run ends {view.run_x[1]:.2f} min</div>",
-                unsafe_allow_html=True,
+    cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
+    with cols[0]:
+        st.markdown(
+            "<div class='hs-axis-title'>Axis range</div>"
+            f"<div class='hs-axis-note'>run ends {view.run_x[1]:.2f} min</div>",
+            unsafe_allow_html=True,
+        )
+    for col, (label, key, value, step, fmt) in zip(cols[1:], boxes, strict=False):
+        with col:
+            st.number_input(
+                label,
+                min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
+                value=value,
+                step=step,
+                format=fmt,
+                key=key,
+                on_change=_mark_axis_touched,
             )
-        for col, (label, key, value, step, fmt) in zip(cols[1:], boxes, strict=False):
-            with col:
-                st.number_input(
-                    label,
-                    min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
-                    value=value,
-                    step=step,
-                    format=fmt,
-                    key=key,
-                    on_change=_mark_axis_touched,
-                )
-        with cols[5]:
-            st.button("Reset", on_click=_reset_axis_range, width="stretch")
+    with cols[5]:
+        st.button("Reset", on_click=_reset_axis_range, width="stretch")
     for note in view.notes:
         st.warning(note, icon="⚠️")
 

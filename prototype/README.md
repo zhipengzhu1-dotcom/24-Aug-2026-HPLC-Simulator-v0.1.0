@@ -43,8 +43,9 @@ badge.
 
 Two Cockpit changes the driver asked for while reviewing D, both marked `PROTOTYPE #45` and
 candidates for the build ticket rather than decisions of this one: the **axis range is its own
-always-open strip** beneath the chromatogram (no expander; x start, x end, y start, y end and
-Reset on show), and the plot is drawn at 250 px so the strip fits the pinned block's budget.
+always-open strip**, a separate pinned row between the chromatogram block and the status bar
+(no expander; x start, x end, y start, y end and Reset on show, never behind the plot's own
+scroll), and the plot is drawn at 250 px to give the strip its room.
 
 ## What is real and what is not
 
