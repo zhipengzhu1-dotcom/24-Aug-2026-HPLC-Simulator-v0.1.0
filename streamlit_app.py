@@ -56,7 +56,7 @@ from app.pipeline import (
 )
 from app.session_io import (
     Restore,
-    peak_rows_from_session,
+    inputs_from_session,
     session_filename,
     session_from_inputs,
 )
@@ -397,6 +397,10 @@ def _restore(session: Session) -> None:
     """
     method, shared = session.method, session.runs[0].gradient
     restore = Restore()
+    # The file's shape crossing the screen's — the candidate programme squeezed to the
+    # one segment this screen holds, the two peak tables as one — happens in
+    # `inputs_from_session` and nowhere else, so #73's programme table changes one site.
+    inputs = inputs_from_session(session, restore)
     st.session_state.update(
         {
             Keys.SESSION_NAME: session.session_name,
@@ -442,7 +446,7 @@ def _restore(session: Session) -> None:
             Keys.TG_RUN2: restore.within(
                 "run 2 tG", session.runs[1].gradient.t_gradient, *_TG_RUN_RANGE
             ),
-            Keys.PEAK_FRAME: tables.peak_frame_from_rows(peak_rows_from_session(session)),
+            Keys.PEAK_FRAME: tables.peak_frame_from_rows(inputs.rows),
             # A fresh identity for the data editor. Its state belongs to its key, so
             # reusing the key would show the loaded frame's columns with the previous
             # session's edits still layered over them.
@@ -470,9 +474,9 @@ def _restore(session: Session) -> None:
     if not method.t0_is_measured:
         st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
     # The file holds the candidate as programme rows (SPEC §8, v0.2); this screen has
-    # one segment over the scouting range until #73, and `single_segment` names what
-    # it cannot show in the same note as the squeezes below.
-    candidate = restore.single_segment(session.candidate, shared)
+    # one segment over the scouting range until #73, and `inputs_from_session` named
+    # what it could not show in the same note as the squeezes below.
+    candidate = inputs.candidate
     _preset_slider_with_box(
         Keys.CANDIDATE_TG,
         seed=_TG_CANDIDATE,

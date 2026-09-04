@@ -23,6 +23,12 @@ def test_phi_converts_back_to_percent_b() -> None:
     assert percent_b_from_phi(0.05) == pytest.approx(5.0)
 
 
+def test_a_typed_percent_b_comes_back_exactly() -> None:
+    """The display boundary is integer-exact for what was typed: 55, not 55.00000000000001."""
+    for typed in (5.0, 15.0, 55.0, 95.0, 12.5):
+        assert percent_b_from_phi(phi_from_percent_b(typed)) == typed
+
+
 def test_s_base10_is_natural_log_s_over_ln10() -> None:
     # S = 4 means one decade of k per 0.25 phi -> S_e = 4 * ln 10
     assert s_e_from_s_base10(4.0) == pytest.approx(4.0 * math.log(10))

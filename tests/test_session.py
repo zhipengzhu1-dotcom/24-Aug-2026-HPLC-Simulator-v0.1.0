@@ -479,11 +479,13 @@ def test_the_spec_sketch_candidate_is_written_as_programme_rows() -> None:
     """SPEC §8's sketch, key for key: start, hold, and one row per segment in user units."""
     block = _file_of(replace(FULL_SESSION, candidate=SKETCH_CANDIDATE))["candidate"]
     assert set(block) == {"pct_b_start", "hold_min", "segments"}
-    assert block["pct_b_start"] == pytest.approx(15)
-    assert block["hold_min"] == pytest.approx(0.5)
+    # Exact, not approximate: the file is a transcript of what was typed, and the
+    # sketch's 55 must come back as 55, never 55.00000000000001.
+    assert block["pct_b_start"] == 15
+    assert block["hold_min"] == 0.5
     assert [set(row) for row in block["segments"]] == [{"tg_min", "pct_b_end"}] * 2
-    assert [row["tg_min"] for row in block["segments"]] == pytest.approx([25, 5])
-    assert [row["pct_b_end"] for row in block["segments"]] == pytest.approx([55, 95])
+    assert [row["tg_min"] for row in block["segments"]] == [25, 5]
+    assert [row["pct_b_end"] for row in block["segments"]] == [55, 95]
 
 
 def test_a_two_segment_candidate_round_trips_exactly() -> None:
