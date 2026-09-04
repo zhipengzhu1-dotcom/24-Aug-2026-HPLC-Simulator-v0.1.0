@@ -299,6 +299,13 @@ def test_unknown_schema_version_is_rejected_naming_the_versions_this_app_reads()
         load_session(text)
 
 
+def test_a_boolean_schema_version_is_not_version_one() -> None:
+    """`true == 1` in Python; a stamp that is not a number is not a version this app reads."""
+    text = _mutated(FULL_SESSION, lambda f: f.__setitem__("schema_version", True))
+    with pytest.raises(SessionFileError, match="schema_version True"):
+        load_session(text)
+
+
 def test_missing_schema_version_is_rejected() -> None:
     text = _mutated(FULL_SESSION, lambda f: f.pop("schema_version"))
     with pytest.raises(SessionFileError, match="schema_version"):

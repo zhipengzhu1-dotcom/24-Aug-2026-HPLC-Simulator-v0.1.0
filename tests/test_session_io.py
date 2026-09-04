@@ -112,7 +112,7 @@ def test_the_table_comes_back_tracked_first_which_reorders_a_half_paired_row() -
 
 
 def test_the_round_trip_keeps_everything_the_cockpit_computes_from() -> None:
-    restored = inputs_from_session(session_from_inputs(INPUTS))
+    restored = inputs_from_session(session_from_inputs(INPUTS), Restore())
     for field in ("method", "run1", "run2", "candidate", "plate_count"):
         assert getattr(restored, field) == getattr(INPUTS, field)
     # The rows are reordered and the blank one is gone, so the table is compared as the
@@ -123,8 +123,8 @@ def test_the_round_trip_keeps_everything_the_cockpit_computes_from() -> None:
 
 def test_a_second_round_trip_changes_nothing_further() -> None:
     """Reordering once is a documented consequence; reordering every time is a bug."""
-    once = inputs_from_session(session_from_inputs(INPUTS))
-    twice = inputs_from_session(session_from_inputs(once))
+    once = inputs_from_session(session_from_inputs(INPUTS), Restore())
+    twice = inputs_from_session(session_from_inputs(once), Restore())
     assert twice.rows == once.rows
 
 

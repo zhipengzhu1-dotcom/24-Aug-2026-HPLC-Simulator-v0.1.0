@@ -330,7 +330,8 @@ def _parse(text: str | bytes) -> _Fields:
 def _check_versions(document: _Fields) -> int:
     """The stamps that make a file readable: a schema this app knows, then provenance."""
     version = document.raw("schema_version")
-    if version not in KNOWN_SCHEMA_VERSIONS:
+    # bool is an int in Python, so `true` would otherwise read as version 1.
+    if isinstance(version, bool) or version not in KNOWN_SCHEMA_VERSIONS:
         known = " or ".join(str(known) for known in KNOWN_SCHEMA_VERSIONS)
         raise SessionFileError(
             f"session file: schema_version {version!r} is not supported by this app, "
@@ -513,8 +514,9 @@ def _check_candidate(candidate: Programme) -> None:
     """
     _check_percent("candidate.pct_b_start", candidate.phi0)
     _check_non_negative("candidate.hold_min", candidate.t_init)
+    # A segment's duration is not checked here: ``Segment`` refuses a non-positive one
+    # on construction, and ``_read_segment`` names the row before that can happen.
     for index, segment in enumerate(candidate.segments):
-        _check_positive(f"candidate.segments[{index}].tg_min", segment.duration)
         _check_percent(f"candidate.segments[{index}].pct_b_end", segment.phif)
 
 

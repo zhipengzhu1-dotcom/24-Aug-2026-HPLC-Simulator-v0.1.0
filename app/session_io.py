@@ -81,8 +81,8 @@ class Restore:
             )
         if (programme.phi0, programme.phif) != (scouting.phi0, scouting.phif):
             self.not_shown.append(
-                f"the candidate's {_range(programme.phi0, programme.phif)} range differs "
-                f"from the scouting runs' {_range(scouting.phi0, scouting.phif)}, and this "
+                f"the candidate's {_percent_range(programme.phi0, programme.phif)} range differs "
+                f"from the scouting runs' {_percent_range(scouting.phi0, scouting.phif)}, and this "
                 "screen predicts the candidate over the scouting range"
             )
         return Gradient(
@@ -133,14 +133,14 @@ def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Ses
     )
 
 
-def inputs_from_session(session: Session, restore: Restore | None = None) -> CockpitInputs:
+def inputs_from_session(session: Session, restore: Restore) -> CockpitInputs:
     """A restored session as the values the widgets hold.
 
-    The candidate crosses through :meth:`Restore.single_segment`; pass the ``Restore``
-    the caller is already collecting into, so a programme this screen cannot hold is
-    reported beside the uploader with everything else.
+    The candidate crosses through :meth:`Restore.single_segment`, so ``restore`` is
+    required rather than optional: a programme this screen cannot hold is reported
+    beside the uploader with everything else, and there is no way to ask for the
+    inputs without also receiving what was not shown.
     """
-    restore = Restore() if restore is None else restore
     return CockpitInputs(
         method=session.method,
         run1=session.runs[0],
@@ -200,7 +200,7 @@ def _as_row(peak: Peak | UntrackedPeak) -> PeakRow:
     )
 
 
-def _range(phi0: float, phif: float) -> str:
+def _percent_range(phi0: float, phif: float) -> str:
     """A composition range as the user reads it: ``5 → 95 %B``."""
     return f"{percent_b_from_phi(phi0):g} → {percent_b_from_phi(phif):g} %B"
 
