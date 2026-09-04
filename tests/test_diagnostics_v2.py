@@ -23,7 +23,7 @@ from app.diagnostics import (
     window_widths_outside,
 )
 from app.pipeline import CockpitInputs, PeakRow
-from hplcsim.model import Gradient, Peak, Programme, Run, Segment, Target
+from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment, Target
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
@@ -66,15 +66,24 @@ def _rows(peaks: list[Peak]) -> tuple[PeakRow, ...]:
     )
 
 
+def _inputs(
+    method: Method, run1: Run, run2: Run, target: Target, rows: tuple[PeakRow, ...]
+) -> CockpitInputs:
+    """The cockpit inputs for ``target``, through the rail's door when it is a programme.
+
+    Since #73 ``CockpitInputs.candidate`` is the one-segment reading and the engine
+    predicts :attr:`CockpitInputs.target`; a programme goes in by ``with_programme`` so
+    the reading is derived, never typed.
+    """
+    if isinstance(target, Programme):
+        return CockpitInputs.with_programme(
+            method=method, run1=run1, run2=run2, programme=target, rows=rows
+        )
+    return CockpitInputs(method=method, run1=run1, run2=run2, candidate=target, rows=rows)
+
+
 def _lab(candidate: Target) -> Diagnostics:
-    inputs = CockpitInputs(
-        method=LAB_METHOD,
-        run1=LAB_RUN1,
-        run2=LAB_RUN2,
-        candidate=candidate,
-        rows=_rows(LAB_MEASURED_PEAKS),
-    )
-    return diagnose(inputs)
+    return diagnose(_inputs(LAB_METHOD, LAB_RUN1, LAB_RUN2, candidate, _rows(LAB_MEASURED_PEAKS)))
 
 
 def _scouting(t_gradient: float) -> Gradient:
@@ -450,20 +459,16 @@ _TABLE: dict[tuple[str, str], tuple[str | None, str | None, tuple[str, ...], tup
 
 def _diagnose(sample: str, run: str) -> Diagnostics:
     if sample == "three-peak":
-        inputs = CockpitInputs(
-            method=LAB_METHOD,
-            run1=LAB_RUN1,
-            run2=LAB_RUN2,
-            candidate=_THREE_PEAK[run],
-            rows=_rows(LAB_MEASURED_PEAKS),
+        inputs = _inputs(
+            LAB_METHOD, LAB_RUN1, LAB_RUN2, _THREE_PEAK[run], _rows(LAB_MEASURED_PEAKS)
         )
     else:
-        inputs = CockpitInputs(
-            method=VALIDATION2_METHOD,
-            run1=VALIDATION2_RUN1,
-            run2=VALIDATION2_RUN2,
-            candidate=_FOUR_PEAK[run],
-            rows=_rows(VALIDATION2_PEAKS),
+        inputs = _inputs(
+            VALIDATION2_METHOD,
+            VALIDATION2_RUN1,
+            VALIDATION2_RUN2,
+            _FOUR_PEAK[run],
+            _rows(VALIDATION2_PEAKS),
         )
     return diagnose(inputs)
 

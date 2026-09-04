@@ -23,6 +23,7 @@ from app.pipeline import (
     CockpitInputs,
     MethodEntry,
     PeakRow,
+    ScoutingEntry,
     area_shares,
     dwell_from_volume,
     run_cockpit,
@@ -209,8 +210,13 @@ def test_a_dwell_volume_at_zero_flow_is_refused_rather_than_returned_as_infinity
 
 
 def test_percent_b_reaches_the_engine_as_a_fraction_and_only_here() -> None:
-    """CLAUDE.md's units rule: %B is an entry boundary, φ is what the engine holds."""
-    entry = MethodEntry(method=LAB_METHOD, percent_b_start=5.0, percent_b_end=95.0, hold=0.5)
+    """CLAUDE.md's units rule: %B is an entry boundary, φ is what the engine holds.
+
+    Since #73 the boundary is the rail's scouting table (`ScoutingEntry`), not the
+    sidebar; `tests/test_rail.py` owns the table, this keeps the rule's own name."""
+    entry = ScoutingEntry(
+        percent_b_start=5.0, percent_b_end=95.0, hold=0.5, t_gradient1=15.0, t_gradient2=45.0
+    )
 
     gradient = entry.gradient(15.0)
 
@@ -220,14 +226,10 @@ def test_percent_b_reaches_the_engine_as_a_fraction_and_only_here() -> None:
     assert entry.gradient(LAB_RUN1.gradient.t_gradient) == LAB_RUN1.gradient
 
 
-def test_the_candidate_may_hold_for_longer_than_the_scouting_runs_did() -> None:
-    """SPEC §4's prediction targets vary tG *and* t_init within the same %B range."""
-    entry = MethodEntry(method=LAB_METHOD, percent_b_start=5.0, percent_b_end=95.0, hold=0.5)
-
-    candidate = entry.gradient(25.0, hold=2.0)
-
-    assert candidate.t_init == 2.0
-    assert (candidate.phi0, candidate.phif) == (0.05, 0.95)
+def test_the_method_entry_is_the_method_and_the_knob_and_nothing_of_the_gradient() -> None:
+    """v0.1's sidebar held the %B range and the hold; v0.2's rail does (SPEC §7)."""
+    entry = MethodEntry(method=LAB_METHOD, plate_count=12000.0)
+    assert {f.name for f in fields(entry)} == {"method", "plate_count"}
 
 
 # --- warnings over blocks ---------------------------------------------------------------

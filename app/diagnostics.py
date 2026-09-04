@@ -268,7 +268,7 @@ def diagnose(
             method=dead_time_notices(inputs.method),
         )
 
-    programme = as_programme(inputs.candidate)
+    programme = as_programme(inputs.target)
     candidate = (
         *_zero_or_one(
             _steepness_extrapolation(

@@ -7,10 +7,12 @@ values, the status bar hidden behind the sidebar. `tests/test_diagnostics.py` pr
 thresholds are right; nothing in it proves a single one of them is ever painted.
 
 So this runs the real entry point through Streamlit's own `AppTest`, drives the widgets
-a user drives, and asserts the notices appear. It reaches the diagnostics that need no
-peak table — `st.data_editor` cannot be driven from `AppTest` — which is diagnostic 1
-and diagnostic 6. The rest are asserted in the logic layer and placed by code this file
-does at least execute end to end.
+a user drives, and asserts the notices appear. `st.data_editor` cannot be driven from
+`AppTest`, and since #73 the rail's condition is two of them: the scouting and candidate
+programme tables are *seeded* here through the session-state frames the entry point
+builds each editor from, which is the same road a loaded session file takes. What a
+browser does to a cell is `tests/test_rail.py`'s to assert on the frames, and the
+Playwright screenshots in the ticket's PR are what proves the editor itself.
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ from pathlib import Path
 import pytest
 
 from app.diagnostics import STRONG_WINDOW_WIDTHS
+from app.pipeline import ProgrammePoint, ScoutingEntry, points_from_programme
+from app.tables import PERCENT_B, T1, T2, T_CANDIDATE, candidate_frame, scouting_frame
 from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
 from hplcsim.session import (
     Session,
@@ -37,9 +41,17 @@ ENTRY_POINT = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 # filled — so every test here starts by filling it, exactly as a user must.
 _DWELL_ML = 0.375
 
-# The candidate slider's upper end. Spelled out rather than imported: importing the
-# entry point runs `main()` at module scope, which is the app, not a constant.
-_MAX_CANDIDATE_TG = 180.0
+# The session-state keys the entry point builds its two programme tables from (its
+# `Keys`). Spelled out rather than imported: importing the entry point runs `main()`
+# at module scope, which is the app, not a constant.
+_SCOUTING_FRAME = "scouting_frame"
+_CANDIDATE_FRAME = "candidate_frame"
+_CANDIDATE_TOUCHED = "candidate_touched"
+
+# What the rail opens on (validation/method.csv's scouting pair).
+_DEFAULT_SCOUTING = ScoutingEntry(
+    percent_b_start=5.0, percent_b_end=95.0, hold=0.5, t_gradient1=15.0, t_gradient2=45.0
+)
 
 # A phrase from the dwell gate's own wording, to recognise that screen by.
 _DWELL_REQUIRED_MARK = "Enter the dwell before anything can be predicted"
@@ -75,7 +87,7 @@ RESTORED = Session(
     candidate=Programme.from_gradient(replace(_RESTORED_GRADIENT, t_gradient=37.5, t_init=2.5)),
 )
 
-# The same candidate with a tG no slider on the screen reaches.
+# The same candidate at a tG no v0.1 slider reached; a table cell holds it (#73).
 _WILD_CANDIDATE = Programme.from_gradient(replace(_RESTORED_GRADIENT, t_gradient=500.0, t_init=2.5))
 
 
@@ -124,6 +136,37 @@ def _extrapolation(app: object, severity: str) -> list[str]:
     return [text for text in _messages(app)[severity] if "outside the" in text]
 
 
+def _seed_scouting(app: object, entry: ScoutingEntry) -> None:
+    """Put a scouting programme into the table, the way a loaded file does."""
+    app.session_state[_SCOUTING_FRAME] = scouting_frame(entry)  # type: ignore[attr-defined]
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+
+def _seed_candidate(app: object, *rows: tuple[float, float]) -> None:
+    """Put candidate rows into the table, as typed — so the table stops following."""
+    points = tuple(ProgrammePoint(t_min=t, percent_b=b) for t, b in rows)
+    app.session_state[_CANDIDATE_FRAME] = candidate_frame(points)  # type: ignore[attr-defined]
+    app.session_state[_CANDIDATE_TOUCHED] = True  # type: ignore[attr-defined]
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+
+def _candidate_rows(app: object) -> list[tuple[float, float]]:
+    frame = app.session_state[_CANDIDATE_FRAME]  # type: ignore[attr-defined]
+    return list(zip(frame[T_CANDIDATE].tolist(), frame[PERCENT_B].tolist(), strict=True))
+
+
+def _scouting_columns(app: object) -> dict[str, list[float]]:
+    frame = app.session_state[_SCOUTING_FRAME]  # type: ignore[attr-defined]
+    return {column: frame[column].tolist() for column in (T1, T2, PERCENT_B)}
+
+
+def _status_bar(app: object) -> str:
+    (bar,) = [m.value for m in app.markdown if 'class="hs-status"' in m.value]  # type: ignore[attr-defined]
+    return str(bar)
+
+
 def test_a_candidate_inside_the_bracket_paints_no_extrapolation_notice() -> None:
     """The app opens at tG = 25 inside its 15–45 default bracket — a quiet screen."""
     app = _running_app()
@@ -132,8 +175,9 @@ def test_a_candidate_inside_the_bracket_paints_no_extrapolation_notice() -> None
 
 
 def test_the_gentle_extrapolation_flag_reaches_the_page_as_an_info_notice() -> None:
+    """Row 3 of the candidate table typed to end at 60.5 min: tG 60 against the 15–45 pair."""
     app = _running_app()
-    app.slider[0].set_value(60.0).run()  # type: ignore[attr-defined]
+    _seed_candidate(app, (0.0, 5.0), (0.5, 5.0), (60.5, 95.0))
 
     (notice,) = _extrapolation(app, "info")
     assert "1.33×" in notice
@@ -143,7 +187,7 @@ def test_the_gentle_extrapolation_flag_reaches_the_page_as_an_info_notice() -> N
 def test_the_strong_extrapolation_warning_reaches_the_page_as_an_error() -> None:
     """Past ~2× outside the bracket SPEC §6 escalates, and the page must escalate with it."""
     app = _running_app()
-    app.slider[0].set_value(120.0).run()  # type: ignore[attr-defined]
+    _seed_candidate(app, (0.0, 5.0), (0.5, 5.0), (120.5, 95.0))
 
     (notice,) = _extrapolation(app, "error")
     assert f"{120.0 / 45.0:.2f}×" in notice
@@ -266,56 +310,115 @@ def test_a_narrow_scouting_pair_paints_the_spacing_notice_before_any_peak_is_typ
     app = _running_app()
     assert not any("β" in text for text in _messages(app)["warning"])
 
-    _number(app, "Run 2 tG").set_value(20.0).run()
-    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    _seed_scouting(app, replace(_DEFAULT_SCOUTING, t_gradient2=20.0))
 
     (notice,) = [text for text in _messages(app)["warning"] if "Scouting runs" in text]
     assert "β = 1.33" in notice
 
 
-# --- the candidate's two-widget controls ----------------------------------------------
+# --- the rail's two programme tables (SPEC §7, v0.2, #73) -----------------------------
 #
-# Each candidate control is a slider and a number box over one value, so the pair can
-# disagree in a way no logic-layer test would see: the box writes the slider's state and
-# the slider writes the box's, and either callback going missing leaves a screen showing
-# two different tG values with the prediction quietly following the wrong one.
+# The condition is two `st.data_editor`s now, and `AppTest` cannot type into one. What it
+# can do is what a loaded file does: put a frame under the entry point's key and run. So
+# these seed the frames and assert what the rail makes of them — the same road the file
+# takes — and leave the editor itself to `tests/test_rail.py` and the browser.
 
 
-def _candidate_tg(app: object) -> object:
-    return _number(app, "Candidate tG (min)")
-
-
-def test_the_candidate_box_takes_a_value_finer_than_the_slider_can_reach() -> None:
-    """The point of the box: 24.35 min on a slider that steps in halves."""
+def test_the_rail_opens_on_the_two_tables_with_no_slider_anywhere() -> None:
+    """SPEC §7: no slider pairs and no tG slider — the table cell steps with the keyboard."""
     app = _running_app()
-    _candidate_tg(app).set_value(24.35).run()
+    assert app.slider == []  # type: ignore[attr-defined]
+    # The scouting table, the candidate table and the peak table.
+    assert len(app.dataframe) == 3  # type: ignore[attr-defined]
+    assert _scouting_columns(app) == {
+        T1: [0.0, 0.5, 15.5],
+        T2: [0.0, 0.5, 45.5],
+        PERCENT_B: [5.0, 5.0, 95.0],
+    }
+    assert _candidate_rows(app) == [(0.0, 5.0), (0.5, 5.0), (25.5, 95.0)]
+    assert "5 → 95 %B · tG 25 min · hold 0.5 min · 1 segment" in _status_bar(app)
+
+
+def test_the_candidate_follows_the_scouting_table_until_it_is_typed_into() -> None:
+    app = _running_app()
+    _seed_scouting(
+        app, replace(_DEFAULT_SCOUTING, percent_b_start=10.0, percent_b_end=90.0, hold=1.0)
+    )
+    assert _candidate_rows(app) == [(0.0, 10.0), (1.0, 10.0), (26.0, 90.0)]
+
+    _seed_candidate(app, (0.0, 15.0), (0.5, 15.0), (25.5, 55.0))
+    _seed_scouting(app, replace(_DEFAULT_SCOUTING, percent_b_start=20.0))
+
+    assert _candidate_rows(app) == [(0.0, 15.0), (0.5, 15.0), (25.5, 55.0)]
+    assert "15 → 55 %B · tG 25 min · hold 0.5 min · 1 segment" in _status_bar(app)
+
+
+def test_reset_puts_the_candidate_back_to_following_the_scouting_table() -> None:
+    app = _running_app()
+    _seed_candidate(app, (0.0, 15.0), (0.5, 15.0), (25.5, 55.0))
+    (reset,) = [b for b in app.button if b.label == "Reset"]  # type: ignore[attr-defined]
+
+    reset.click().run()
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
-    assert app.slider[0].value == 24.35  # type: ignore[attr-defined]
-    assert _candidate_tg(app).value == 24.35
-    status = [m.value for m in app.markdown if "hs-status-cell" in m.value]  # type: ignore[attr-defined]
-    assert any("tG 24.35 min" in bar for bar in status), "the typed tG never reached the prediction"
+    assert _candidate_rows(app) == [(0.0, 5.0), (0.5, 5.0), (25.5, 95.0)]
 
 
-def test_dragging_the_slider_writes_the_box_back() -> None:
+def test_a_cell_that_follows_another_is_put_back_when_typed_over() -> None:
+    """Row 2's %B follows row 1's, and row 2's second time its first (read-mostly)."""
     app = _running_app()
-    app.slider[0].set_value(60.0).run()  # type: ignore[attr-defined]
+    frame = scouting_frame(_DEFAULT_SCOUTING)
+    frame.loc[1, PERCENT_B] = 40.0
+    frame.loc[1, T2] = 7.0
+    frame.loc[0, T1] = 3.0
+    app.session_state[_SCOUTING_FRAME] = frame  # type: ignore[attr-defined]
+    app.run()  # type: ignore[attr-defined]
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
-    assert _candidate_tg(app).value == 60.0
+    assert _scouting_columns(app) == {
+        T1: [0.0, 0.5, 15.5],
+        T2: [0.0, 0.5, 45.5],
+        PERCENT_B: [5.0, 5.0, 95.0],
+    }
 
 
-def test_the_method_hold_still_reseeds_the_candidate_hold() -> None:
-    """Keying the widgets must not cost the seeding the unkeyed ones had for free."""
+def test_a_two_row_candidate_predicts_through_the_walker_and_says_so() -> None:
+    """The trap run as run: ramp to 55 %B, hold, then the wash — two segments and more."""
     app = _running_app()
-    _number(app, "Initial hold (min)").set_value(2.0).run()
-    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    _uploader(app).upload("s.json", save_session(RESTORED).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+    _seed_candidate(app, (0.0, 15.0), (0.5, 15.0), (25.5, 55.0), (45.0, 55.0), (45.1, 95.0))
 
-    assert app.slider[1].value == 2.0  # type: ignore[attr-defined]
-    assert _number(app, "Candidate initial hold (min)").value == 2.0
+    bar = _status_bar(app)
+    assert "15 → 95 %B · tG 44.6 min · hold 0.5 min · 3 segments" in bar
+    assert "3 segments, piecewise linear" in bar
+    assert "Rs" in bar  # predicted: the peaks came with the file
 
 
-# --- the session file, on screen (SPEC §8, ticket #21) --------------------------------
+def test_a_candidate_with_no_ramp_blocks_the_prediction_in_the_rail() -> None:
+    app = _running_app()
+    _seed_candidate(app, (0.0, 5.0), (0.5, 5.0))
+
+    assert any("needs a ramp" in text for text in _messages(app)["error"])
+    assert "no ramp yet" in _status_bar(app)
+
+
+def test_a_row_out_of_order_is_named_beneath_the_table_and_the_rest_stands() -> None:
+    app = _running_app()
+    _seed_candidate(app, (0.0, 5.0), (0.5, 5.0), (25.5, 95.0), (20.0, 50.0))
+
+    (note,) = [text for text in _messages(app)["warning"] if "Row 4" in text]
+    assert "20 min" in note
+    assert "5 → 95 %B · tG 25 min · hold 0.5 min · 1 segment" in _status_bar(app)
+
+
+def test_the_first_rows_time_is_put_back_to_the_start_of_the_run() -> None:
+    app = _running_app()
+    _seed_candidate(app, (3.0, 5.0), (0.5, 5.0), (25.5, 95.0))
+    assert _candidate_rows(app) == [(0.0, 5.0), (0.5, 5.0), (25.5, 95.0)]
+
+
+# --- the session file of SPEC §8: load, restore, save ---------------------------------
 #
 # This is the half of #21 the logic layer cannot reach. `tests/test_session_io.py` proves
 # a screen becomes a file and a file becomes a screen; none of it proves the download
@@ -361,8 +464,7 @@ def test_the_download_follows_the_session_on_screen_rather_than_a_stale_one() ->
     app = _running_app()
     before = _download_url(app)
 
-    _number(app, "Run 2 tG").set_value(30.0).run()
-    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    _seed_scouting(app, replace(_DEFAULT_SCOUTING, t_gradient2=30.0))
 
     assert _download_url(app) != before
 
@@ -397,11 +499,13 @@ def test_uploading_a_session_restores_every_widget_it_names() -> None:
     assert _number(app, "Flow F (mL/min)").value == pytest.approx(1.2)
     assert _number(app, "Temperature (°C)").value == pytest.approx(30.0)
     assert _number(app, "t0 (min)").value == pytest.approx(1.42)
-    assert _number(app, "%B start").value == pytest.approx(10.0)
-    assert _number(app, "%B end").value == pytest.approx(90.0)
-    assert _number(app, "Initial hold (min)").value == pytest.approx(1.25)
-    assert _number(app, "Run 1 tG").value == pytest.approx(20.0)
-    assert _number(app, "Run 2 tG").value == pytest.approx(60.0)
+    # The scouting programme lands in its table: 10 → 90 %B after a 1.25 min hold, at
+    # tG 20 and 60 — rows of start, end of hold, end of each ramp.
+    assert _scouting_columns(app) == {
+        T1: [0.0, 1.25, 21.25],
+        T2: [0.0, 1.25, 61.25],
+        PERCENT_B: [10.0, 10.0, 90.0],
+    }
     assert _text_input(app, "Session name").value == "Reopened"
     assert _selectbox(app, "Packing architecture").value == "Core–shell (solid core)"
     assert _text_input(app, "t0 marker").value == "thiourea, apex"
@@ -418,17 +522,16 @@ def test_uploading_a_session_restores_the_dwell_as_the_time_the_file_stores() ->
     assert _number(app, "Dwell time t_D (min)").value == pytest.approx(RESTORED.method.t_dwell)
 
 
-def test_uploading_a_session_restores_the_candidate_through_both_of_its_widgets() -> None:
-    """The reseed in `_slider_with_box` fires on the restored method hold and would
-    otherwise overwrite the candidate hold that came out of the same file."""
+def test_uploading_a_session_restores_the_candidate_into_its_table_as_the_files_own() -> None:
+    """The file's candidate — hold 2.5, tG 37.5 over 10 → 90 %B — is the table's rows,
+    and the table stops following the scouting programme the moment a file lands."""
     app = _running_app()
     _uploader(app).upload("s.json", save_session(RESTORED).encode("utf-8"))
     app.run()  # type: ignore[attr-defined]
 
-    assert _candidate_tg(app).value == pytest.approx(37.5)
-    assert app.slider[0].value == pytest.approx(37.5)  # type: ignore[attr-defined]
-    assert _number(app, "Candidate initial hold (min)").value == pytest.approx(2.5)
-    assert app.slider[1].value == pytest.approx(2.5)  # type: ignore[attr-defined]
+    assert _candidate_rows(app) == [(0.0, 10.0), (2.5, 10.0), (40.0, 90.0)]
+    assert app.session_state[_CANDIDATE_TOUCHED] is True  # type: ignore[attr-defined]
+    assert "10 → 90 %B · tG 37.5 min · hold 2.5 min · 1 segment" in _status_bar(app)
 
 
 def test_a_restored_estimated_t0_still_stamps_the_outputs() -> None:
@@ -478,9 +581,10 @@ def test_a_restored_session_saves_back_to_an_identical_file() -> None:
     app.run()  # type: ignore[attr-defined]
     restored = _download_url(app)
 
-    _number(app, "Run 2 tG").set_value(30.0).run()
+    loaded = ScoutingEntry.from_runs(*RESTORED.runs)
+    _seed_scouting(app, replace(loaded, t_gradient2=30.0))
     assert _download_url(app) != restored
-    _number(app, "Run 2 tG").set_value(60.0).run()
+    _seed_scouting(app, loaded)
 
     assert _download_url(app) == restored
 
@@ -575,22 +679,20 @@ def test_a_loaded_half_paired_row_reaches_the_screen_as_the_untracked_count() ->
 # --- a file that is valid but does not fit the screen ---------------------------------
 
 
-def test_a_candidate_beyond_the_sliders_end_is_clamped_rather_than_crashing_the_page() -> None:
-    """Found by `/code-review`. A 500-minute tG is a real method and `load_session` has
-    no reason to refuse it — but the slider stops at 180, and Streamlit raises on a
-    state value above its max, replacing the whole page with a traceback."""
+def test_a_500_minute_candidate_loads_into_the_table_as_typed() -> None:
+    """v0.1 clamped this to the slider's end and said so. A table cell has no end (#73):
+    a 500-minute tG is a real method and the file's own number is what shows."""
     wild = replace(RESTORED, candidate=_WILD_CANDIDATE)
     app = _running_app()
     _uploader(app).upload("s.json", save_session(wild).encode("utf-8"))
     app.run()  # type: ignore[attr-defined]
 
     assert not app.exception, app.exception  # type: ignore[attr-defined]
-    assert _candidate_tg(app).value == pytest.approx(_MAX_CANDIDATE_TG)
-    (note,) = [text for text in _messages(app)["warning"] if "outside what this screen" in text]
-    assert "candidate tG 500 → 180" in note
+    assert _candidate_rows(app) == [(0.0, 10.0), (2.5, 10.0), (502.5, 90.0)]
+    assert not any("outside what this screen" in text for text in _messages(app)["warning"])
 
 
-def test_an_out_of_range_scouting_time_is_clamped_and_named_too() -> None:
+def test_a_900_minute_scouting_run_loads_into_its_table_as_typed_too() -> None:
     wild = replace(
         RESTORED,
         runs=(
@@ -605,14 +707,13 @@ def test_an_out_of_range_scouting_time_is_clamped_and_named_too() -> None:
     app.run()  # type: ignore[attr-defined]
 
     assert not app.exception, app.exception  # type: ignore[attr-defined]
-    assert _number(app, "Run 1 tG").value == pytest.approx(600.0)
-    assert any("run 1 tG 900 → 600" in text for text in _messages(app)["warning"])
+    assert _scouting_columns(app)[T1] == [0.0, 1.25, 901.25]
+    assert not any("outside what this screen" in text for text in _messages(app)["warning"])
 
 
-def test_a_two_segment_candidate_is_shown_as_one_and_the_file_is_reported_not_refused() -> None:
-    """SPEC §8 (v0.2) stores the candidate as programme rows; this screen still has one
-    segment over the scouting range until #73. The file loads, the candidate shows as
-    its total ramp time, and what is not shown is named beside the uploader."""
+def test_a_two_segment_candidate_loads_into_the_table_and_is_predicted_as_itself() -> None:
+    """SPEC §8 stores the candidate as programme rows and the table shows them (#73):
+    a segment is a row, and the file is neither squeezed nor reported."""
     two = Programme(
         phi0=0.10,
         segments=(Segment(duration=12.5, phif=0.50), Segment(duration=25.0, phif=0.90)),
@@ -623,9 +724,13 @@ def test_a_two_segment_candidate_is_shown_as_one_and_the_file_is_reported_not_re
     app.run()  # type: ignore[attr-defined]
 
     assert not app.exception, app.exception  # type: ignore[attr-defined]
-    assert _candidate_tg(app).value == pytest.approx(37.5)
-    (note,) = [text for text in _messages(app)["warning"] if "no control on this screen" in text]
-    assert "2 segments" in note and "37.5 min" in note
+    assert _candidate_rows(app) == [(0.0, 10.0), (2.5, 10.0), (15.0, 50.0), (40.0, 90.0)]
+    assert "10 → 90 %B · tG 37.5 min · hold 2.5 min · 2 segments" in _status_bar(app)
+    assert not any("no control on this screen" in text for text in _messages(app)["warning"])
+    # What the table shows is what a save would write: the same rows, read back.
+    assert list(app.session_state[_CANDIDATE_FRAME][T_CANDIDATE]) == [  # type: ignore[attr-defined]
+        point.t_min for point in points_from_programme(two)
+    ]
 
 
 def test_a_file_that_fits_the_screen_says_nothing_about_limits() -> None:
@@ -639,11 +744,11 @@ def test_a_file_that_fits_the_screen_says_nothing_about_limits() -> None:
 def test_a_refused_file_does_not_leave_the_last_files_warning_standing_beside_it() -> None:
     """Both notices describe the last file handled, so they have to move together.
 
-    Load a session whose candidate tG is past the slider (warned about), then load a
-    corrupt one. The error is the new file's; the warning would be the old file's, and
+    Load a session whose column length is past the box's end (warned about), then load
+    a corrupt one. The error is the new file's; the warning would be the old file's, and
     it names a number no longer anywhere on screen.
     """
-    wild = replace(RESTORED, candidate=_WILD_CANDIDATE)
+    wild = replace(RESTORED, method=replace(RESTORED.method, column_length_mm=5000.0))
     app = _running_app()
     _uploader(app).upload("wild.json", save_session(wild).encode("utf-8"))
     app.run()  # type: ignore[attr-defined]
