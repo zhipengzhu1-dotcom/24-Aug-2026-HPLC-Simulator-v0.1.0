@@ -178,10 +178,9 @@ def peak_width(
     # A band leaving on a *descending* leg gets G = 1 as well: Poppe's G is derived for
     # a composition rising across the band, and no source here extends it to a falling
     # one, so nothing is claimed — the same posture as the hold.
-    # The eluting leg's steepness and entry k are carried on the prediction (#89), so
-    # the programme is not re-walked here. They travel with the index or not at all, so
-    # testing both is the invariant spelled out; a hold arrives as b_e,seg = 0.0 and a
-    # descending leg as b_e,seg < 0.0, which is how both fall out to G = 1 below.
+    # The eluting leg's steepness and entry k ride on the prediction (#89); the programme
+    # is not re-walked here. A hold arrives as b_e,seg = 0.0 and a descending leg as
+    # b_e,seg < 0.0, so both reach G = 1 through the one test below.
     g = 1.0
     b_e_seg, k_seg_entry = retention.b_e_seg, retention.k_seg_entry
     if (

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Method, Programme, RetentionParams, Segment, as_programme
+from hplcsim.model import Gradient, Method, Programme, RetentionParams, Segment, as_programme
 from hplcsim.resolution import resolution_table
 from hplcsim.retention import predict_retention, segment_steepness, walk_programme
 from hplcsim.width import band_compression_factor, peak_width
@@ -335,6 +335,27 @@ def test_the_carried_leg_agrees_with_the_legs_list() -> None:
             continue
         leg = as_programme(target).legs()[result.eluting_segment]
         assert result.b_e_seg == segment_steepness(method, leg, params.s_e)
+        assert result.k_seg_entry == params.k_at(leg.phi_start)
+
+
+def test_the_closed_form_carries_the_same_trio_as_its_one_leg() -> None:
+    """SPEC §10 item 4a, for the carried trio: the v0.1 gradient path agrees with legs()[0].
+
+    The closed form passes ``b_e`` and ``k0`` rather than reading a leg, on the argument
+    that for one segment ``legs()[0].phi_start`` *is* ``phi0``. That argument is what
+    keeps the bitwise identity, so it is pinned here rather than left to inspection.
+    """
+    params = LAB_PEAKS[2]
+    ascending = Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.5)
+    descending = Gradient(phi0=0.95, phif=0.45, t_gradient=20.0, t_init=0.5)
+    for gradient in (ascending, descending):
+        result = predict_retention(params, LAB_METHOD, gradient)
+        if result.eluting_segment is None:
+            assert result.b_e_seg is None
+            assert result.k_seg_entry is None
+            continue
+        leg = as_programme(gradient).legs()[result.eluting_segment]
+        assert result.b_e_seg == segment_steepness(LAB_METHOD, leg, params.s_e)
         assert result.k_seg_entry == params.k_at(leg.phi_start)
 
 

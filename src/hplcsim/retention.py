@@ -102,8 +102,9 @@ class RetentionResult:
     ``eluting_segment`` is the index of the programme segment the band left the column
     in — ``None`` when it left before the first segment arrived (the isocratic hold) or
     after the last one ended. For a v0.1 gradient or a one-segment programme it is ``0``
-    in the gradient regime and ``None`` otherwise, the same answer the walker gives, so
-    the width model can take G from the eluting segment without asking which shape it
+    in the gradient regime and ``None`` otherwise — what the walker gives too, apart from
+    the flat candidate named below — so the width model can take G from the eluting
+    segment without asking which shape it
     was handed (SPEC §3, "Band compression for a programme"). Diagnostic 1 brackets per
     eluting segment on it (#72).
 
