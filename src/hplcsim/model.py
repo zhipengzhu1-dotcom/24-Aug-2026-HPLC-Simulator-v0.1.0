@@ -303,19 +303,33 @@ Target = Gradient | Programme
 class MultiSegmentNotSupportedError(NotImplementedError):
     """A programme of two or more segments reached a path that only knows one.
 
-    The piecewise walker that predicts them is #70. Until it lands, prediction refuses
-    by type rather than returning the number the first segment alone would give — a
-    wrong retention time is indistinguishable from a right one on screen, and a missing
-    feature should not be discoverable only by disagreeing with the instrument.
+    Prediction and width no longer raise it — the piecewise walker (#70,
+    :func:`hplcsim.retention.walk_programme`) predicts any segment count. It remains the
+    typed answer of :func:`as_single_gradient`, the door for paths that genuinely need a
+    single ramp, so a caller that must have one still learns so by type rather than from
+    the number the first segment alone would give — a wrong retention time is
+    indistinguishable from a right one on screen.
     """
+
+
+def as_programme(target: Target) -> Programme:
+    """The programme ``target`` is: itself, or the one-segment programme a gradient is.
+
+    The other direction of the same correspondence as :func:`as_single_gradient`, for
+    the paths that read a target leg by leg (the width model's G rule, the numerical
+    oracle). Total, since every gradient is a programme.
+    """
+    return target if isinstance(target, Programme) else Programme.from_gradient(target)
 
 
 def as_single_gradient(target: Target) -> Gradient:
     """The one-segment gradient ``target`` is, or :class:`MultiSegmentNotSupportedError`.
 
-    The single door every v0.1 closed form is entered through, so the refusal is stated
-    once and the bitwise identity of a one-segment programme is structural: it is not
-    *reproduced* by the gradient path, it *is* the gradient path. It sits here beside
+    The single door into v0.1's closed form, so the bitwise identity of a one-segment
+    programme is structural: it is not *reproduced* by the gradient path, it *is* the
+    gradient path. :func:`hplcsim.retention.predict_retention` sends two or more segments
+    to the walker before reaching this door; anything that reaches it with more than one
+    segment is a path that only knows one, and is told so. It sits here beside
     :meth:`Programme.as_gradient` and :meth:`Programme.from_gradient` so the whole
     correspondence between the two shapes is written down in one place.
     """
@@ -324,8 +338,8 @@ def as_single_gradient(target: Target) -> Gradient:
     gradient = target.as_gradient()
     if gradient is None:
         raise MultiSegmentNotSupportedError(
-            f"a {len(target.segments)}-segment programme needs the piecewise walker "
-            "(issue #70), which is not built yet; only one-segment programmes and "
-            "gradients can be predicted today"
+            f"a {len(target.segments)}-segment programme reached a path that takes one "
+            "segment only; predict it through hplcsim.retention.predict_retention, "
+            "which walks any number of segments"
         )
     return gradient

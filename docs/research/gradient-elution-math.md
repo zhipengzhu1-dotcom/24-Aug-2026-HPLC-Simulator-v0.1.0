@@ -281,6 +281,105 @@ The closed form is valid only while **all** of these hold:
    breaks this; Boswell et al. (2011) back-calculate the *actual* profile rather
    than trusting the programmed one.
 
+### 2.5 Piecewise programmes: the walker (v0.2, #70)
+
+Added 2026-09-04 under build ticket #70, for SPEC §3's *gradient programme* — φ₀, an
+initial hold $t_{\text{init}}$, and an ordered list of segments, each a duration $D_i$
+and an end composition $\varphi_i$ (a repeated composition is a hold, a lower one a
+descending segment). Everything here is **[derived]** from §2.1; the two published
+statements it is checked against are named at the end. AutoLC-BO's implementation of
+the same idea was read and not ported (CC BY-NC-SA; `github-hplc-simulators.md` §5.3,
+§6.2).
+
+**The inlet profile.** The composition arriving at the column inlet is the pump
+programme delayed by the dwell: $\varphi_{\text{in}}(t) = \varphi_0$ for
+$t < \tau = t_D + t_{\text{init}}$, then leg $i$ runs from
+$T_i = \tau + \sum_{j<i} D_j$ to $T_i + D_i$, linear from its entry composition
+$\varphi_{i-1}$ (with $\varphi_{-1} \equiv \varphi_0$) to $\varphi_i$, and after the
+last leg $\varphi_{\text{in}} = \varphi_f$ for ever. That is the only place the
+programme enters §2.1's time-domain form,
+$\int_0^{t_R - t_0} \mathrm{d}t \,/\, (t_0\,k(\varphi_{\text{in}}(t))) = 1$.
+
+**The walk.** Write $x(t)$ for the migration fraction (the integral so far). Because
+the integrand depends on $t$ only through $\varphi_{\text{in}}$, and
+$\varphi_{\text{in}}$ is linear on each leg, $x$ advances by a closed form on every leg
+and the band's exit is found in the first leg where $x$ reaches 1:
+
+1. *Dwell and initial hold* (§4.1): $x(\tau) = \tau / (t_0 k_0)$. If this is $\ge 1$ the
+   band left isocratically, $t_R = t_0(1 + k_0)$, regime **isocratic hold** (`isocratic_hold`).
+2. *A ramp* with entry retention $k_{\text{entry}} = k(\varphi_{i-1})$ and **signed**
+   steepness $b_i = t_0\,\Delta\varphi_i\,S_e / D_i$ (the §1.3 expression with the
+   leg's own $\Delta\varphi_i$ and $D_i$; negative for a descending leg). Within the
+   leg, with $s$ the time since its start,
+
+   $$x(T_i + s) = x(T_i) + \frac{e^{\,b_i s / t_0} - 1}{k_{\text{entry}}\, b_i},
+   \qquad
+   x(T_i + D_i) = x(T_i) + \frac{k_{\text{entry}}/k_{\text{end}} - 1}{k_{\text{entry}}\, b_i}$$
+
+   using $e^{\,b_i D_i / t_0} = e^{\,S_e \Delta\varphi_i} = k_{\text{entry}} / k_{\text{end}}$,
+   exactly §4.2's $x_G$ with the leg's quantities in place of the run's. If the end
+   value is $\ge 1$, solve $x(T_i + s) = 1$:
+
+   $$t_R = T_i + t_0 + \frac{t_0}{b_i}\,\ln\!\Big[\,1 + b_i\,k_{\text{entry}}\,\big(1 - x(T_i)\big)\Big],
+   \qquad
+   k_e = \frac{k_{\text{entry}}}{1 + b_i\,k_{\text{entry}}\,(1 - x(T_i))}$$
+
+   regime **gradient** (`gradient`, ascending or descending). For a descending leg both the
+   numerator and the denominator of the end-value fraction change sign, and the log
+   argument is bounded below by $k_{\text{entry}}/k_{\text{end}} > 0$ whenever the band
+   leaves on the leg, so the branch needs no special case.
+3. *A hold* at $k_{\text{entry}}$: $x$ grows at $1 / (t_0 k_{\text{entry}})$, so
+   $x(T_i + D_i) = x(T_i) + D_i / (t_0 k_{\text{entry}})$; if that is $\ge 1$,
+   $t_R = T_i + t_0 + (1 - x(T_i))\, t_0\, k_{\text{entry}}$ and $k_e = k_{\text{entry}}$.
+   Regime **isocratic hold** if no ramp has yet been traversed (a flat first segment at
+   $\varphi_0$ is the same physics as $t_{\text{init}}$), otherwise **post-gradient**
+   (`post_gradient`) — the flag SPEC §6 diagnostic 9 reads.
+4. *After the last leg* (§4.2 generalised): still on-column at
+   $T_{\text{end}} = \tau + \sum_i D_i$, the band finishes isocratically at
+   $k_f = k(\varphi_f)$: $t_R = T_{\text{end}} + t_0 + (1 - x(T_{\text{end}}))\,t_0\,k_f$,
+   regime **post-gradient**. $T_{\text{end}} + t_0$ is the programme's
+   `gradient_end_time`.
+
+**Reduction to §2.2.** With one leg, step 2 gives
+$t_R = \tau + t_0 + (t_0/b_e)\ln[1 + b_e k_0 (1 - \tau/(t_0 k_0))]$, and
+$b_e k_0 (1 - \tau/(t_0 k_0)) = b_e (k_0 - \tau/t_0)$: the boxed equation of §2.2,
+arranged differently. The two agree to 1e-12 min on every fixture run of both bench
+samples (the last bits differ because the products are formed in a different order),
+which is why the engine keeps v0.1's closed form as the one-segment path — bitwise
+identical to v0.1 by construction — and enters the walk only for two or more segments
+(SPEC §3, §10 item 4a).
+
+**Inertness.** The walk returns from the leg in which $x$ reaches 1 and never reads a
+later one, so a segment that starts after the band has left changes its prediction by
+exactly zero — a property of the algorithm, not a tolerance (SPEC §10 item 4c).
+
+**Band compression.** $G$ is taken from the eluting leg: $p = b_i k_{\text{entry}} / (1 +
+k_{\text{entry}})$ with that leg's $b_i$ and its entry $k_{\text{entry}}$, and $G = 1$ for a
+band leaving in a hold or after the end (§5.3's posture). On one leg that is §5.2
+unchanged. A band leaving on a *descending* leg also gets $G = 1$: Poppe's $G$ (§5.2)
+is derived for a composition rising across the band and neither source here extends it
+to a falling one, so nothing is claimed. This per-leg rule is SPEC §3's shipped
+approximation; Hao et al. Eq. 10's cumulative integral remains deferred, and no
+multi-segment width has been measured (SPEC §10 makes no $R_s$ claim for programmes).
+
+**Validity.** Everything §2.4 says still applies leg by leg, and one caveat sharpens:
+§2.1's $k \gg 1$ approximation is weakest exactly where a wash step brings a band off.
+On the three-peak sample's run 6 (15 → 55 %B over 25 min, a 19.5 min hold, then a step
+to 95 %B) Unknown-3 leaves the column at $k_e \approx 1.6$ in the 95 %B hold — the
+walker puts it at **47.12 min against a measured 46.8** (+0.32 min, +0.69 %; the
+hand-walked pre-registration was 47.0). Inside the coarse bar, and the whole of the
+multi-segment evidence on file: one peak, one sample, one programme (SPEC §10 item 4d).
+
+**Sources.** The per-segment ramp form and the post-programme isocratic tail are the
+same two statements `github-hplc-simulators.md` §5.3 records as verified: den Uijl et
+al. (2021, ref. 4) Eq. 7 for the pre-gradient migration $\tau / (t_0 k_0)$ and Eq. 8 for
+the residual fraction after the gradient eluting isocratically at the final $k$; the
+per-segment log form is what AutoLC-BO's `retention_model.py` implements for segment
+$n$ and is re-derived above from §2.1 alone. Checked in `tests/test_walker.py` against
+the independent quadrature oracle of `tests/numerics.py` (§11's check 1, extended to
+programmes): a descending leg, a mid-programme hold, two ascending ramps, a band still
+on-column after the end and one leaving in the initial hold, all to 1e-10 min.
+
 ---
 
 ## 3. The two-run fit

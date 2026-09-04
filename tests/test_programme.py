@@ -2,15 +2,14 @@
 
 Ticket #69 — the expand half of an expand–contract. What is asserted here is that the
 new type *is* the old one when it has a single segment (SPEC §10 item 4a, first half),
-that it refuses rather than guesses when it has more, and that its validation matches
-SPEC §4's posture. The piecewise walker that predicts two or more segments is #70.
+and that its validation matches SPEC §4's posture. Two or more segments predict through
+the piecewise walker (#70, ``tests/test_walker.py``); only the one-segment door refuses.
 """
 
 import math
 
 import pytest
 
-from hplcsim.fit import fit_peaks
 from hplcsim.model import (
     Gradient,
     MultiSegmentNotSupportedError,
@@ -21,48 +20,19 @@ from hplcsim.model import (
 from hplcsim.resolution import resolution_table
 from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.width import peak_width
-from lab_data import (
-    LAB_METHOD,
-    LAB_PEAKS,
-    LAB_RUN1,
-    LAB_RUN2,
-    LAB_RUN3,
-    LAB_RUN4,
-    LAB_RUN5,
-    LAB_RUN6,
-    LAB_RUN7,
-)
-from validation2_data import (
-    VALIDATION2_METHOD,
-    VALIDATION2_PEAKS,
-    VALIDATION2_RUN1,
-    VALIDATION2_RUN2,
-    VALIDATION2_RUNS_BY_NAME,
-)
-
-# The four-peak sample is fixtured as measurements, not parameters; its LSS fit is the
-# same two-run fit the reality layer uses.
-_V2_PARAMS = [
-    fit.params
-    for fit in fit_peaks(VALIDATION2_PEAKS, VALIDATION2_METHOD, VALIDATION2_RUN1, VALIDATION2_RUN2)
-]
-
-# Both samples, every run either carries: the three-peak sample's scouting pair, its
-# held-out tG runs and campaign #27's φ-range arm, and the four-peak sample's whole set.
-# "Every fixture on both samples" in the ticket's first acceptance criterion is this.
-_LAB_CASES = [
-    (LAB_METHOD, LAB_PEAKS, run.gradient, f"three-peak {run.name}")
-    for run in (LAB_RUN1, LAB_RUN2, LAB_RUN3, LAB_RUN4, LAB_RUN5, LAB_RUN6, LAB_RUN7)
-]
-_V2_CASES = [
-    (VALIDATION2_METHOD, _V2_PARAMS, run.gradient, f"four-peak {name}")
-    for name, run in VALIDATION2_RUNS_BY_NAME.items()
-]
-FIXTURE_CASES = _LAB_CASES + _V2_CASES
+from lab_data import LAB_METHOD, LAB_PEAKS
+from programme_cases import FIXTURE_CASES
 
 # A supplied N, so the identity test exercises the width path itself rather than
 # whichever fixture happens to carry column geometry.
 _PLATE_COUNT = 20_000.0
+
+
+def test_the_fixture_sweep_covers_every_run_of_both_samples() -> None:
+    """Seven three-peak runs and nine four-peak runs: a fixture added later must widen this."""
+    assert len(FIXTURE_CASES) == 16
+    assert sum(label.startswith("three-peak") for _, _, _, label in FIXTURE_CASES) == 7
+    assert sum(label.startswith("four-peak") for _, _, _, label in FIXTURE_CASES) == 9
 
 
 # --- SPEC §10 item 4a: one segment is bitwise identical to the gradient it is ---
@@ -184,7 +154,7 @@ def test_legs_chain_entry_compositions_through_the_programme() -> None:
     assert programme.t_gradient == pytest.approx(23.0)
 
 
-# --- a typed, named refusal — never a wrong number ---
+# --- two or more segments predict, through the walker; only the one-segment door refuses ---
 
 
 def _two_segment_programme() -> Programme:
@@ -202,30 +172,34 @@ def _two_segment_programme() -> Programme:
         ),
     ],
 )
-def test_two_segments_are_refused_by_type_not_mispredicted(name: str, call) -> None:
-    programme = _two_segment_programme()
-    with pytest.raises(MultiSegmentNotSupportedError) as raised:
-        call(LAB_PEAKS[0], LAB_METHOD, programme)
-    # The refusal names the walker ticket, so the message is a route and not a wall.
-    assert "#70" in str(raised.value)
-    assert "2-segment" in str(raised.value)
+def test_two_segments_are_predicted_not_refused(name: str, call) -> None:
+    """#69's refusal was a placeholder for the walker (#70); now every path predicts."""
+    call(LAB_PEAKS[0], LAB_METHOD, _two_segment_programme())
 
 
-def test_the_refusal_is_not_the_first_segments_answer() -> None:
-    """The failure mode this ticket exists to prevent: a plausible, wrong number.
+def test_two_segments_are_not_the_first_segments_answer() -> None:
+    """The failure mode #69's refusal existed to prevent: a plausible, wrong number.
 
-    Truncating a two-segment programme to its first segment predicts perfectly happily —
-    a finite time, in the gradient regime, with nothing on the result to say it ignored
-    half the method. That is why the refusal has to be a raise and not a flag.
+    Truncating a two-segment programme to its first segment predicts perfectly happily.
+    The walker's answer must be a different number — the second segment is a shallower
+    continuation here, so the band leaves later than the truncation says.
     """
     programme = _two_segment_programme()
     truncated = Gradient(phi0=0.05, phif=0.45, t_gradient=10.0, t_init=0.5)
 
-    silent_wrong_answer = predict_retention(LAB_PEAKS[0], LAB_METHOD, truncated)
-    assert math.isfinite(silent_wrong_answer.t_r)
+    truncated_answer = predict_retention(LAB_PEAKS[0], LAB_METHOD, truncated)
+    walked = predict_retention(LAB_PEAKS[0], LAB_METHOD, programme)
+    assert math.isfinite(walked.t_r)
+    assert walked.t_r != truncated_answer.t_r
 
-    with pytest.raises(MultiSegmentNotSupportedError):
-        predict_retention(LAB_PEAKS[0], LAB_METHOD, programme)
+
+def test_the_single_gradient_door_still_refuses_two_segments() -> None:
+    """The scouting-run paths only know one segment, and say so by type."""
+    from hplcsim.model import as_single_gradient
+
+    with pytest.raises(MultiSegmentNotSupportedError) as raised:
+        as_single_gradient(_two_segment_programme())
+    assert "2-segment" in str(raised.value)
 
 
 def test_gradient_end_time_answers_a_multi_segment_programme() -> None:

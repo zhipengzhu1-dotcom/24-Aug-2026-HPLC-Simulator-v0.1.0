@@ -6,8 +6,10 @@ from hplcsim.model import (
     Gradient,
     Method,
     Peak,
+    Programme,
     RetentionParams,
     Run,
+    Segment,
     ln_k0_from_log10_k0,
     s_e_from_s_base10,
 )
@@ -137,6 +139,31 @@ LAB_CAMPAIGN27_TR = {
 # point, not a v0.1 one — so it must never be scored against the single-segment engine.
 # The engine did predict the non-elution in the hold correctly, which is itself testable.
 LAB_CAMPAIGN27_WASH_ELUTED = {("run6", "Unknown-3")}
+
+# validation/run6.csv's programme table, every row: the 15 → 55 %B ramp the `Gradient`
+# above records, then the 19.5 min hold at 55, the 0.1 min step to the 95 %B wash, 3 min
+# there, the step down to 25 %B and 4 min re-equilibrating. This is what the instrument
+# ran, and what the walker (#70) predicts Unknown-3 under — SPEC §10 item 4(d)'s one
+# multi-segment reality point. A test re-reads it from the CSV.
+LAB_RUN6_PROGRAMME = Programme(
+    phi0=0.15,
+    t_init=0.5,
+    segments=(
+        Segment(25.0, 0.55),
+        Segment(19.5, 0.55),
+        Segment(0.1, 0.95),
+        Segment(3.0, 0.95),
+        Segment(0.1, 0.25),
+        Segment(4.0, 0.25),
+    ),
+)
+
+# The wash-eluted reading itself, driver-read from the chromatogram on 2026-09-03 (#46),
+# with the hand-walked estimate pre-registered before the reading. Kept apart from
+# LAB_CAMPAIGN27_TR on purpose: that table is what the single-segment engine is scored
+# against, and this number must never reach it.
+LAB_CAMPAIGN27_WASH_TR = {("run6", "Unknown-3"): 46.8}
+LAB_CAMPAIGN27_WASH_PREREGISTERED = {("run6", "Unknown-3"): 47.0}
 
 LAB_CAMPAIGN27_AREA = {
     "run5": {"Unknown-1": 13441.0, "Unknown-2": 14515.0, "Unknown-3": 7448.0},
