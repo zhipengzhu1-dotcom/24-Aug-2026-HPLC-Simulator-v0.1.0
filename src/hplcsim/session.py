@@ -528,7 +528,7 @@ def _check_untracked(at: str, row: PeakRow) -> None:
     as untracked, so the count SPEC §5 shows would be wrong and the peak would never
     reach the fit — a silent loss of exactly the kind ``untracked_peaks`` exists to end.
     """
-    if row.t_r_run1 is not None and row.t_r_run2 is not None:
+    if row.is_tracked:
         raise SessionFileError(
             f"session file: {at} has a retention time in both runs, so it is a tracked "
             "peak — it belongs in peaks, not in untracked_peaks"
