@@ -223,6 +223,8 @@ streamlit_app.py  # the app's entry point — at the root because `streamlit run
                   # script's own folder on sys.path, so an entry point inside app/ cannot
                   # import app.pipeline at all
 app/              # the Cockpit: depends on the engine, never the reverse
+  screen_state.py # the only module that touches Streamlit's per-session store: the Keys
+                  # registry, the accessor every touch goes through, and §8's restore
   entry.py        # what the user typed: the peak table split, the rail's programme tables,
                   # SPEC §4's two entry conversions
   pipeline.py     # fit -> prediction, Streamlit-free (what the app's tests target)
