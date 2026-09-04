@@ -120,7 +120,13 @@ Peak labels; hover values. Rs is colour-coded on the conventional reading (1.5 b
 %B axis with the scouting programmes **dashed**, so "as run" and "predicted" are distinct where the
 prediction is read as well as where it is typed; each peak carries a marker at its elution
 composition with its calibrated composition window as the whisker. **Always on**, never behind a
-toggle — the strong-tier states are when it must be seen. The **axis range is its own always-open
+toggle — the strong-tier states are when it must be seen. Both programmes are drawn on the
+chromatogram's own time base, which is the **detector's**: the pump's programme delayed by
+t_D + t0, the same expression the gradient-end marker uses. That is what makes the picture
+readable rather than merely adjacent — a peak's marker lies *on* the candidate curve wherever
+that peak elutes on a ramp, because the composition a band leaves the column in is the
+composition arriving at the detector at that instant, and a marker sitting off the curve is a
+peak brought off in a hold or after the programme ends ([#74](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/74)). The **axis range is its own always-open
 strip**: a pinned row between the chromatogram and the status bar with x start, x end, y start,
 y end and Reset, never inside the plot's own scroll. Spacing is compact enough that at 1440 × 900
 both tables, both inline warnings, the chromatogram with its overlay and the axis strip are on
@@ -259,6 +265,7 @@ v0.2 gradient freedom (changed φ0/φf + multi-segment) → v0.3 CSV import + au
 - Research: `research/gradient-math`, `research/validation-datasets` branches (merged into `docs/research/` at v0.1 build start)
 - Research (v0.2, on main): `docs/research/composition-extrapolation.md` (the window law and the s\* bracket), `phi0-dependent-retention-residual.md` (the φ0 term), `github-hplc-simulators.md` §5.3 / §6 (the licence ruling on multi-segment), `dead-time-from-geometry.md` and `porosity-for-t0-geometry.md` (t0, for #24)
 - UI prototype: `prototype/main-screen` (throwaway; the Cockpit decision is what carries forward)
+- UI screenshots of what ships: `docs/screenshots/`, at 1440 × 900 per build ticket — [#62](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/62) (compact spacing and the axis strip), [#73](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/73) (the paired programme tables), [#74](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/74) (the overlay, the composition-window readout and the indicative stamp, on the trap case and a two-segment candidate). Compaction and overlay decisions are checked in a real browser, not in `AppTest`, which has no frontend.
 - Programme prototype (v0.2): `prototype/candidate-programme` (throwaway; variant D is the decision, screenshots under `prototype/screenshots/`; `prototype/programme.py` is never ported — multi-segment retention belongs in the engine) and `prototype/candidate-phi` (the parallel attempt, stood down 2026-09-03, kept as a record); the pick page: https://claude.ai/code/artifact/37245417-410f-4730-9407-419ddb87a56b
 - Resolution-map prototype: `prototype/resolution-map` (throwaway; three panes over an engine-computed sweep, built for the parked map — superseded as a design, kept as proof that the sweep, the flip location and the co-elution zone all compute)
 - Resolution-map target (v0.7, driver 2026-09-02): a **filled heat map** — colour = critical Rs over two live axes, dashed contour at Rs 1.5 and solid at 2.0, a rail of Legend / Cursor / Pinned point / Method cards, hover to read, click to pin. Reference: `14-Aug-2026 HPLC Simulator/prototype/resolution-map.html?variant=A`. The axes that make it worth drawing are temperature (v0.4) and pH (v0.6), which is why §11 puts the map after both; the initial hold moves the critical Rs by under 1% on the lab dataset ([#30](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/30)).

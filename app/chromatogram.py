@@ -32,6 +32,8 @@ import numpy as np
 import plotly.graph_objects as go
 from numpy.typing import NDArray
 
+from app.diagnostics import CompositionWindow
+from hplcsim.model import Method, Run, Target, as_programme, percent_b_from_phi
 from hplcsim.resolution import PredictedPeak
 
 # Points per σ of the narrowest peak. Five puts ~12 samples across a W½ and leaves the
@@ -260,6 +262,202 @@ def _grid_points(start: float, stop: float, narrowest_sigma: float) -> int:
     return int(min(max(wanted, _MIN_POINTS), _MAX_POINTS))
 
 
+# --- the programme overlay (SPEC §7, v0.2, #45/#74) -----------------------------------
+#
+# Both programmes on a right-hand %B axis — the candidate solid, the scouting pair
+# dashed — with each peak marked at its elution composition and its calibrated
+# composition window drawn as the whisker. Always on, never behind a toggle: the
+# strong-tier states of SPEC §6 are exactly when it must be seen.
+#
+# **The time base is the detector's, not the pump's.** A programme is typed against the
+# pump, but this plot's x axis is time from injection *at the detector*, which is what
+# the trace beneath it is drawn on. So every point is delayed by t_dwell + t0 — the same
+# expression `hplcsim.retention.gradient_end_time` uses, which is why the "gradient ends"
+# marker lands exactly where the candidate curve reaches φf. What that buys is the
+# property the whole overlay rests on: a peak's marker sits *on* the candidate curve
+# whenever it elutes on a ramp, because the composition the band left the column in is
+# the composition arriving at the detector at that instant. `tests/test_overlay.py` pins
+# it to float precision on one segment, on several, on a descending leg and in a hold.
+
+# The overlay's palette, chosen against the trace rather than for itself. The candidate
+# was drawn in the app's instrument blue first and had to be moved: on screen it reads
+# as *signal* beside a periwinkle chromatogram, and being the tallest solid line on the
+# plot it took the eye the trace is meant to have. A muted green is the nearest colour
+# that is neither the signal's family nor one of the panel's status colours. The
+# scouting pair keeps the grey of the gradient-end marker, which is what "as run,
+# already known" reads as everywhere else on this plot, and the peak markers are the one
+# saturated thing in the picture because they are the point of it.
+_CANDIDATE_COLOUR = "#5b8c5a"
+_SCOUTING_COLOUR = "#9aa7b6"
+_WINDOW_MARKER_COLOUR = "#b0399a"
+_WINDOW_WHISKER_COLOUR = "#b0399a"
+
+# Air above and below the compositions actually drawn, and the narrowest %B span the
+# axis is allowed to have: a candidate that moves 4 %B should not be magnified into a
+# full-height ramp by an axis fitted tightly to it.
+_OVERLAY_PAD_PERCENT_B = 4.0
+_MIN_OVERLAY_SPAN_PERCENT_B = 10.0
+
+# Room on the right for the %B axis' ticks and its title. The left margin is 10; this
+# one has an axis in it, and at 10 the tick labels are drawn outside the paper and
+# clipped. Measured in a browser at 1440 × 900.
+_OVERLAY_RIGHT_MARGIN = 46
+
+
+@dataclass(frozen=True)
+class ProgrammeCurve:
+    """One programme as the overlay draws it: %B against time at the detector."""
+
+    label: str
+    times: tuple[float, ...]
+    percent_b: tuple[float, ...]
+    dashed: bool
+
+    def percent_b_at(self, minutes: float) -> float:
+        """The composition this curve is at, at one time — linear between its points.
+
+        Flat before the first point and after the last, which is what the programme
+        does: the run starts at φ0 and holds the last segment's composition afterwards.
+        """
+        points = list(zip(self.times, self.percent_b, strict=True))
+        if minutes <= points[0][0]:
+            return points[0][1]
+        for (t0, b0), (t1, b1) in zip(points, points[1:], strict=False):
+            if t0 <= minutes <= t1:
+                return b1 if t1 == t0 else b0 + (b1 - b0) * (minutes - t0) / (t1 - t0)
+        return points[-1][1]
+
+
+@dataclass(frozen=True)
+class WindowMarker:
+    """One peak on the %B axis: where the candidate elutes it, inside what window.
+
+    ``percent_b`` is the elution composition; ``percent_b_low`` / ``percent_b_high`` are
+    the calibrated composition window [φ_e,run2, φ_e,run1] the fit was actually shown,
+    drawn as the whisker. All three come from the one
+    :class:`~app.diagnostics.CompositionWindow` the fit tab's readout is built from, so
+    the whisker on the plot and the row in the table can never disagree.
+    """
+
+    name: str
+    t_r: float
+    percent_b: float
+    percent_b_low: float
+    percent_b_high: float
+
+
+@dataclass(frozen=True)
+class Overlay:
+    """Everything drawn on the right-hand %B axis for one rendering."""
+
+    candidate: ProgrammeCurve
+    scouting: tuple[ProgrammeCurve, ...]
+    peaks: tuple[WindowMarker, ...]
+
+    @property
+    def curves(self) -> tuple[ProgrammeCurve, ...]:
+        return (*self.scouting, self.candidate)
+
+    @property
+    def percent_b_range(self) -> tuple[float, float]:
+        """The %B axis, padded around everything drawn and kept inside 0–100.
+
+        Clamping is one-sided on purpose: 0 and 100 %B are the ends of the axis a
+        chromatographer reads, but a value that somehow lands outside them is still
+        drawn rather than cropped to make the axis tidy.
+        """
+        values = [b for curve in self.curves for b in curve.percent_b]
+        values += [
+            b
+            for peak in self.peaks
+            for b in (peak.percent_b, peak.percent_b_low, peak.percent_b_high)
+        ]
+        low, high = min(values), max(values)
+        if high - low < _MIN_OVERLAY_SPAN_PERCENT_B:
+            middle = (low + high) / 2.0
+            low = middle - _MIN_OVERLAY_SPAN_PERCENT_B / 2.0
+            high = middle + _MIN_OVERLAY_SPAN_PERCENT_B / 2.0
+        return (
+            min(low, max(0.0, low - _OVERLAY_PAD_PERCENT_B)),
+            max(high, min(100.0, high + _OVERLAY_PAD_PERCENT_B)),
+        )
+
+
+def programme_curve(
+    method: Method,
+    target: Target,
+    *,
+    label: str,
+    dashed: bool,
+    extend_to: float | None = None,
+) -> ProgrammeCurve:
+    """One programme as the composition arriving at the detector, minute by minute.
+
+    Row 1 is injection at φ0; the ramp begins one dwell plus one t0 after the pump
+    starts it, and every later point is the end of a segment at the same delay. A
+    programme that finishes before ``extend_to`` is carried flat out to it, so the
+    curve spans the plot instead of stopping in mid-air part-way across it.
+    """
+    programme = as_programme(target)
+    delay = method.t_dwell + method.t0
+    elapsed = [delay, programme.t_init]
+    times = [0.0, math.fsum(elapsed)]
+    percent_b = [percent_b_from_phi(programme.phi0)] * 2
+    for segment in programme.segments:
+        elapsed.append(segment.duration)
+        times.append(math.fsum(elapsed))
+        percent_b.append(percent_b_from_phi(segment.phif))
+    if extend_to is not None and extend_to > times[-1]:
+        times.append(float(extend_to))
+        percent_b.append(percent_b[-1])
+    return ProgrammeCurve(
+        label=label, times=tuple(times), percent_b=tuple(percent_b), dashed=dashed
+    )
+
+
+def overlay(
+    method: Method,
+    target: Target,
+    scouting: Sequence[Run],
+    windows: Sequence[CompositionWindow],
+    predicted: Mapping[str, PredictedPeak],
+    *,
+    extend_to: float | None = None,
+) -> Overlay:
+    """SPEC §7's programme overlay for one rendering — the candidate, the pair, the peaks.
+
+    ``windows`` is :attr:`~app.diagnostics.Diagnostics.windows` and ``predicted`` is
+    :attr:`~app.pipeline.Cockpit.predicted_by_name`; a peak with a window but no
+    prediction has no time to be drawn at and is left out rather than guessed at.
+    """
+    return Overlay(
+        candidate=programme_curve(
+            method, target, label="candidate", dashed=False, extend_to=extend_to
+        ),
+        scouting=tuple(
+            programme_curve(
+                method,
+                run.gradient,
+                label=run.name or f"scouting {index}",
+                dashed=True,
+                extend_to=extend_to,
+            )
+            for index, run in enumerate(scouting, start=1)
+        ),
+        peaks=tuple(
+            WindowMarker(
+                name=window.name,
+                t_r=predicted[window.name].retention.t_r,
+                percent_b=percent_b_from_phi(window.candidate_phi_e),
+                percent_b_low=percent_b_from_phi(window.phi_low),
+                percent_b_high=percent_b_from_phi(window.phi_high),
+            )
+            for window in windows
+            if window.name in predicted
+        ),
+    )
+
+
 # SPEC §7 pins the chromatogram beneath the tabs, "always visible". A pinned block is
 # screen the reader cannot scroll out of the way, so its height is not a free choice:
 # ticket #19 drew it at 380 px in normal flow, which pinned would take over half a
@@ -271,18 +469,34 @@ CHROMATOGRAM_HEIGHT = 250
 
 
 def figure(
-    trace: Chromatogram, *, height: int = CHROMATOGRAM_HEIGHT, view: AxisView | None = None
+    trace: Chromatogram,
+    *,
+    height: int = CHROMATOGRAM_HEIGHT,
+    view: AxisView | None = None,
+    programmes: Overlay | None = None,
 ) -> Any:
-    """The Plotly figure for a rendered trace — the hero of SPEC §7's Cockpit."""
+    """The Plotly figure for a rendered trace — the hero of SPEC §7's Cockpit.
+
+    ``programmes`` is SPEC §7's always-on overlay. It is drawn first, so the two
+    programmes sit *behind* the trace they explain and the trace stays the hero; the
+    peak markers go on last, because a whisker under a Gaussian cannot be read.
+    """
     if view is None:
         view = axis_view(trace)
     fig = go.Figure()
+    if programmes is not None:
+        _draw_programmes(fig, programmes)
     fig.add_trace(
         go.Scatter(
             x=trace.time,
             y=trace.signal,
             mode="lines",
-            line={"width": 1.4},
+            # The colour is pinned rather than left to Plotly's cycle. The overlay's
+            # curves are added to the figure before this one so that they sit behind it,
+            # and an unset colour takes the *next* entry of the colorway — so the trace
+            # silently turned red the moment the overlay went in. This is the first
+            # entry of that colorway, which is the blue v0.1 drew it in.
+            line={"width": 1.4, "color": "#636efa"},
             hovertemplate="%{x:.3f} min · %{y:.4g}<extra></extra>",
         )
     )
@@ -325,6 +539,8 @@ def figure(
             if _room_on_the_right(trace.gradient_end, view.x_range)
             else "bottom left",
         )
+    if programmes is not None:
+        _draw_windows(fig, programmes)
     fig.update_layout(
         height=height,
         # The top margin is what the tallest peak's label hangs in. Labels are rotated
@@ -332,7 +548,12 @@ def figure(
         # upward — trimming this to save pinned screen clips the name off the tallest
         # peak, usually the one being asked about. CHROMATOGRAM_HEIGHT is where the
         # pinned block was made to fit; this is not.
-        margin={"l": 10, "r": 10, "t": 44, "b": 10},
+        margin={
+            "l": 10,
+            "r": 10 if programmes is None else _OVERLAY_RIGHT_MARGIN,
+            "t": 44,
+            "b": 10,
+        },
         showlegend=False,
         # Both axes are pinned rather than autoranged: Plotly pads an autoranged axis by
         # a few percent of the span, which on a trace that deliberately starts at
@@ -343,8 +564,99 @@ def figure(
             "title": "response (relative)" if trace.scaled_by_area else "response (equal heights)",
             "range": list(view.y_range),
         },
+        # SPEC §7's right-hand %B axis. Its own range, not the reader's: the axis strip
+        # (#62) sets the window onto the *trace*, and a composition axis cropped by a
+        # box meant for the signal would move the programmes without saying so.
+        **(
+            {}
+            if programmes is None
+            else {
+                "yaxis2": {
+                    "title": "%B",
+                    "overlaying": "y",
+                    "side": "right",
+                    "range": list(programmes.percent_b_range),
+                    "showgrid": False,
+                    "zeroline": False,
+                    "tickfont": {"size": 9},
+                    "title_font": {"size": 10},
+                    "title_standoff": 4,
+                }
+            }
+        ),
     )
     return fig
+
+
+def _draw_programmes(fig: Any, programmes: Overlay) -> None:
+    """The scouting pair dashed and the candidate solid, on the right-hand %B axis.
+
+    Dashed against solid is SPEC §7's own distinction — "as run" against "predicted" —
+    and it is carried by the line style rather than by a legend: the block is pinned
+    screen, and a legend would cost it the room the tallest peak's label hangs in. Each
+    curve names itself on hover instead, and the caption beneath the plot says which is
+    which.
+    """
+    for curve in programmes.curves:
+        fig.add_trace(
+            go.Scatter(
+                x=list(curve.times),
+                y=list(curve.percent_b),
+                yaxis="y2",
+                mode="lines",
+                name=curve.label,
+                line={
+                    "width": 1.1 if curve.dashed else 1.4,
+                    "color": _SCOUTING_COLOUR if curve.dashed else _CANDIDATE_COLOUR,
+                    "dash": "dash" if curve.dashed else "solid",
+                },
+                hovertemplate=(
+                    f"<b>{curve.label}</b><br>%{{x:.2f}} min · %{{y:.1f}} %B<extra></extra>"
+                ),
+            )
+        )
+
+
+def _draw_windows(fig: Any, programmes: Overlay) -> None:
+    """Each peak at its elution composition, its calibrated window as the whisker.
+
+    The marker lands on the candidate curve whenever the peak elutes on a ramp — that
+    is the arithmetic, not a drawing choice — so what the whisker shows is the only
+    thing worth showing beside it: how far the fit's own two compositions reach, and
+    whether this peak is being predicted inside them or outside.
+    """
+    if not programmes.peaks:
+        return
+    peaks = programmes.peaks
+    fig.add_trace(
+        go.Scatter(
+            x=[peak.t_r for peak in peaks],
+            y=[peak.percent_b for peak in peaks],
+            yaxis="y2",
+            mode="markers",
+            name="elution %B",
+            marker={
+                "size": 7,
+                "symbol": "diamond",
+                "color": _WINDOW_MARKER_COLOUR,
+                "line": {"width": 1, "color": "#ffffff"},
+            },
+            error_y={
+                "type": "data",
+                "symmetric": False,
+                "array": [peak.percent_b_high - peak.percent_b for peak in peaks],
+                "arrayminus": [peak.percent_b - peak.percent_b_low for peak in peaks],
+                "color": _WINDOW_WHISKER_COLOUR,
+                "thickness": 1.2,
+                "width": 4,
+            },
+            customdata=[[peak.name, peak.percent_b_low, peak.percent_b_high] for peak in peaks],
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>elutes at %{y:.1f} %B<br>"
+                "calibrated window %{customdata[1]:.1f}–%{customdata[2]:.1f} %B<extra></extra>"
+            ),
+        )
+    )
 
 
 def _room_on_the_right(gradient_end: float, x_range: tuple[float, float]) -> bool:
