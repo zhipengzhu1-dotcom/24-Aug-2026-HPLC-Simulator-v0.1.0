@@ -15,9 +15,10 @@ can be exercised without a browser (``tests/test_app.py``) and ticket #20's
 diagnostics have a logic layer to attach to.
 
 Layout follows the instrument software this tool sits beside (DryLab and its
-relatives), at the driver's direction: a narrow left rail carrying the condition and
-its summary, a tabbed main view with the resolution map first, the chromatogram pinned
-underneath, and a status bar at the foot.
+relatives), at the driver's direction: a narrow left rail carrying the condition — the
+scouting programme and the candidate programme as two No. / Time / %B tables (v0.2,
+#45, #73) — and its summary, a tabbed main view with the resolution map first, the
+chromatogram pinned underneath, and a status bar at the foot.
 
 Panels are filled out of render order. Streamlit containers are reserved first and
 written into later, which is how the left rail can summarise a fit that the peak table
@@ -50,7 +51,12 @@ from app.pipeline import (
     CockpitInputs,
     MethodEntry,
     PeakRow,
+    ProgrammeRead,
+    ScoutingEntry,
     dwell_from_volume,
+    points_from_programme,
+    programme_from_points,
+    programme_summary,
     run_cockpit,
     t0_autofill,
 )
@@ -65,9 +71,8 @@ from hplcsim.dead_time import DeadTimeEstimate, estimate_t0
 from hplcsim.model import (
     Gradient,
     Method,
-    Run,
+    Programme,
     log10_k0_from_ln_k0,
-    percent_b_from_phi,
     s_base10_from_s_e,
 )
 from hplcsim.retention import gradient_end_time
@@ -85,11 +90,13 @@ _TEMPERATURE_C = 45.0
 # The driver's re-read of the solvent-front time (2026-08-31, method.csv), which
 # supersedes the 0.6 first entered. The engine fixtures are a separate question (#24).
 _T0 = 0.525
-_PERCENT_B_START = 5.0
-_PERCENT_B_END = 95.0
-_HOLD = 0.5
-_TG_RUN1 = 15.0
-_TG_RUN2 = 45.0
+# The scouting programme the rail opens on: 5 → 95 %B after a 0.5 min hold, run at
+# tG 15 and 45 min — validation/method.csv's pair. The candidate opens as one ramp over
+# the same range at tG 25 min (v0.1's default) and follows the scouting table until it
+# is typed into.
+_DEFAULT_SCOUTING = ScoutingEntry(
+    percent_b_start=5.0, percent_b_end=95.0, hold=0.5, t_gradient1=15.0, t_gradient2=45.0
+)
 _TG_CANDIDATE = 25.0
 _PLATE_COUNT = 12_000.0
 
@@ -108,12 +115,11 @@ _FLOW_RANGE = (0.001, 20.0)
 _TEMPERATURE_RANGE = (-20.0, 200.0)
 _T0_RANGE = (0.001, 100.0)
 _DWELL_TIME_RANGE = (0.0, 100.0)
-_HOLD_RANGE = (0.0, 60.0)
 _PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
+# The two programme tables have no slider to clamp to (SPEC §7, v0.2): a 500-minute
+# candidate is a real method and a table cell holds it. Only %B is bounded, 0–100, by
+# the cells themselves.
 _PERCENT_B_RANGE = (0.0, 100.0)
-_TG_RUN_RANGE = (0.1, 600.0)
-_CANDIDATE_TG_RANGE = (1.0, _MAX_CANDIDATE_TG)
-_CANDIDATE_HOLD_RANGE = (0.0, _MAX_CANDIDATE_HOLD)
 
 _MEASURED = "Measured marker"
 _ESTIMATED = "Geometry estimate"
@@ -143,8 +149,10 @@ class Keys:
     in a string literal here does not raise, it silently leaves that one field on its
     default while every other field loads, which is the worst possible shape for the bug.
 
-    :func:`_slider_with_box` derives three keys of its own from each name below, so a
-    two-widget control's key is a stem rather than a widget id.
+    The two programme tables (#73) are keyed by a stem and a nonce: the frame a table
+    shows is held under the stem, and the nonce is bumped whenever that frame is
+    *replaced* — a session loaded, a cell put back — so the editor is rebuilt from it
+    rather than layering its last edits over the new frame (the peak table's rule).
     """
 
     SESSION_NAME = "session_name"
@@ -170,15 +178,16 @@ class Keys:
     DWELL_AS = "dwell_entered_as"
     DWELL_TIME = "dwell_time"
     DWELL_VOLUME = "dwell_volume"
-    PERCENT_B_START = "percent_b_start"
-    PERCENT_B_END = "percent_b_end"
-    HOLD = "hold"
     USE_N_ESTIMATE = "use_plate_count_estimate"
     PLATE_COUNT = "plate_count"
-    TG_RUN1 = "tg_run1"
-    TG_RUN2 = "tg_run2"
-    CANDIDATE_TG = "candidate_tg"
-    CANDIDATE_HOLD = "candidate_hold"
+    # The rail's two programme tables (SPEC §7, v0.2, #73). Each holds the frame its
+    # editor was built from; the candidate also remembers whether it has been typed
+    # into, since until then it follows the scouting table.
+    SCOUTING_FRAME = "scouting_frame"
+    SCOUTING_NONCE = "scouting_nonce"
+    CANDIDATE_FRAME = "candidate_frame"
+    CANDIDATE_NONCE = "candidate_nonce"
+    CANDIDATE_TOUCHED = "candidate_touched"
 
     # Where the chromatogram's axes begin and end. These are a view onto the prediction,
     # not an input to it: SPEC §8 keeps the session file to inputs, so they live in
@@ -261,8 +270,9 @@ def main() -> None:
     rail, main_view = st.columns(list(panels.RAIL_COLUMNS), gap="medium")
 
     with rail:
-        run1, run2 = _scouting_runs(constants)
-        candidate = _candidate_controls(constants)
+        scouting = _scouting_table()
+        run1, run2 = scouting.entry.runs()
+        read = _candidate_table(scouting.entry)
         candidate_slot = st.container()
         summary_slot = st.container()
 
@@ -278,15 +288,17 @@ def main() -> None:
         # this container's key; nothing else in the app is addressed by CSS this way.
         chromatogram_slot = st.container(key="hs-chromatogram")
 
-    inputs = CockpitInputs(
+    # With no ramp on the candidate table there is nothing to predict; the seed stands
+    # in so the inputs are whole, and `blocked` is what stops it being predicted.
+    inputs = CockpitInputs.with_programme(
         method=constants.method,
         run1=run1,
         run2=run2,
-        candidate=candidate,
+        programme=read.programme or _seed_programme(scouting.entry),
         rows=tuple(rows),
         plate_count=constants.plate_count,
     )
-    cockpit = run_cockpit(inputs)
+    cockpit = run_cockpit(inputs, blocked=read.blocked)
 
     diagnostics = diagnose(inputs, cockpit)
 
@@ -304,21 +316,23 @@ def main() -> None:
         if needs_guidance(cockpit):
             _worksheet(worksheet_steps(inputs, cockpit))
     with candidate_slot:
-        # SPEC §6: diagnostic 1 is a "candidate-control inline warning" — it belongs
-        # against the slider that caused it, not in a tab the user may not have open.
+        # SPEC §6 and §7: the candidate-control inline warnings sit directly beneath the
+        # candidate table, not in a tab the user may not have open. This slot carries
+        # whatever `diagnostics.candidate` holds — diagnostic 1 today, and #72's
+        # re-expression on s* with diagnostic 7 beside it once that lands.
         _notices(diagnostics.candidate)
     with summary_slot:
         _summary_panels(cockpit, diagnostics)
     with peaks_tab:
         _entry_notes(cockpit, diagnostics)
     with map_tab:
-        _resolution_map(candidate)
+        _resolution_map(inputs.candidate)
     with fit_tab:
         _fit_tab(cockpit, diagnostics)
     with resolution_tab:
         _resolution_tab(cockpit, diagnostics)
     with chromatogram_slot:
-        view = _chromatogram(cockpit, inputs, diagnostics)
+        view = _chromatogram(cockpit, inputs, read, diagnostics)
     if view is not None:
         # The axis range is its own pinned strip (#62), between the chromatogram block
         # and the status bar — outside the block, because the block scrolls and boxes
@@ -329,7 +343,7 @@ def main() -> None:
         with main_view, st.container(key="hs-axis"):
             _axis_controls(view)
 
-    _status_bar(cockpit, candidate, diagnostics)
+    _status_bar(cockpit, inputs, read, diagnostics)
 
 
 # --- sidebar: the session file of SPEC §8 ---------------------------------------------
@@ -389,18 +403,18 @@ def _restore(session: Session) -> None:
     the translation between the file's shape and the screen's is logic and lives there,
     while *which widget holds which value* is a fact about this file and only this one.
 
-    Every number goes through :class:`~app.session_io.Restore`, against the same
+    Every number box goes through :class:`~app.session_io.Restore`, against the same
     ``_*_RANGE`` the widget itself is built from. A file may legitimately hold a value
-    no widget on this screen can display — a 500-minute candidate tG is a real method
-    and the slider stops at 180 — and writing it in raw makes Streamlit raise on the
-    rerun, replacing the page with a traceback rather than saying anything useful.
+    no box on this screen can display — a 5 m column is a real column and the box stops
+    at 1000 mm — and writing it in raw makes Streamlit raise on the rerun, replacing the
+    page with a traceback rather than saying anything useful. The two programme tables
+    are not boxes: they take the file's rows as they are.
     """
-    method, shared = session.method, session.runs[0].gradient
+    method = session.method
     restore = Restore()
-    # The file's shape crossing the screen's — the candidate programme squeezed to the
-    # one segment this screen holds, the two peak tables as one — happens in
-    # `inputs_from_session` and nowhere else, so #73's programme table changes one site.
-    inputs = inputs_from_session(session, restore)
+    # The file's shape crossing the screen's — the two peak tables as one — happens in
+    # `inputs_from_session` and nowhere else.
+    inputs = inputs_from_session(session)
     st.session_state.update(
         {
             Keys.SESSION_NAME: session.session_name,
@@ -428,24 +442,18 @@ def _restore(session: Session) -> None:
             # entry boundary and is not meant to run backwards.
             Keys.DWELL_AS: _BY_TIME,
             Keys.DWELL_TIME: restore.within("dwell", method.t_dwell, *_DWELL_TIME_RANGE),
-            # %B goes through `restore` like everything else. The file already refuses
-            # anything outside 0–100 (`_check_percent`), so it should never bind — but
-            # being the one documented exception is how a later reader ends up
-            # re-deriving whether that exception is still safe.
-            Keys.PERCENT_B_START: restore.within(
-                "%B start", percent_b_from_phi(shared.phi0), *_PERCENT_B_RANGE
-            ),
-            Keys.PERCENT_B_END: restore.within(
-                "%B end", percent_b_from_phi(shared.phif), *_PERCENT_B_RANGE
-            ),
-            Keys.HOLD: restore.within("initial hold", shared.t_init, *_HOLD_RANGE),
             Keys.USE_N_ESTIMATE: session.plate_count is None,
-            Keys.TG_RUN1: restore.within(
-                "run 1 tG", session.runs[0].gradient.t_gradient, *_TG_RUN_RANGE
-            ),
-            Keys.TG_RUN2: restore.within(
-                "run 2 tG", session.runs[1].gradient.t_gradient, *_TG_RUN_RANGE
-            ),
+            # The two programme tables take the file's programmes as they are (SPEC §7,
+            # §8): a table cell has no slider's end to squeeze to. The file already
+            # refuses a %B outside 0–100. Each frame is *replaced*, so its nonce moves
+            # too — the editor is rebuilt from the file rather than showing the file's
+            # rows with the previous session's edits still layered over them.
+            Keys.SCOUTING_FRAME: tables.scouting_frame(ScoutingEntry.from_runs(*session.runs)),
+            Keys.SCOUTING_NONCE: st.session_state.get(Keys.SCOUTING_NONCE, 0) + 1,
+            Keys.CANDIDATE_FRAME: tables.candidate_frame(points_from_programme(session.candidate)),
+            Keys.CANDIDATE_NONCE: st.session_state.get(Keys.CANDIDATE_NONCE, 0) + 1,
+            # A loaded candidate is the file's, whatever the scouting table says.
+            Keys.CANDIDATE_TOUCHED: True,
             Keys.PEAK_FRAME: tables.peak_frame_from_rows(inputs.rows),
             # A fresh identity for the data editor. Its state belongs to its key, so
             # reusing the key would show the loaded frame's columns with the previous
@@ -473,23 +481,6 @@ def _restore(session: Session) -> None:
     st.session_state.pop(Keys.T0_AUTOFILL, None)
     if not method.t0_is_measured:
         st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
-    # The file holds the candidate as programme rows (SPEC §8, v0.2); this screen has
-    # one segment over the scouting range until #73, and `inputs_from_session` named
-    # what it could not show in the same note as the squeezes below.
-    candidate = inputs.candidate
-    _preset_slider_with_box(
-        Keys.CANDIDATE_TG,
-        seed=_TG_CANDIDATE,
-        value=restore.within("candidate tG", candidate.t_gradient, *_CANDIDATE_TG_RANGE),
-    )
-    _preset_slider_with_box(
-        # The candidate hold's default is fed by the method hold, so the seed has to be
-        # the *restored* method hold — seeded with anything else, the reseed in
-        # `_slider_with_box` sees a changed default and overwrites the value just loaded.
-        Keys.CANDIDATE_HOLD,
-        seed=min(st.session_state[Keys.HOLD], _MAX_CANDIDATE_HOLD),
-        value=restore.within("candidate initial hold", candidate.t_init, *_CANDIDATE_HOLD_RANGE),
-    )
     st.session_state[Keys.LOAD_NOTE] = restore.note
 
 
@@ -528,7 +519,7 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
     """
     with st.sidebar:
         st.header("Method constants")
-        st.caption("Shared by both scouting runs and by the candidate.")
+        st.caption("Instrument and column — shared by both scouting runs and the candidate.")
 
         length = st.number_input(
             "Column length (mm)", *_LENGTH_RANGE, _COLUMN_LENGTH_MM, key=Keys.LENGTH
@@ -597,15 +588,8 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         if t_dwell is None:
             return None, t0_notices
 
-        st.subheader("Gradient")
-        percent_b_start = st.number_input(
-            "%B start", *_PERCENT_B_RANGE, _PERCENT_B_START, key=Keys.PERCENT_B_START
-        )
-        percent_b_end = st.number_input(
-            "%B end", *_PERCENT_B_RANGE, _PERCENT_B_END, key=Keys.PERCENT_B_END
-        )
-        hold = st.number_input("Initial hold (min)", *_HOLD_RANGE, _HOLD, step=0.1, key=Keys.HOLD)
-
+        # The gradient is not here any more (SPEC §7, v0.2): its %B range and hold are
+        # rows of the scouting table in the rail, beside the candidate they are read with.
         method = Method(
             t0=t0,
             t_dwell=t_dwell,
@@ -622,14 +606,7 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         st.subheader("Plate count N")
         plate_count = _plate_count_knob(method)
 
-    entry = MethodEntry(
-        method=method,
-        percent_b_start=percent_b_start,
-        percent_b_end=percent_b_end,
-        hold=hold,
-        plate_count=plate_count,
-    )
-    return entry, t0_notices
+    return MethodEntry(method=method, plate_count=plate_count), t0_notices
 
 
 def _autofill_t0(
@@ -810,119 +787,150 @@ def _entry_notes(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
 # --- the left rail: the condition, and what it comes to -------------------------------
 
 
-def _scouting_runs(constants: MethodEntry) -> tuple[Run, Run]:
-    st.markdown("### Scouting runs")
-    left, right = st.columns(2)
-    t_gradient1 = left.number_input(
-        "Run 1 tG", *_TG_RUN_RANGE, _TG_RUN1, step=0.5, key=Keys.TG_RUN1
-    )
-    t_gradient2 = right.number_input(
-        "Run 2 tG", *_TG_RUN_RANGE, _TG_RUN2, step=0.5, key=Keys.TG_RUN2
-    )
-    return (
-        Run(constants.gradient(t_gradient1), name=f"tG{t_gradient1:g}"),
-        Run(constants.gradient(t_gradient2), name=f"tG{t_gradient2:g}"),
-    )
+def _scouting_table() -> tables.ScoutingRead:
+    """The scouting programme as one No. / t₁ / t₂ / %B table (SPEC §7, v0.2, #45).
 
-
-def _candidate_controls(constants: MethodEntry) -> Gradient:
-    st.markdown("### Candidate")
-    t_gradient = _slider_with_box(
-        "tG (min)",
-        *_CANDIDATE_TG_RANGE,
-        _TG_CANDIDATE,
-        slider_step=0.5,
-        box_step=0.1,
-        box_label="Candidate tG (min)",
-        key=Keys.CANDIDATE_TG,
-    )
-    hold = _slider_with_box(
-        "Initial hold (min)",
-        *_CANDIDATE_HOLD_RANGE,
-        min(constants.hold, _MAX_CANDIDATE_HOLD),
-        slider_step=0.05,
-        box_step=0.01,
-        box_label="Candidate initial hold (min)",
-        key=Keys.CANDIDATE_HOLD,
-    )
-    return constants.gradient(t_gradient, hold=hold)
-
-
-def _slider_with_box(
-    label: str,
-    min_value: float,
-    max_value: float,
-    default: float,
-    *,
-    slider_step: float,
-    box_step: float,
-    box_label: str,
-    key: str,
-) -> float:
-    """One candidate control as two widgets: a slider to sweep, a box to land exactly.
-
-    The slider is how the shape of the separation is explored — drag it and watch the
-    critical pair move. It cannot express "24.35 min", though, and a method that is about
-    to be written down is a specific number, not a nearby one. So the same value carries a
-    box underneath, stepping ten times finer than the slider and accepting anything typed
-    between the same two bounds.
-
-    They are one value in two widgets, so each writes the other's state back on change.
-    The slider tolerates a value off its own step grid — 24.35 on a 0.5 slider sits where
-    it belongs and drags away from there — which is what lets the box stay the precise one
-    without a second, disagreeing number appearing on screen.
+    One programme at two speeds: row 1 the start, row 2 the end of the initial hold,
+    row 3 the end of each run's ramp, with a time column per run. It is read-mostly —
+    row 1's times are the start of the run, row 2's second time and %B follow its
+    first and row 1's — and a cell that follows another is *put back* when typed over:
+    the frame the read says the table should show replaces the one it was built from,
+    and the editor is rebuilt from it, rather than showing a value the run does not use.
     """
-    slider_key, box_key, seed_key = f"{key}_slider", f"{key}_box", f"{key}_seed"
-
-    # Re-seed when the caller's default moves — the method's initial hold feeds the
-    # candidate's. Unkeyed widgets got this for free (a changed default is a changed
-    # widget identity); keyed ones hold their value, so the reseed has to be explicit.
-    if st.session_state.get(seed_key) != default:
-        st.session_state[seed_key] = default
-        st.session_state[slider_key] = default
-        st.session_state[box_key] = default
-
-    def _from_slider() -> None:
-        st.session_state[box_key] = st.session_state[slider_key]
-
-    def _from_box() -> None:
-        st.session_state[slider_key] = st.session_state[box_key]
-
-    st.slider(
-        label,
-        min_value,
-        max_value,
-        step=slider_step,
-        key=slider_key,
-        on_change=_from_slider,
+    st.markdown("### Scouting — as run")
+    if Keys.SCOUTING_FRAME not in st.session_state:
+        st.session_state[Keys.SCOUTING_FRAME] = tables.scouting_frame(_DEFAULT_SCOUTING)
+    base = st.session_state[Keys.SCOUTING_FRAME]
+    edited = st.data_editor(
+        base,
+        key=f"scouting_table_{st.session_state.get(Keys.SCOUTING_NONCE, 0)}",
+        num_rows="fixed",
+        hide_index=True,
+        width="stretch",
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
+        # Four columns in a rail 1.45 : 3.0 wide (#62): the widths are fixed in pixels
+        # so the %B column is not the one that gets clipped, and they add up to the
+        # table's width at 1440 × 900 with the row-number column narrowest.
+        column_config={
+            tables.NO: st.column_config.NumberColumn(width=_ROW_NUMBER_PX, disabled=True),
+            tables.T1: _time_column(_TIME_PX),
+            tables.T2: _time_column(_TIME_PX),
+            tables.PERCENT_B: _percent_column(_PERCENT_PX),
+        },
     )
-    # The box is labelled for the accessibility tree and for tests that address a
-    # widget by the name a user reads; on screen the slider's label serves them both, so
-    # `box_label` distinguishes this from the method-page hold input of the same name.
-    st.number_input(
-        box_label,
-        min_value,
-        max_value,
-        step=box_step,
-        format="%.2f",
-        key=box_key,
-        on_change=_from_box,
-        label_visibility="collapsed",
+    read = tables.scouting_read_from_frame(edited)
+    if not tables.frames_agree(read.frame, edited):
+        _replace_frame(Keys.SCOUTING_FRAME, Keys.SCOUTING_NONCE, read.frame)
+        st.rerun()
+    entry = read.entry
+    st.caption(
+        f"tG {entry.t_gradient1:g} / {entry.t_gradient2:g} min · hold {entry.hold:g} min · "
+        f"{entry.percent_b_start:g} → {entry.percent_b_end:g} %B — row 2 follows row 1's %B."
     )
-    return float(st.session_state[slider_key])
+    for note in read.notes:
+        st.warning(note, icon="⚠️")
+    return read
 
 
-def _preset_slider_with_box(key: str, *, seed: float, value: float) -> None:
-    """Put a restored value into a two-widget control, reseed and all.
+def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
+    """The candidate programme as a t / %B table with dynamic rows (SPEC §7, v0.2, #45).
 
-    Setting the two widgets alone is not enough: :func:`_slider_with_box` reseeds
-    whenever the caller's default has moved since it last looked, and on the rerun
-    after a load the default *has* moved — the method hold came out of the file too.
-    Writing the seed here is what tells it the move has already been accounted for.
+    A segment is a row, a further segment a further row, and the count is open (#58).
+    No tG slider: the cell steps with the keyboard. Until it is typed into, the table
+    follows the scouting one — one ramp over the scouting range at tG 25 min, v0.1's
+    opening candidate — and from the first edit on it is the reader's, until Reset.
+
+    The frame the editor was built from is held in state and left alone while the
+    reader types; the editor holds the edits and the read takes the edited rows. Only a
+    put-back (row 1's time is the start of the run) replaces the frame.
     """
-    st.session_state[f"{key}_seed"] = seed
-    st.session_state[f"{key}_slider"] = value
-    st.session_state[f"{key}_box"] = value
+    st.markdown("### Candidate — predicted")
+    seed = tables.candidate_frame(points_from_programme(_seed_programme(scouting)))
+    touched = st.session_state.get(Keys.CANDIDATE_TOUCHED, False)
+    base = st.session_state.get(Keys.CANDIDATE_FRAME)
+    if base is None or (not touched and not tables.frames_agree(base, seed)):
+        _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, seed)
+        base = seed
+    edited = st.data_editor(
+        base,
+        key=f"candidate_table_{st.session_state.get(Keys.CANDIDATE_NONCE, 0)}",
+        num_rows="dynamic",
+        hide_index=True,
+        width="stretch",
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
+        column_config={
+            tables.T_CANDIDATE: _time_column(_CANDIDATE_TIME_PX),
+            tables.PERCENT_B: _percent_column(_CANDIDATE_PERCENT_PX),
+        },
+    )
+    if not tables.frames_agree(edited, base):
+        # The reader has typed: from here on the table is theirs, not the scouting's.
+        st.session_state[Keys.CANDIDATE_TOUCHED] = True
+    read = programme_from_points(tables.candidate_points_from_frame(edited))
+    shown = tables.candidate_frame(read.points)
+    if not tables.frames_agree(shown, edited):
+        st.session_state[Keys.CANDIDATE_TOUCHED] = True
+        _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, shown)
+        st.rerun()
+    caption, reset = st.columns([3.2, 1.0], vertical_alignment="center")
+    with caption:
+        if read.programme is not None:
+            st.caption(programme_summary(read.programme))
+    with reset:
+        st.button(
+            "Reset",
+            on_click=_reset_candidate,
+            width="stretch",
+            help="Back to one ramp over the scouting range at tG 25 min.",
+        )
+    for note in read.notes:
+        st.warning(note, icon="⚠️")
+    return read
+
+
+# The programme tables' column widths, in pixels. The scouting table's four add up to
+# the rail's table width at 1440 × 900 (303 px, measured); the candidate's two share the
+# same width less the dynamic-row selector Streamlit puts in front of them.
+_ROW_NUMBER_PX = 36
+_TIME_PX = 84
+_PERCENT_PX = 64
+_CANDIDATE_TIME_PX = 120
+_CANDIDATE_PERCENT_PX = 90
+
+
+def _time_column(width: int) -> object:
+    return st.column_config.NumberColumn(
+        min_value=0.0, step=0.1, format="%.2f", required=True, width=width
+    )
+
+
+def _percent_column(width: int) -> object:
+    return st.column_config.NumberColumn(
+        min_value=_PERCENT_B_RANGE[0],
+        max_value=_PERCENT_B_RANGE[1],
+        step=1.0,
+        format="%g",
+        required=True,
+        width=width,
+    )
+
+
+def _seed_programme(scouting: ScoutingEntry) -> Programme:
+    """One ramp over the scouting range at tG 25 min — v0.1's opening candidate."""
+    return Programme.from_gradient(scouting.gradient(_TG_CANDIDATE))
+
+
+def _replace_frame(frame_key: str, nonce_key: str, frame: object) -> None:
+    """Replace a table's frame and move its nonce, so the editor is rebuilt from it."""
+    st.session_state[frame_key] = frame
+    st.session_state[nonce_key] = st.session_state.get(nonce_key, 0) + 1
+
+
+def _reset_candidate() -> None:
+    """Back to following the scouting table. A callback, so it lands before the redraw."""
+    st.session_state[Keys.CANDIDATE_TOUCHED] = False
+    st.session_state.pop(Keys.CANDIDATE_FRAME, None)
+    st.session_state[Keys.CANDIDATE_NONCE] = st.session_state.get(Keys.CANDIDATE_NONCE, 0) + 1
 
 
 # --- the guided empty state of SPEC §7 ------------------------------------------------
@@ -1095,15 +1103,14 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     )
 
 
-def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
-    fields = [
-        f"tG {candidate.t_gradient:g} min; hold {candidate.t_init:g} min",
-        f"%B {percent_b_from_phi(candidate.phi0):g} → {percent_b_from_phi(candidate.phif):g}",
-    ]
+def _status_bar(
+    cockpit: Cockpit, inputs: CockpitInputs, read: ProgrammeRead, diagnostics: Diagnostics
+) -> None:
+    fields = [_candidate_line(inputs, read)]
     critical = cockpit.resolution.critical_pair if cockpit.resolution else None
     if critical is not None:
         fields.append(f"Rs {critical.rs:.2f}")
-    fields.append("RP gradient — linear, single segment")
+    fields.append(_programme_kind(inputs))
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.
     if any(stamp.code == "estimated_t0" for stamp in diagnostics.stamps):
@@ -1111,8 +1118,22 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
+def _candidate_line(inputs: CockpitInputs, read: ProgrammeRead) -> str:
+    """The candidate in one line, or the fact that there is none to predict yet."""
+    if read.programme is None:
+        return "candidate — no ramp yet"
+    return programme_summary(inputs.target)
+
+
+def _programme_kind(inputs: CockpitInputs) -> str:
+    programme = inputs.programme
+    if programme is None or len(programme.segments) == 1:
+        return "RP gradient — linear, single segment"
+    return f"RP gradient — {len(programme.segments)} segments, piecewise linear"
+
+
 def _chromatogram(
-    cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics
+    cockpit: Cockpit, inputs: CockpitInputs, read: ProgrammeRead, diagnostics: Diagnostics
 ) -> chromatogram.AxisView | None:
     """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
 
@@ -1123,11 +1144,7 @@ def _chromatogram(
     Returns the axis view the trace was drawn on, so that the caller can draw the axis
     strip with it in the strip's own pinned row (#62); ``None`` when there is no trace.
     """
-    candidate = inputs.candidate
-    st.markdown(
-        f"**Predicted chromatogram** — tG {candidate.t_gradient:g} min, "
-        f"hold {candidate.t_init:g} min"
-    )
+    st.markdown(f"**Predicted chromatogram** — {_candidate_line(inputs, read)}")
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
         return None
@@ -1135,7 +1152,7 @@ def _chromatogram(
     trace = chromatogram.chromatogram(
         cockpit.resolution.peaks,
         cockpit.shares,
-        gradient_end=gradient_end_time(inputs.method, candidate),
+        gradient_end=gradient_end_time(inputs.method, inputs.target),
         # An x axis asked to end past the run needs trace to draw out there, not just a
         # wider window onto a baseline that stops halfway across the plot.
         extend_to=asked.x_end,

@@ -18,12 +18,24 @@ file, where :class:`~hplcsim.session.UntrackedPeak` carries the incomplete rows 
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from statistics import fmean
 
 from hplcsim.fit import FitResult, fit_peak
-from hplcsim.model import Gradient, Method, Peak, Run, phi_from_percent_b
+from hplcsim.model import (
+    Gradient,
+    Method,
+    Peak,
+    Programme,
+    Run,
+    Segment,
+    Target,
+    as_programme,
+    percent_b_from_phi,
+    phi_from_percent_b,
+)
 from hplcsim.resolution import PredictedPeak, ResolutionTable, resolution_table
 
 
@@ -176,6 +188,67 @@ class CockpitInputs:
     candidate: Gradient
     rows: tuple[PeakRow, ...] = ()
     plate_count: float | None = None
+    # v0.2 (#73): the candidate as the rail's programme table holds it — its own start,
+    # hold and any number of segments (SPEC §3, §7). ``candidate`` is then that
+    # programme's *one-segment reading* (:func:`single_segment_reading`) and nothing
+    # else, which :meth:`__post_init__` enforces: the v0.1 diagnostics still read a
+    # gradient, until #72 teaches them the programme, and two fields that could disagree
+    # would be two candidates. The engine predicts :attr:`target`. ``None`` is the v0.1
+    # shape — a gradient with no programme behind it — kept for the callers built on it.
+    programme: Programme | None = None
+
+    def __post_init__(self) -> None:
+        if self.programme is not None and self.candidate != single_segment_reading(self.programme):
+            raise ValueError(
+                "candidate must be the programme's one-segment reading: "
+                f"{self.candidate} is not {single_segment_reading(self.programme)}"
+            )
+
+    @classmethod
+    def with_programme(
+        cls,
+        *,
+        method: Method,
+        run1: Run,
+        run2: Run,
+        programme: Programme,
+        rows: tuple[PeakRow, ...] = (),
+        plate_count: float | None = None,
+    ) -> CockpitInputs:
+        """The inputs for a programme, with the one-segment reading derived, never typed."""
+        return cls(
+            method=method,
+            run1=run1,
+            run2=run2,
+            candidate=single_segment_reading(programme),
+            rows=rows,
+            plate_count=plate_count,
+            programme=programme,
+        )
+
+    @property
+    def target(self) -> Target:
+        """What the engine predicts: the programme when there is one, else the gradient."""
+        return self.candidate if self.programme is None else self.programme
+
+
+def single_segment_reading(programme: Programme) -> Gradient:
+    """A programme as the one gradient the v0.1 surfaces can read (until #72).
+
+    Exact for one segment — :meth:`~hplcsim.model.Programme.as_gradient`, the same
+    correspondence the engine's one-segment path takes. For two or more it is the
+    programme's own start and end over its total ramp time: the honest one-number
+    summary for a tG bracket, and never the scouting runs' range in disguise.
+    """
+    gradient = programme.as_gradient()
+    if gradient is not None:
+        return gradient
+    return Gradient(
+        phi0=programme.phi0,
+        phif=programme.phif,
+        t_gradient=programme.t_gradient,
+        t_init=programme.t_init,
+    )
 
 
 @dataclass(frozen=True)
@@ -215,10 +288,15 @@ class Cockpit:
         )
 
 
-def run_cockpit(inputs: CockpitInputs) -> Cockpit:
-    """Fit every tracked peak, then predict the candidate gradient from the survivors."""
+def run_cockpit(inputs: CockpitInputs, *, blocked: str | None = None) -> Cockpit:
+    """Fit every tracked peak, then predict the candidate from the survivors.
+
+    ``blocked`` is a reason the caller already knows — the rail's candidate table with no
+    ramp on it yet (#73) — and it stops the prediction the same way the engine's own
+    impossibility does: painted in the rail, the peak table still read.
+    """
     entry = split_rows(inputs.rows)
-    blocked = _blocking_reason(inputs.run1, inputs.run2)
+    blocked = _blocking_reason(inputs.run1, inputs.run2) or blocked
     if blocked is not None:
         return Cockpit(entry, (), None, None, blocked)
 
@@ -230,7 +308,7 @@ def run_cockpit(inputs: CockpitInputs) -> Cockpit:
     table = resolution_table(
         [fit.params for _, fit in fitted],
         inputs.method,
-        inputs.candidate,
+        inputs.target,
         names=[peak.name for peak, _ in fitted],
         plate_count=inputs.plate_count,
         plate_counts=[fit.plate_count for _, fit in fitted],
@@ -341,18 +419,45 @@ def t0_autofill(
 
 @dataclass(frozen=True)
 class MethodEntry:
-    """The method constants as the sidebar holds them, with %B still on 0–100.
+    """The method constants as the sidebar holds them: the method, and the N knob.
 
-    Everything the two scouting runs and the candidate share. The gradient is kept in
-    the user's units until :meth:`gradient` builds one, so the %B → φ turn happens in
-    a single place no matter which of the three gradients is being made.
+    v0.1's sidebar also held the gradient's %B range and hold; since v0.2 (#73) those
+    are the scouting table's, in the rail, as :class:`ScoutingEntry`.
     """
 
     method: Method
+    plate_count: float | None = None
+
+
+# --- the rail's two programme tables (SPEC §7, v0.2, #73) --------------------------------
+#
+# Both tables are typed the way an instrument's gradient table is: a list of points,
+# each a time from injection and the composition reached at it, in the user's units.
+# The engine wants a `Gradient` for the scouting pair and a `Programme` for the
+# candidate; the crossing from points to those is here, once, in each direction, and
+# `app.tables` only turns the points into a frame the editor can show.
+
+# A time typed into the table has at most a few decimals; a duration read off it is
+# the difference of two such times and must come back as the number that was meant,
+# not as the binary remainder of the subtraction (25.4 − 0.4 is not 25.0 in a float).
+_TABLE_DECIMALS = 6
+
+
+@dataclass(frozen=True)
+class ScoutingEntry:
+    """The scouting table's values: one programme at two speeds, %B still on 0–100.
+
+    Row 1 is the start, row 2 the end of the initial hold at the same %B, row 3 the
+    end of each run's ramp — so the table holds a start, an end, a hold and two
+    gradient times, and this is those five numbers. The %B → φ turn happens in
+    :meth:`gradient`, in a single place no matter which run is being made.
+    """
+
     percent_b_start: float
     percent_b_end: float
     hold: float
-    plate_count: float | None = None
+    t_gradient1: float
+    t_gradient2: float
 
     def gradient(self, t_gradient: float, hold: float | None = None) -> Gradient:
         """The shared gradient at one gradient time, and optionally a different hold."""
@@ -362,3 +467,147 @@ class MethodEntry:
             t_gradient=t_gradient,
             t_init=self.hold if hold is None else hold,
         )
+
+    def runs(self) -> tuple[Run, Run]:
+        """The two scouting runs, named by their gradient time as v0.1 named them."""
+        return (
+            Run(self.gradient(self.t_gradient1), name=f"tG{self.t_gradient1:g}"),
+            Run(self.gradient(self.t_gradient2), name=f"tG{self.t_gradient2:g}"),
+        )
+
+    @classmethod
+    def from_runs(cls, run1: Run, run2: Run) -> ScoutingEntry:
+        """The table's values back from a restored pair (the display side of the turn)."""
+        shared = run1.gradient
+        return cls(
+            percent_b_start=percent_b_from_phi(shared.phi0),
+            percent_b_end=percent_b_from_phi(shared.phif),
+            hold=shared.t_init,
+            t_gradient1=run1.gradient.t_gradient,
+            t_gradient2=run2.gradient.t_gradient,
+        )
+
+
+@dataclass(frozen=True)
+class ProgrammePoint:
+    """One row of the candidate table as typed: a time and a %B, either still blank."""
+
+    t_min: float | None
+    percent_b: float | None
+
+    @property
+    def is_typed(self) -> bool:
+        return self.t_min is not None and self.percent_b is not None
+
+
+@dataclass(frozen=True)
+class ProgrammeRead:
+    """What the candidate table came to: the programme, or why there is none yet.
+
+    ``points`` are the rows as they should read — the first row's time put back to
+    0, everything else as typed — so the screen can show the put-back and nothing
+    more. ``notes`` name the rows that were left out and why; ``blocked`` is the one
+    case with nothing to predict, worded for the rail.
+    """
+
+    programme: Programme | None
+    points: tuple[ProgrammePoint, ...]
+    notes: tuple[str, ...] = ()
+    blocked: str | None = None
+
+
+_NO_RAMP = (
+    "**The candidate needs a ramp.** Row 1 is where the run starts; add a row with a "
+    "later time and the %B it ramps to before anything can be predicted."
+)
+
+
+def programme_from_points(points: Sequence[ProgrammePoint]) -> ProgrammeRead:
+    """The candidate table read as a :class:`~hplcsim.model.Programme` (SPEC §3, §7).
+
+    Row 1 is the start of the run: its %B is φ0 and its time is 0 whatever was typed.
+    Row 2 at the same %B is the end of the initial hold — the hold row, always shown,
+    so a candidate with no hold carries it at t = 0. Every later row ends a segment at
+    its time and its %B; a repeated %B is a hold segment, a lower one descends (SPEC
+    §3, #58). A row still being typed is skipped without a word; a row that does not
+    move forward in time is skipped and named — the rest of the programme stands
+    (CLAUDE.md's warnings-over-blocks). With no segment at all there is nothing to
+    predict, and that is the one thing said as a block.
+    """
+    typed = [(index, point) for index, point in enumerate(points, start=1) if point.is_typed]
+    if not typed:
+        return ProgrammeRead(None, tuple(points), blocked=_NO_RAMP)
+
+    first_index, first = typed[0]
+    assert first.t_min is not None and first.percent_b is not None
+    shown = list(points)
+    shown[first_index - 1] = replace(first, t_min=0.0)
+
+    t_init = 0.0
+    segments: list[Segment] = []
+    notes: list[str] = []
+    previous_t, previous_b = 0.0, first.percent_b
+    for position, (row, point) in enumerate(typed[1:], start=2):
+        assert point.t_min is not None and point.percent_b is not None
+        duration = round(point.t_min - previous_t, _TABLE_DECIMALS)
+        flat = point.percent_b == previous_b
+        if duration < 0.0:
+            notes.append(
+                f"Row {row} is at {point.t_min:g} min, before the row above it at "
+                f"{previous_t:g} min — a programme only moves forward, so the row is "
+                "left out until its time is later."
+            )
+            continue
+        if duration == 0.0:
+            if position == 2 and flat:
+                continue  # the hold row, holding for nothing
+            notes.append(
+                f"Row {row} repeats the time above it ({point.t_min:g} min) — a step "
+                "needs a duration, however short (the instrument's own is 0.1 min), so "
+                "the row is left out until it has one."
+            )
+            continue
+        if position == 2 and flat:
+            t_init = duration
+        else:
+            segments.append(Segment(duration=duration, phif=phi_from_percent_b(point.percent_b)))
+        previous_t, previous_b = point.t_min, point.percent_b
+
+    if not segments:
+        return ProgrammeRead(None, tuple(shown), tuple(notes), blocked=_NO_RAMP)
+    programme = Programme(
+        phi0=phi_from_percent_b(first.percent_b), segments=tuple(segments), t_init=t_init
+    )
+    return ProgrammeRead(programme, tuple(shown), tuple(notes))
+
+
+def points_from_programme(programme: Programme) -> tuple[ProgrammePoint, ...]:
+    """A programme as the rows the candidate table shows — the inverse of the read.
+
+    The hold row is always written, at t = 0 when there is no hold, so the table a
+    user sees has the same shape as the scouting table above it and the same shape
+    every time. Cumulative times are summed exactly and rounded at the table's own
+    precision, so what is shown reads back as the programme that was saved.
+    """
+    start = percent_b_from_phi(programme.phi0)
+    rows = [ProgrammePoint(0.0, start), ProgrammePoint(_at_table(programme.t_init), start)]
+    elapsed = [programme.t_init]
+    for segment in programme.segments:
+        elapsed.append(segment.duration)
+        rows.append(ProgrammePoint(_at_table(math.fsum(elapsed)), percent_b_from_phi(segment.phif)))
+    return tuple(rows)
+
+
+def _at_table(minutes: float) -> float:
+    return round(minutes, _TABLE_DECIMALS)
+
+
+def programme_summary(target: Target) -> str:
+    """The candidate in one line, as the rail's caption and the status bar read it."""
+    programme = as_programme(target)
+    count = len(programme.segments)
+    return (
+        f"{percent_b_from_phi(programme.phi0):g} → {percent_b_from_phi(programme.phif):g} %B · "
+        f"tG {programme.t_gradient:g} min · hold {programme.t_init:g} min · "
+        f"{count} segment{'' if count == 1 else 's'}"
+    )
