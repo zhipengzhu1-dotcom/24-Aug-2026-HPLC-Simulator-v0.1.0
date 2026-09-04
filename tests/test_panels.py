@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.panels import Row, panel, resolution_colour, status_bar, worksheet
+from app.panels import STYLE, Row, panel, resolution_colour, status_bar, worksheet
 
 
 def test_every_row_reaches_the_panel() -> None:
@@ -123,10 +123,11 @@ def test_the_status_bar_is_not_pinned_to_the_viewport() -> None:
     z-index. On screen the first fields — tG, %B, Rs — were simply not there, and the
     text began mid-word. Sticky positioning lays the bar out in the main column's
     flow, where it cannot reach the sidebar at all.
-    """
-    from app.panels import STYLE
 
-    status_rule = STYLE.split(".hs-status {", 1)[1].split("}", 1)[0]
+    Since #79 the bar sits inside a keyed container, which is the stable handle the
+    `display: contents` rule scopes by; the sticky element is still the painted bar.
+    """
+    status_rule = _rule(".hs-status")
     assert "position: sticky" in status_rule
     assert "position: fixed" not in status_rule
     assert "left: 0" not in status_rule
@@ -185,8 +186,12 @@ def test_the_three_pinned_rows_stack_without_overlapping() -> None:
     """
     assert "bottom: 0" in _rule(".hs-status")
     assert "bottom: var(--hs-status-height)" in _rule(".st-key-hs-axis")
-    assert "bottom: calc(var(--hs-status-height) + var(--hs-axis-height))" in _rule(
-        ".st-key-hs-chromatogram"
+    # The chromatogram clears both rows below it *and* the block gap between it and the
+    # strip: they are two flex items, so its pinned foot sits one gap above the strip's
+    # head. Leaving the gap out pinned it one gap lower than it can reach (#79).
+    assert (
+        "bottom: calc(var(--hs-status-height) + var(--hs-axis-height) + var(--hs-block-gap))"
+        in _rule(".st-key-hs-chromatogram")
     )
 
     # The derivation and the bar itself must read the same tokens, or it is not derived.
@@ -259,3 +264,43 @@ def test_the_pinned_chromatogram_cannot_grow_to_cover_the_tabs_it_sits_beneath()
     assert "max-height: 46vh" in rule
     # Capping without a scroll would clip the plot instead of yielding.
     assert "overflow: auto" in rule
+
+
+def test_the_pinned_rows_wrappers_are_taken_out_of_the_box_tree() -> None:
+    """#79's fix, as a rule that must not be deleted by tidying.
+
+    Streamlit wraps each app container in a generated box that hugs its child exactly,
+    and a sticky box is clamped to its containing block — so with the wrapper in the box
+    tree there is no area below the row to be held across, and nothing ever pinned.
+    `display: contents` removes the wrapper's box. Only a browser can prove the rows then
+    hold their place (`scripts/check_sticky_rows.py`); this only proves the rule is still
+    here, and that all three rows are covered by it.
+    """
+    assert "{ display: contents; }" in STYLE
+    for row in ("hs-chromatogram", "hs-axis", "hs-status"):
+        assert f"div:has(> .st-key-{row})" in STYLE, row
+    # The bar is markup inside a markdown block, so its own chain is collapsed as well —
+    # by shape, because one of those wrappers is an unnamed emotion-cache div and a
+    # single box left in that chain hugs the bar and stops it pinning at all.
+    assert ".st-key-hs-status div:has(.hs-status)" in STYLE
+
+
+def test_nothing_sits_between_the_status_bars_block_and_the_foot_of_the_page() -> None:
+    """The bar's offset is measured from the foot, so the foot must be reachable.
+
+    The page's own bottom padding and the block gap above the row both sat inside that
+    distance, and a sticky box may not be positioned outside its containing block, so
+    the bar stopped short by exactly their sum.
+    """
+    assert "padding-bottom: 0" in _rule('div[data-testid="stMainBlockContainer"]')
+    outer = _rule('div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"]')
+    assert "gap: 0" in outer
+
+
+def test_the_chromatogram_absorbs_the_columns_slack_above_itself() -> None:
+    """The two Cockpit columns are stretched to equal height, so when the rail is the
+    taller one its extra height lands as free space at the foot of the other column. A
+    sticky row is never pushed *below* its natural position, so both pinned rows floated
+    that far above the status bar at full scroll until the slack was collected above
+    them (#79)."""
+    assert "margin-top: auto" in _rule(".st-key-hs-chromatogram")

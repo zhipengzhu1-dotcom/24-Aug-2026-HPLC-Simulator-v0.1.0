@@ -1213,7 +1213,11 @@ def _status_bar(
     # that pair downgrades this number with no method-level guard firing at all.
     if critical_pair_is_indicative(cockpit, diagnostics):
         fields.append(_INDICATIVE_STATUS)
-    st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
+    # A keyed container, so this row has the same shape as the other two pinned rows and
+    # one CSS rule can reach all three wrappers (#79). Addressing the markdown chain
+    # instead took four `:has()` selectors and broke the moment Streamlit renested it.
+    with st.container(key="hs-status"):
+        st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
 def _candidate_line(inputs: CockpitInputs, read: ProgrammeRead) -> str:
