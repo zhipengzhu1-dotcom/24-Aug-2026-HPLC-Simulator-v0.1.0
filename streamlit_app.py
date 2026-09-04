@@ -256,7 +256,9 @@ def main() -> None:
         # fastest way out of this screen and the reason the uploader is drawn above it.
         return
 
-    rail, main_view = st.columns([1.15, 3.0], gap="medium")
+    # The rail carries a four-column table's worth of entry (#62); its share of the row
+    # is a layout number, so it lives with the rest of them in `app.panels`.
+    rail, main_view = st.columns(list(panels.RAIL_COLUMNS), gap="medium")
 
     with rail:
         run1, run2 = _scouting_runs(constants)
@@ -316,7 +318,16 @@ def main() -> None:
     with resolution_tab:
         _resolution_tab(cockpit, diagnostics)
     with chromatogram_slot:
-        _chromatogram(cockpit, inputs, diagnostics)
+        view = _chromatogram(cockpit, inputs, diagnostics)
+    if view is not None:
+        # The axis range is its own pinned strip (#62), between the chromatogram block
+        # and the status bar — outside the block, because the block scrolls and boxes
+        # inside it can only be reached by scrolling the very plot they act on. It is
+        # appended to the main column here, after the block, rather than reserved with
+        # the other slots: with no trace on screen there is nothing for it to act on,
+        # and an empty bordered row is worse than no row.
+        with main_view, st.container(key="hs-axis"):
+            _axis_controls(view)
 
     _status_bar(cockpit, candidate, diagnostics)
 
@@ -740,7 +751,7 @@ def _peak_table() -> list[PeakRow]:
         "One row per compound, both runs side by side — you pair the peaks as you type. "
         "Name, areas and W½ are optional; a W½ has its peak's plate count fitted from it."
     )
-    three_decimals = st.column_config.NumberColumn(format="%.3f")
+    three_decimals = st.column_config.NumberColumn(format="%.3f", width="small")
     # A restored table arrives as a frame in state; an unloaded one is the blank frame,
     # exactly as before. The nonce in the key is what makes a *second* load land: the
     # editor's edits belong to its key, and reusing the key would leave them on top of
@@ -750,6 +761,11 @@ def _peak_table() -> list[PeakRow]:
         key=f"peak_table_{st.session_state.get(Keys.PEAK_TABLE_NONCE, 0)}",
         num_rows="dynamic",
         width="stretch",
+        # Compact rows (#62): the peak table shares the screen with the pinned
+        # chromatogram and the axis strip, and Streamlit's default row spends a third of
+        # their budget on four peaks. The column names are the frame's own and are not
+        # touched — `app.tables` reads the frame back by them.
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             tables.COMPOUND: st.column_config.TextColumn(width="medium"),
             tables.TR_RUN1: three_decimals,
@@ -1031,6 +1047,7 @@ def _fit_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         tables.fit_frame(cockpit),
         width="stretch",
         hide_index=True,
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             "log10 k0": st.column_config.NumberColumn(format="%.2f"),
             "S": st.column_config.NumberColumn(format="%.2f"),
@@ -1052,6 +1069,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         tables.prediction_frame(cockpit, diagnostics.badges),
         width="stretch",
         hide_index=True,
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             "tR (min)": st.column_config.NumberColumn(format="%.3f"),
             "W½ (min)": st.column_config.NumberColumn(format="%.4f"),
@@ -1063,6 +1081,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         tables.resolution_frame(cockpit),
         width="stretch",
         hide_index=True,
+        row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             "ΔtR (min)": st.column_config.NumberColumn(format="%.3f"),
             "Rs": st.column_config.NumberColumn(format="%.2f"),
@@ -1086,12 +1105,17 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 
-def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics) -> None:
+def _chromatogram(
+    cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnostics
+) -> chromatogram.AxisView | None:
     """The pinned trace of SPEC §7. Everything around the plot earns its pixels.
 
     This block is sticky, so its height is screen the reader cannot scroll away. The
     condition, the area caveat and diagnostic 6's stamp all still have to appear — they
     are on one caption line beside the title rather than three stacked rows beneath it.
+
+    Returns the axis view the trace was drawn on, so that the caller can draw the axis
+    strip with it in the strip's own pinned row (#62); ``None`` when there is no trace.
     """
     candidate = inputs.candidate
     st.markdown(
@@ -1100,7 +1124,7 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
     )
     if cockpit.resolution is None or not cockpit.resolution.peaks:
         st.caption("The chromatogram appears once at least one peak is fitted.")
-        return
+        return None
     asked = _axis_request()
     trace = chromatogram.chromatogram(
         cockpit.resolution.peaks,
@@ -1120,7 +1144,13 @@ def _chromatogram(cockpit: Cockpit, inputs: CockpitInputs, diagnostics: Diagnost
     if diagnostics.stamps:
         notes.append(_STAMP_SHORT)
     st.caption("  ·  ".join(notes))
-    _axis_controls(view)
+    # The "this window hides a peak" notes belong to the axis boxes, but they are painted
+    # here, in the scrolling block above them, rather than in the strip: the strip is a
+    # fixed-height pinned row and a warning painted inside it would be clipped by the
+    # very rule that lets the block pin exactly on top of it.
+    for note in view.notes:
+        st.warning(note, icon="⚠️")
+    return view
 
 
 def _axis_request() -> chromatogram.AxisRequest:
@@ -1136,21 +1166,19 @@ def _axis_request() -> chromatogram.AxisRequest:
 
 
 def _axis_controls(view: chromatogram.AxisView) -> None:
-    """Both ends of both axes, as four boxes beneath the trace.
+    """Both ends of both axes, always on show, in the strip's own pinned row (#62).
 
-    Behind an expander rather than always on show. This block is pinned, so every row
-    added here is screen the reader cannot scroll away from — the same budget that
-    `CHROMATOGRAM_HEIGHT` is spending. Collapsed it costs one line; the reader who wants
-    to crop the baseline off opens it once and it stays open.
+    No expander. Where each axis starts and ends is the first thing a reader checks
+    before believing a trace, and behind a collapsed expander it was neither on show nor
+    — the strip being inside the scrolling chromatogram block — reachable without
+    scrolling the plot away. The strip is a row of its own instead, and the plot is drawn
+    at `CHROMATOGRAM_HEIGHT` to pay for it out of the same pinned budget.
 
     Until the reader touches a box, the boxes are re-seeded from the run every rerun, so
     a longer candidate grows the window with it. Once touched, the entries stay put —
     a pinned window is what the reader asked for — until Reset.
     """
     touched = st.session_state.get(Keys.AXIS_TOUCHED, False)
-    if not touched:
-        for key in Keys.AXIS_KEYS:
-            st.session_state.pop(key, None)
     y_step = view.run_y[1] / 20.0 or 0.05
     boxes = (
         ("x start (min)", Keys.X_AXIS_START, view.run_x[0], 0.1, "%.2f"),
@@ -1158,28 +1186,31 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
         ("y start", Keys.Y_AXIS_START, view.run_y[0], y_step, "%.4f"),
         ("y end", Keys.Y_AXIS_END, view.run_y[1], y_step, "%.4f"),
     )
-    with st.expander("Axis range", expanded=False):
-        cols = st.columns([1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
-        for col, (label, key, value, step, fmt) in zip(cols, boxes, strict=False):
-            with col:
-                st.number_input(
-                    label,
-                    min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
-                    value=value,
-                    step=step,
-                    format=fmt,
-                    key=key,
-                    on_change=_mark_axis_touched,
-                )
-        with cols[4]:
-            st.button("Reset", on_click=_reset_axis_range, width="stretch")
-        st.caption(
-            f"The run ends at {view.run_x[1]:.2f} min and the tallest peak reaches "
-            f"{view.run_y[1] / chromatogram.Y_HEADROOM:.4g}. An x end past the run draws "
-            "the baseline out to it."
-        )
-    for note in view.notes:
-        st.warning(note, icon="⚠️")
+    # Issue #57's frozen window. Re-seeding used to *pop* these keys and pass the run's
+    # value as the widget's default — but a keyed widget's default is only ever the value
+    # for a key the browser does not already hold, and the browser holds it across the
+    # rerun. So the window stayed the length of an earlier candidate, and a longer one
+    # then drew its late peaks outside the axis. Writing the run's value into the key is
+    # what pushes it to the browser; with the key always written, the widget takes its
+    # value from state and is not given a default at all.
+    for _label, key, value, _step, _fmt in boxes:
+        if not touched or key not in st.session_state:
+            st.session_state[key] = float(value)
+    cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
+    with cols[0]:
+        st.markdown(panels.axis_strip_title(view.run_x[1]), unsafe_allow_html=True)
+    for col, (label, key, _value, step, fmt) in zip(cols[1:], boxes, strict=False):
+        with col:
+            st.number_input(
+                label,
+                min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
+                step=step,
+                format=fmt,
+                key=key,
+                on_change=_mark_axis_touched,
+            )
+    with cols[5]:
+        st.button("Reset", on_click=_reset_axis_range, width="stretch")
 
 
 def _mark_axis_touched() -> None:

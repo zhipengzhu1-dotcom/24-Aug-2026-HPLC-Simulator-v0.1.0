@@ -114,7 +114,62 @@ def status_bar(fields: Sequence[str]) -> str:
     return f'<div class="hs-status">{cells}</div>'
 
 
-STYLE = """
+def axis_strip_title(run_end: float) -> str:
+    """The axis strip's first cell: what the strip is, and where the run ends (#62).
+
+    The strip is a fixed-height pinned row, so the sentence the collapsed expander used
+    to carry ("the run ends at … and the tallest peak reaches …") does not fit in it.
+    The one number a reader needs while typing an x end is where the run ends, so that
+    is the half that survives, under the strip's own title.
+    """
+    return (
+        '<div class="hs-axis-title">Axis range</div>'
+        f'<div class="hs-axis-note">run ends {escape(f"{run_end:.2f}")} min</div>'
+    )
+
+
+# --- the numbers the screen is laid out on --------------------------------------------
+#
+# Ticket #62's compact Cockpit. These live here rather than in the entry point for the
+# same reason every other decision does: the entry point places widgets, this module is
+# what a test can read. `STYLE` below is the only consumer of the two that are CSS.
+
+# The left rail against the main view. 1.45 : 3.0 is wide enough for a four-column table
+# in the rail without the %B column being clipped (#45's variant D review).
+RAIL_COLUMNS = (1.45, 3.0)
+
+# The axis strip's height. Fixed, because the chromatogram block pins itself directly on
+# top of the strip and needs to know how much room to leave: one row of number boxes
+# with their labels, and nothing else — the strip's content never grows. Measured in a
+# real browser at 1440 x 900 rather than guessed: the row of boxes lays out at 92 px,
+# and a strip declared shorter than its content clips the boxes' lower edge.
+AXIS_STRIP_HEIGHT_PX = 92
+
+# Every data grid's row height. Streamlit's default (35 px) spends a third of the
+# chromatogram's budget on four rows of peaks.
+TABLE_ROW_HEIGHT_PX = 28
+
+# Streamlit's own gap between blocks is 1rem, which on this screen reads as white space
+# between the rail's panels rather than as separation.
+BLOCK_GAP_REM = 0.4
+
+
+def _with_layout_numbers(css: str) -> str:
+    """Substitute the layout constants above into the stylesheet.
+
+    A plain ``str.format`` cannot be used on CSS — every rule is braces — and an f-string
+    would mean doubling every one of them. The tokens keep the numbers defined once, in
+    Python, where :mod:`tests.test_panels` can read them.
+    """
+    for token, value in (
+        ("__AXIS_STRIP_HEIGHT__", f"{AXIS_STRIP_HEIGHT_PX}px"),
+        ("__BLOCK_GAP__", f"{BLOCK_GAP_REM}rem"),
+    ):
+        css = css.replace(token, value)
+    return css
+
+
+STYLE = _with_layout_numbers("""
 <style>
   /* The status bar's height is *derived* from the tokens that make it, not measured by
      eye. The pinned chromatogram has to clear that bar exactly, and a number guessed
@@ -131,16 +186,38 @@ STYLE = """
        element that is even slightly transparent shows the tabs scrolling through it.
        This stylesheet is a light palette throughout (#19), and this is its page white. */
     --hs-surface: #ffffff;
+    /* The axis strip's height and the page's block gap, from the Python constants
+       above — the chromatogram's pin offset is derived from the first of them the same
+       way it is derived from the status bar's. */
+    --hs-axis-height: __AXIS_STRIP_HEIGHT__;
+    --hs-block-gap: __BLOCK_GAP__;
   }
 
-  .block-container { padding-top: 2.2rem; padding-bottom: 1rem; max-width: 100%; }
+  .block-container { padding-top: 3.1rem; padding-bottom: 1rem; max-width: 100%; }
+
+  /* Compact spacing (#62). Streamlit's 1rem block gap, its element margins and its
+     heading margins are what the white bands between the rail's panels were; the target
+     is the rail, the chromatogram and the axis strip all on screen at 1440 × 900. */
+  div[data-testid="stVerticalBlock"] { gap: var(--hs-block-gap); }
+  div[data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"] { margin: 0; }
+  /* A caption is made smaller, never un-margined: zeroing the margin here collapses
+     the element container Streamlit wraps it in to nothing, and what disappears is
+     the chromatogram's area caveat and diagnostic 6's stamp. Measured in a browser. */
+  div[data-testid="stCaptionContainer"] p { font-size: 0.74rem; line-height: 1.3; }
+  div[data-testid="stMarkdownContainer"] p { margin-bottom: 0.2rem; }
+  div[data-testid="stNumberInput"] label,
+  div[data-testid="stSlider"] label { font-size: 0.76rem; }
+  div[data-testid="stSelectbox"] > div,
+  div[data-testid="stNumberInput"] > div { min-height: 0; }
+  /* The sidebar is scrolled, not pinned, so it keeps a little more air than the page. */
+  section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.6rem; }
   section[data-testid="stSidebar"] { border-right: 1px solid #c3ceda; }
   section[data-testid="stSidebar"] .stNumberInput label,
   section[data-testid="stSidebar"] .stRadio label { font-size: 0.78rem; }
 
   .hs-panel {
     border: 1px solid #b9c6d6; border-radius: 3px; background: #f2f6fb;
-    margin-bottom: 8px; overflow: hidden; max-width: 100%; box-sizing: border-box;
+    margin-bottom: 4px; overflow: hidden; max-width: 100%; box-sizing: border-box;
   }
   /* A flex child defaults to min-width:auto, which lets a wide table push the whole
      column past its share of the row instead of wrapping inside it. */
@@ -155,7 +232,7 @@ STYLE = """
      right-aligned ones first, so a short value disappears entirely. Both cells wrap. */
   .hs-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .hs-table td {
-    padding: 3px 8px; font-size: 0.78rem; border-bottom: 1px solid #e4ebf3;
+    padding: 2px 8px; font-size: 0.78rem; border-bottom: 1px solid #e4ebf3;
     overflow-wrap: anywhere; vertical-align: top;
   }
   .hs-table tr:last-child td { border-bottom: none; }
@@ -191,10 +268,43 @@ STYLE = """
      this caps the whole block regardless — on a short laptop viewport it yields rather
      than eating the page. */
   .st-key-hs-chromatogram {
-    position: sticky; bottom: var(--hs-status-height); z-index: 80;
+    position: sticky; bottom: calc(var(--hs-status-height) + var(--hs-axis-height));
+    z-index: 80;
     background: var(--hs-surface); border-top: 1px solid #c3ceda; padding-top: 4px;
-    max-height: 46vh; overflow: auto;
+    /* `flex: 0 0 auto` for the same reason the axis strip has it: the page is a column
+       flex container, so once the content overflows the viewport every child shrinks —
+       and what this block loses off its foot is the area caveat and the stamp, the two
+       lines a trace must not be read without. `max-height` still caps it on a short
+       viewport, which is the yielding the cap was put there for. */
+    flex: 0 0 auto; max-height: 46vh; overflow: auto;
   }
+
+  /* SPEC §7's axis range as its own always-open strip (#62). A pinned row of its own
+     between the chromatogram block and the status bar, by the same sticky-in-column
+     technique as both of its neighbours and for the same reason — a viewport-fixed row
+     would run under the sidebar. Its own row, rather than the last row inside the
+     chromatogram block, because that block scrolls: the boxes were reachable only by
+     scrolling the plot they act on, which is the one thing the reader is looking at.
+     The height is fixed so that the block above can pin exactly on top of it. */
+  .st-key-hs-axis {
+    position: sticky; bottom: var(--hs-status-height); z-index: 85;
+    height: var(--hs-axis-height); overflow: hidden; box-sizing: border-box;
+    /* The page is one column flex container, so a fixed height is only a *preferred*
+       height: once the content overflows the viewport every child shrinks, and the
+       strip clipped its own boxes at the very screen size it was measured for. */
+    flex: 0 0 auto;
+    background: var(--hs-surface); border-top: 1px solid #c3ceda; padding: 6px 0 0;
+  }
+  .st-key-hs-axis .stNumberInput label { font-size: 0.72rem; }
+  .st-key-hs-axis .stNumberInput input { font-size: 0.8rem; padding: 0.25rem 0.5rem; }
+  .st-key-hs-axis .stButton button {
+    padding: 0.25rem 0.5rem; font-size: 0.8rem; min-height: 0;
+  }
+  .hs-axis-title {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #24445f;
+  }
+  .hs-axis-note { font-size: 0.72rem; color: #6b7a8c; font-variant-numeric: tabular-nums; }
 
   .hs-worksheet {
     border: 1px solid #b9c6d6; border-radius: 3px; background: #f8fbff;
@@ -212,6 +322,6 @@ STYLE = """
 
   div[data-testid="stTabs"] button { font-size: 0.82rem; padding: 4px 14px; }
   div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { font-size: 0.80rem; }
-  h3 { font-size: 1.0rem !important; margin-bottom: .3rem !important; }
+  h3 { font-size: 1.0rem !important; margin: 0.35rem 0 0.05rem !important; }
 </style>
-"""
+""")

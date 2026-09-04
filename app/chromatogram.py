@@ -263,9 +263,11 @@ def _grid_points(start: float, stop: float, narrowest_sigma: float) -> int:
 # SPEC §7 pins the chromatogram beneath the tabs, "always visible". A pinned block is
 # screen the reader cannot scroll out of the way, so its height is not a free choice:
 # ticket #19 drew it at 380 px in normal flow, which pinned would take over half a
-# laptop viewport and cover the tabs it sits beneath. 300 px still shows the peak shapes
-# and the baseline between them, which is what the trace is read for.
-CHROMATOGRAM_HEIGHT = 300
+# laptop viewport and cover the tabs it sits beneath. 250 px still shows the peak shapes
+# and the baseline between them, which is what the trace is read for — 50 px less than
+# the 300 it was, which is what the always-open axis strip beneath the block costs out
+# of the same pinned budget (#62).
+CHROMATOGRAM_HEIGHT = 250
 
 
 def figure(

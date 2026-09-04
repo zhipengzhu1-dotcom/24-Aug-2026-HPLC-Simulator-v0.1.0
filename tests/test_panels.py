@@ -176,15 +176,18 @@ def test_the_chromatogram_is_pinned_without_being_fixed_to_the_viewport() -> Non
     assert "position: fixed" not in rule
 
 
-def test_the_pinned_chromatogram_clears_the_status_bar_by_a_derived_offset() -> None:
-    """Both are sticky to the bottom. The shorter one owns 0; the taller must clear it.
+def test_the_three_pinned_rows_stack_without_overlapping() -> None:
+    """All three are sticky to the bottom. The lowest owns 0; each one clears the rest.
 
-    The offset is computed from the tokens that give the status bar its height, not
-    measured by eye — a number guessed once goes stale the moment the bar's padding or
-    font size changes, and the two would then overlap with nothing to catch it.
+    Every offset is computed from the tokens that give the rows below it their height,
+    not measured by eye — a number guessed once goes stale the moment a padding or a
+    font size changes, and the rows would then overlap with nothing to catch it.
     """
     assert "bottom: 0" in _rule(".hs-status")
-    assert "bottom: var(--hs-status-height)" in _rule(".st-key-hs-chromatogram")
+    assert "bottom: var(--hs-status-height)" in _rule(".st-key-hs-axis")
+    assert "bottom: calc(var(--hs-status-height) + var(--hs-axis-height))" in _rule(
+        ".st-key-hs-chromatogram"
+    )
 
     # The derivation and the bar itself must read the same tokens, or it is not derived.
     root, bar = _rule(":root"), _rule(".hs-status")
@@ -192,6 +195,45 @@ def test_the_pinned_chromatogram_clears_the_status_bar_by_a_derived_offset() -> 
         assert token in root, f"{token} is not defined"
         assert f"var({token})" in bar, f"the status bar does not use {token}"
     assert "--hs-status-height: calc(" in root
+
+
+def test_the_axis_strip_is_pinned_at_the_height_python_says_it_is() -> None:
+    """The chromatogram pins on top of the strip, so the two must agree on its height.
+
+    The number is a Python constant substituted into the stylesheet, rather than typed
+    into the CSS beside a comment asking the next reader to keep it in step.
+    """
+    from app.panels import AXIS_STRIP_HEIGHT_PX
+
+    rule = _rule(".st-key-hs-axis")
+    assert "position: sticky" in rule
+    assert "position: fixed" not in rule
+    assert "height: var(--hs-axis-height)" in rule
+    assert f"--hs-axis-height: {AXIS_STRIP_HEIGHT_PX}px" in _rule(":root")
+    # The page is a column flex container: without this the declared height is only a
+    # preference, and the strip shrinks and clips its own boxes on a full screen.
+    assert "flex: 0 0 auto" in rule
+
+
+def test_the_axis_strip_says_where_the_run_ends() -> None:
+    """The one number a reader needs while typing an x end, in the strip's own cell."""
+    from app.panels import axis_strip_title
+
+    html = axis_strip_title(25.126)
+    assert "Axis range" in html
+    assert "25.13 min" in html
+
+
+def test_the_block_gap_is_the_compact_one() -> None:
+    """#62's compact spacing: the rail, the chromatogram and the strip on one screen."""
+    from app.panels import BLOCK_GAP_REM, RAIL_COLUMNS, STYLE, TABLE_ROW_HEIGHT_PX
+
+    assert pytest.approx(0.4) == BLOCK_GAP_REM
+    assert f"--hs-block-gap: {BLOCK_GAP_REM}rem" in _rule(":root")
+    assert "gap: var(--hs-block-gap)" in STYLE
+    # A rail that clips its own table is the defect this ratio was widened for.
+    assert RAIL_COLUMNS == (1.45, 3.0)
+    assert TABLE_ROW_HEIGHT_PX == 28
 
 
 def test_the_pinned_chromatogram_is_opaque() -> None:
