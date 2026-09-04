@@ -9,11 +9,35 @@ three-peak run 6's Unknown-3 under the programme it was actually run with.
 """
 
 import math
+from pathlib import Path
 
 import pytest
 
+from hplcsim.fit import fit_peaks
+from hplcsim.model import Method, Programme, RetentionParams, Segment
+from hplcsim.resolution import resolution_table
 from hplcsim.retention import predict_retention, walk_programme
-from test_programme import FIXTURE_CASES
+from hplcsim.width import band_compression_factor, peak_width
+from lab_data import (
+    LAB_CAMPAIGN27_TR,
+    LAB_CAMPAIGN27_WASH_ELUTED,
+    LAB_CAMPAIGN27_WASH_PREREGISTERED,
+    LAB_CAMPAIGN27_WASH_TR,
+    LAB_METHOD,
+    LAB_PEAKS,
+    LAB_RUN6,
+    LAB_RUN6_PROGRAMME,
+)
+from numerics import integrate_fundamental_equation
+from programme_cases import FIXTURE_CASES
+from validation2_data import (
+    VALIDATION2_METHOD,
+    VALIDATION2_PEAKS,
+    VALIDATION2_RUN1,
+    VALIDATION2_RUN2,
+    VALIDATION2_RUN5,
+    VALIDATION2_RUN5_PROGRAMME,
+)
 
 # --- SPEC §10 item 4(a), second half: the walker reproduces the closed form on one segment ---
 
@@ -30,8 +54,6 @@ def test_one_segment_walked_matches_the_closed_form(method, peaks, gradient, lab
     1 + b·k0·(1 − x) where the closed form has b·(k0 − τ/t0) + 1, so the last bits may
     differ; 1e-12 min is the bar SPEC §10 item 4(a) sets for the walk itself.
     """
-    from hplcsim.model import Programme
-
     programme = Programme.from_gradient(gradient)
     for params in peaks:
         closed_form = predict_retention(params, method, gradient)
@@ -44,9 +66,6 @@ def test_one_segment_walked_matches_the_closed_form(method, peaks, gradient, lab
 
 # --- SPEC §10 item 4(b): two or more segments against the fundamental equation ---
 
-from hplcsim.model import Method, Programme, RetentionParams, Segment  # noqa: E402
-from lab_data import LAB_METHOD, LAB_PEAKS  # noqa: E402
-from numerics import integrate_fundamental_equation  # noqa: E402
 
 # A ramp too fast for Unknown-3 to leave on (x ≈ 0.23 at its end), so the band is still
 # on-column when the composition turns round: it leaves during the *descending* leg.
@@ -111,27 +130,6 @@ def test_the_cases_cover_every_place_a_band_can_leave() -> None:
 
 # --- SPEC §10 item 4(c): a segment that starts after a peak has eluted is inert ---
 
-from pathlib import Path  # noqa: E402
-
-from hplcsim.fit import fit_peaks  # noqa: E402
-from hplcsim.resolution import resolution_table  # noqa: E402
-from hplcsim.width import band_compression_factor, peak_width  # noqa: E402
-from lab_data import (  # noqa: E402
-    LAB_CAMPAIGN27_TR,
-    LAB_CAMPAIGN27_WASH_ELUTED,
-    LAB_CAMPAIGN27_WASH_PREREGISTERED,
-    LAB_CAMPAIGN27_WASH_TR,
-    LAB_RUN6,
-    LAB_RUN6_PROGRAMME,
-)
-from validation2_data import (  # noqa: E402
-    VALIDATION2_METHOD,
-    VALIDATION2_PEAKS,
-    VALIDATION2_RUN1,
-    VALIDATION2_RUN2,
-    VALIDATION2_RUN5,
-    VALIDATION2_RUN5_PROGRAMME,
-)
 
 _V2_PARAMS = {
     peak.name: fit.params

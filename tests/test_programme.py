@@ -10,7 +10,6 @@ import math
 
 import pytest
 
-from hplcsim.fit import fit_peaks
 from hplcsim.model import (
     Gradient,
     MultiSegmentNotSupportedError,
@@ -21,48 +20,19 @@ from hplcsim.model import (
 from hplcsim.resolution import resolution_table
 from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.width import peak_width
-from lab_data import (
-    LAB_METHOD,
-    LAB_PEAKS,
-    LAB_RUN1,
-    LAB_RUN2,
-    LAB_RUN3,
-    LAB_RUN4,
-    LAB_RUN5,
-    LAB_RUN6,
-    LAB_RUN7,
-)
-from validation2_data import (
-    VALIDATION2_METHOD,
-    VALIDATION2_PEAKS,
-    VALIDATION2_RUN1,
-    VALIDATION2_RUN2,
-    VALIDATION2_RUNS_BY_NAME,
-)
-
-# The four-peak sample is fixtured as measurements, not parameters; its LSS fit is the
-# same two-run fit the reality layer uses.
-_V2_PARAMS = [
-    fit.params
-    for fit in fit_peaks(VALIDATION2_PEAKS, VALIDATION2_METHOD, VALIDATION2_RUN1, VALIDATION2_RUN2)
-]
-
-# Both samples, every run either carries: the three-peak sample's scouting pair, its
-# held-out tG runs and campaign #27's φ-range arm, and the four-peak sample's whole set.
-# "Every fixture on both samples" in the ticket's first acceptance criterion is this.
-_LAB_CASES = [
-    (LAB_METHOD, LAB_PEAKS, run.gradient, f"three-peak {run.name}")
-    for run in (LAB_RUN1, LAB_RUN2, LAB_RUN3, LAB_RUN4, LAB_RUN5, LAB_RUN6, LAB_RUN7)
-]
-_V2_CASES = [
-    (VALIDATION2_METHOD, _V2_PARAMS, run.gradient, f"four-peak {name}")
-    for name, run in VALIDATION2_RUNS_BY_NAME.items()
-]
-FIXTURE_CASES = _LAB_CASES + _V2_CASES
+from lab_data import LAB_METHOD, LAB_PEAKS
+from programme_cases import FIXTURE_CASES
 
 # A supplied N, so the identity test exercises the width path itself rather than
 # whichever fixture happens to carry column geometry.
 _PLATE_COUNT = 20_000.0
+
+
+def test_the_fixture_sweep_covers_every_run_of_both_samples() -> None:
+    """Seven three-peak runs and nine four-peak runs: a fixture added later must widen this."""
+    assert len(FIXTURE_CASES) == 16
+    assert sum(label.startswith("three-peak") for _, _, _, label in FIXTURE_CASES) == 7
+    assert sum(label.startswith("four-peak") for _, _, _, label in FIXTURE_CASES) == 9
 
 
 # --- SPEC §10 item 4a: one segment is bitwise identical to the gradient it is ---

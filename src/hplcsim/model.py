@@ -307,6 +307,16 @@ class MultiSegmentNotSupportedError(NotImplementedError):
     """
 
 
+def as_programme(target: Target) -> Programme:
+    """The programme ``target`` is: itself, or the one-segment programme a gradient is.
+
+    The other direction of the same correspondence as :func:`as_single_gradient`, for
+    the paths that read a target leg by leg (the width model's G rule, the numerical
+    oracle). Total, since every gradient is a programme.
+    """
+    return target if isinstance(target, Programme) else Programme.from_gradient(target)
+
+
 def as_single_gradient(target: Target) -> Gradient:
     """The one-segment gradient ``target`` is, or :class:`MultiSegmentNotSupportedError`.
 

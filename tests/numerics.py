@@ -11,7 +11,7 @@ import math
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
-from hplcsim.model import Method, Programme, RetentionParams, Target
+from hplcsim.model import Method, RetentionParams, Target, as_programme
 
 
 def integrate_fundamental_equation(
@@ -25,7 +25,7 @@ def integrate_fundamental_equation(
     Independent of any closed form: it only knows the LSS model and the inlet profile,
     and a v0.1 gradient is simply the one-leg profile.
     """
-    programme = target if isinstance(target, Programme) else Programme.from_gradient(target)
+    programme = as_programme(target)
     t0 = method.t0
     tau = method.t_dwell + programme.t_init
 

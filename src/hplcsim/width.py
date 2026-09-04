@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, Peak, Programme, RetentionParams, Run, Target
+from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run, Target, as_programme
 from hplcsim.retention import predict_retention, segment_steepness
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
@@ -180,8 +180,7 @@ def peak_width(
     # one, so nothing is claimed — the same posture as the hold.
     g = 1.0
     if retention.regime == "gradient" and retention.eluting_segment is not None:
-        programme = target if isinstance(target, Programme) else Programme.from_gradient(target)
-        leg = programme.legs()[retention.eluting_segment]
+        leg = as_programme(target).legs()[retention.eluting_segment]
         b_e = segment_steepness(method, leg, params.s_e)
         if b_e > 0.0:
             g = band_compression_factor(b_e, k0=params.k_at(leg.phi_start))

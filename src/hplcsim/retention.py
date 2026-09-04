@@ -98,6 +98,14 @@ class RetentionResult:
     degrades (research doc §4.3: k_e below ~1, or t'_R = tR − t0 − τ below t0,
     with t'_R as defined in the doc's symbol table) or when the band does not
     elute during the ramp (§4.1/§4.2: "flag them").
+
+    ``eluting_segment`` is the index of the programme segment the band left the column
+    in — ``None`` when it left before the first segment arrived (the isocratic hold) or
+    after the last one ended. For a v0.1 gradient or a one-segment programme it is ``0``
+    in the gradient regime and ``None`` otherwise, the same answer the walker gives, so
+    the width model can take G from the eluting segment without asking which shape it
+    was handed (SPEC §3, "Band compression for a programme"). Diagnostic 1 brackets per
+    eluting segment on it (#72).
     """
 
     t_r: float
@@ -105,15 +113,6 @@ class RetentionResult:
     regime: Regime
     low_confidence: bool = False
     eluting_segment: int | None = None
-    """Index of the programme segment the band left the column in, or ``None``.
-
-    ``None`` when it left before the first segment arrived (the isocratic hold) or after
-    the last one ended. For a v0.1 gradient or a one-segment programme this is ``0`` in
-    the gradient regime and ``None`` otherwise — the same answer the walker gives, so the
-    width model can take G from the eluting segment without asking which shape it was
-    handed (SPEC §3, "Band compression for a programme"). Diagnostic 1 brackets per
-    eluting segment on it (#72).
-    """
 
 
 def predict_retention(params: RetentionParams, method: Method, target: Target) -> RetentionResult:
@@ -198,7 +197,7 @@ def walk_programme(
     if x >= 1.0:
         return _classify(t_r=t0 * (1.0 + k0), k_e=k0, regime="isocratic_hold", t0=t0, tau=tau)
 
-    t = tau  # when the current leg reaches the column inlet
+    leg_start = tau  # when the current leg reaches the column inlet
     ramped = False  # has any non-hold leg been traversed yet?
     for index, leg in enumerate(programme.legs()):
         k_entry = params.k_at(leg.phi_start)
@@ -206,7 +205,7 @@ def walk_programme(
             # Isocratic at k_entry for the whole leg: x grows at 1/(t0·k).
             x_end = x + leg.duration / (t0 * k_entry)
             if x_end >= 1.0:
-                t_r = t + (1.0 - x) * t0 * k_entry + t0
+                t_r = leg_start + (1.0 - x) * t0 * k_entry + t0
                 regime: Regime = "post_gradient" if ramped else "isocratic_hold"
                 return _classify(
                     t_r=t_r, k_e=k_entry, regime=regime, t0=t0, tau=tau, eluting_segment=index
@@ -220,7 +219,7 @@ def walk_programme(
             x_end = x + (k_entry / k_end - 1.0) / (k_entry * b_e)
             if x_end >= 1.0:
                 log_arg = 1.0 + b_e * k_entry * (1.0 - x)
-                t_r = t + (t0 / b_e) * math.log(log_arg) + t0
+                t_r = leg_start + (t0 / b_e) * math.log(log_arg) + t0
                 return _classify(
                     t_r=t_r,
                     k_e=k_entry / log_arg,
@@ -231,13 +230,13 @@ def walk_programme(
                 )
             ramped = True
         x = x_end
-        t += leg.duration
+        leg_start += leg.duration
 
     # §4.2 for a programme: still on-column when the last leg ends; finish isocratically
-    # at the final composition. ``t`` is now the programme's end at the inlet, and
-    # ``t + t0`` is exactly :func:`gradient_end_time`.
+    # at the final composition. ``leg_start`` is now the programme's end at the inlet,
+    # and one t0 later is exactly :func:`gradient_end_time`.
     k_final = params.k_at(programme.phif)
-    t_r = t + (1.0 - x) * t0 * k_final + t0
+    t_r = leg_start + (1.0 - x) * t0 * k_final + t0
     return _classify(t_r=t_r, k_e=k_final, regime="post_gradient", t0=t0, tau=tau)
 
 
