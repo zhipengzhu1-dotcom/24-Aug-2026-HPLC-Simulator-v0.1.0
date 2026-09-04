@@ -37,6 +37,7 @@ from typing import Any, Final
 from hplcsim import __version__
 from hplcsim.dead_time import architecture_of
 from hplcsim.model import (
+    PERCENT_B_RANGE,
     Gradient,
     Method,
     Peak,
@@ -562,8 +563,11 @@ def _check_non_negative(at: str, value: float | None) -> None:
 
 def _check_percent(at: str, phi: float) -> None:
     percent = percent_b_from_phi(phi)
-    if not 0.0 <= percent <= 100.0:
-        raise SessionFileError(f"session file: {at} must be between 0 and 100, got {percent:g}")
+    low, high = PERCENT_B_RANGE
+    if not low <= percent <= high:
+        raise SessionFileError(
+            f"session file: {at} must be between {low:g} and {high:g}, got {percent:g}"
+        )
 
 
 def _check_finite(at: str, value: float | None) -> None:

@@ -74,6 +74,7 @@ from app.session_io import (
 from app.worksheet import Step, needs_guidance, worksheet_steps
 from hplcsim.dead_time import DeadTimeEstimate, estimate_t0
 from hplcsim.model import (
+    PERCENT_B_RANGE,
     Gradient,
     Method,
     Programme,
@@ -122,9 +123,9 @@ _T0_RANGE = (0.001, 100.0)
 _DWELL_TIME_RANGE = (0.0, 100.0)
 _PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
 # The two programme tables have no slider to clamp to (SPEC §7, v0.2): a 500-minute
-# candidate is a real method and a table cell holds it. Only %B is bounded, 0–100, by
-# the cells themselves.
-_PERCENT_B_RANGE = (0.0, 100.0)
+# candidate is a real method and a table cell holds it. Only %B is bounded, by the cells
+# themselves, and the bound is not this file's to choose: it is SPEC §4's domain, held
+# once as `hplcsim.model.PERCENT_B_RANGE` and read here (#90).
 # A cell's step is also the precision it accepts: hundredths of a minute, tenths of %B.
 _TIME_STEP = 0.01
 _PERCENT_STEP = 0.1
@@ -943,8 +944,8 @@ def _time_column(width: int) -> object:
 
 def _percent_column(width: int) -> object:
     return st.column_config.NumberColumn(
-        min_value=_PERCENT_B_RANGE[0],
-        max_value=_PERCENT_B_RANGE[1],
+        min_value=PERCENT_B_RANGE[0],
+        max_value=PERCENT_B_RANGE[1],
         step=_PERCENT_STEP,
         format="%g",
         required=True,

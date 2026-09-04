@@ -21,8 +21,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Final
 
 _LN10 = math.log(10.0)
+
+PERCENT_B_RANGE: Final = (0.0, 100.0)
+"""SPEC §4's %B domain: the entry and display boundary.
+
+φ is a 0–1 fraction everywhere inside the engine; %B on 0–100 exists only here and at
+the screen. The file format (SPEC §8) and the rail's editable tables both check against
+this, so there is one number to change and one to read.
+"""
 
 
 def phi_from_percent_b(percent_b: float) -> float:
