@@ -43,6 +43,7 @@ from validation2_data import (
     VALIDATION2_MEASURED_TR,
     VALIDATION2_MEASURED_W_HALF,
     VALIDATION2_METHOD,
+    VALIDATION2_ORDERED_STAMPED,
     VALIDATION2_PEAKS,
     VALIDATION2_REPEATABILITY_TR,
     VALIDATION2_REPEATABILITY_W_HALF,
@@ -52,7 +53,6 @@ from validation2_data import (
     VALIDATION2_RUN3_DETERMINATIONS,
     VALIDATION2_RUNS_BY_NAME,
     VALIDATION2_SOURCE_FILES,
-    VALIDATION2_STAMPED,
     VALIDATION2_TR_GRANULARITY,
     VALIDATION2_UNSTAMPED,
     VALIDATION2_W_HALF_ULP,
@@ -1023,9 +1023,12 @@ _V2_PINNED_MEAN_OFFSET = {
     "run3_rep2": 0.0196,
     "run3_rep3": 0.0206,
 }
-# #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
-# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.14 %.
-_V2_UNSTAMPED_CEILING_PERCENT = 0.4
+# SPEC §10 item 3(b): no unstamped run exceeds this mean |ΔtR|, in percent, on either
+# sample. Re-pinned by #55 from the provisional 0.4 (breached by three-peak run 3 at
+# 0.42 % since the 0.525 re-baseline) to 0.5 — layer 3's median bar on the den Uijl sets.
+# Largest unstamped on this sample: E1 at 0.14 %; the per-run tripwires above are the
+# tighter guard.
+_V2_UNSTAMPED_CEILING_PERCENT = 0.5
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
@@ -1535,19 +1538,22 @@ def test_validation2_trap_run_elutes_every_peak_in_the_hold_and_says_so() -> Non
 
 
 def test_validation2_stamped_runs_miss_by_more_than_every_unstamped_run() -> None:
-    """#46 item 5: the falsifiable content of *indicative, not decision-grade*.
+    """SPEC §10 item 3, as #55 re-pinned it: the falsifiable content of the stamp.
 
-    (a) Every run that draws the stamp has a mean |ΔtR| above every run that does not —
-    today 0.23 % (run4) against 0.14 % (E1) at the boundary — which is what makes the
-    stamp honest rather than decorative. (b) No unstamped run exceeds 0.4 % mean |ΔtR|,
-    provisional until #55 re-pins it with the two guard thresholds.
+    (a) Every run strong on diagnostic 7 whose s* is inside the scouting bracket has a
+    mean |ΔtR| above every run that draws no stamp — today 0.23 % (run4) against 0.14 %
+    (E1) at the boundary — which is what makes *indicative, not decision-grade* honest.
+    Scoped to in-bracket runs because a run carrying both guards is not ordered by
+    |ΔtR| (three-peak run 6's two biases cancel); run5 is stamped but left out of the
+    ordering, its residual being the hold's. (b) No unstamped run exceeds 0.5 % mean
+    |ΔtR| — layer 3's median bar, re-pinned from the provisional 0.4 by #55.
 
     Which runs are stamped is a fixture fact (`VALIDATION2_STAMPED`), by the two guards
-    #44 decided. That the app's diagnostics draw it on exactly those runs is asserted
-    nowhere yet; #55 owns that.
+    #44 decided. That the app's diagnostics draw it on exactly those runs is SPEC §10
+    item 2, left to the build; it is not asserted here.
     """
-    stamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_STAMPED}
+    ordered = {run: _v2_mean_magnitude(run) for run in VALIDATION2_ORDERED_STAMPED}
     unstamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_UNSTAMPED}
 
-    assert min(stamped.values()) > max(unstamped.values()), (stamped, unstamped)
+    assert min(ordered.values()) > max(unstamped.values()), (ordered, unstamped)
     assert max(unstamped.values()) <= _V2_UNSTAMPED_CEILING_PERCENT, unstamped

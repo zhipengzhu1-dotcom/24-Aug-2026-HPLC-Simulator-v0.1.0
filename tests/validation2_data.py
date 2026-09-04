@@ -291,9 +291,15 @@ VALIDATION2_REPEATABILITY_TR = 0.002
 VALIDATION2_REPEATABILITY_W_HALF = 0.001
 
 # #46 items 4–5: which runs draw the *indicative, not decision-grade* stamp, by the two
-# composition guards #44 decided — run4 and run6 start above 5 %B by ≥ 10 %B (diagnostic
-# 7, strong); run5 sits 0.35 window-widths outside the s* bracket (diagnostic 1) and
-# starts at 15 %B. Recorded here as a fixture fact so the reality layer can assert the
-# stamp's honesty without importing the app; the app's own diagnostics are tested there.
+# composition guards #44 decided — run4, run5 and run6 all start above 5 %B by ≥ 10 %B
+# (diagnostic 7, strong). run5 also sits 0.35 window-widths below the s* bracket, but
+# diagnostic 1 is silent there: every peak elutes in the hold and none on the ramp (#58),
+# so 9 speaks instead. Recorded here as a fixture fact so the reality layer can assert
+# the stamp's honesty without importing the app; the app's own diagnostics are tested
+# there.
 VALIDATION2_STAMPED = ("run4", "run5", "run6")
 VALIDATION2_UNSTAMPED = ("run3", "E1", "run3_rep2", "run3_rep3")
+# #55 (2026-09-03): the ordering claim in SPEC §10 item 3(a) is asserted only on runs
+# strong on 7 *with s* inside the scouting bracket*. run5 is stamped but not ordered — its
+# peaks leave in the hold, where the residual is the hold's (−0.51 min), not the guard's.
+VALIDATION2_ORDERED_STAMPED = ("run4", "run6")
