@@ -205,7 +205,7 @@ def walk_programme(
             # Isocratic at k_entry for the whole leg: x grows at 1/(t0·k).
             x_end = x + leg.duration / (t0 * k_entry)
             if x_end >= 1.0:
-                t_r = leg_start + (1.0 - x) * t0 * k_entry + t0
+                t_r = _isocratic_exit(leg_start, x, t0, k_entry)
                 regime: Regime = "post_gradient" if ramped else "isocratic_hold"
                 return _classify(
                     t_r=t_r, k_e=k_entry, regime=regime, t0=t0, tau=tau, eluting_segment=index
@@ -236,8 +236,18 @@ def walk_programme(
     # at the final composition. ``leg_start`` is now the programme's end at the inlet,
     # and one t0 later is exactly :func:`gradient_end_time`.
     k_final = params.k_at(programme.phif)
-    t_r = leg_start + (1.0 - x) * t0 * k_final + t0
+    t_r = _isocratic_exit(leg_start, x, t0, k_final)
     return _classify(t_r=t_r, k_e=k_final, regime="post_gradient", t0=t0, tau=tau)
+
+
+def _isocratic_exit(leg_start: float, x: float, t0: float, k: float) -> float:
+    """tR for a band that finishes isocratically at ``k`` from migration fraction ``x``.
+
+    The remaining fraction 1 − x takes (1 − x)·t0·k at the inlet clock started at
+    ``leg_start``, plus the t0 the eluted band needs to reach the detector. One shape
+    for a hold and for the tail after the last leg (§2.5 steps 3 and 4).
+    """
+    return leg_start + (1.0 - x) * t0 * k + t0
 
 
 def _classify(

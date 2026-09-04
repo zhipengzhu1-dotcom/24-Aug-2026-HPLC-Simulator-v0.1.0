@@ -78,6 +78,11 @@ _RAMP_HOLD_RAMP = Programme(
 _TWO_RAMPS = Programme(phi0=0.05, segments=(Segment(8.0, 0.35), Segment(20.0, 0.95)), t_init=0.5)
 # Ends on a hold the band never leaves during: the post-programme branch.
 _ENDS_ON_COLUMN = Programme(phi0=0.05, segments=(Segment(3.0, 0.30), Segment(2.0, 0.30)))
+# A flat first segment at φ0 before the ramp: a band leaving during it has never seen a
+# ramp, so it is the early-eluter's regime (§4.1), not diagnostic 9's later hold.
+_FLAT_FIRST = Programme(phi0=0.05, segments=(Segment(5.0, 0.05), Segment(20.0, 0.95)), t_init=0.5)
+# Survives τ (x ≈ 0.46) and leaves inside the 5 min flat leg (x would reach ≈ 2.0).
+_FLAT_FIRST_PARAMS = RetentionParams(ln_k0=math.log(6.0), s_e=10.0, phi_ref=0.05)
 
 WALKER_INTEGRATION_CASES = [
     ("descending-leg", LAB_PEAKS[2], LAB_METHOD, _DESCENDING),
@@ -98,6 +103,7 @@ WALKER_INTEGRATION_CASES = [
         LAB_METHOD,
         _TWO_RAMPS,
     ),
+    ("elutes-in-a-flat-first-segment", _FLAT_FIRST_PARAMS, LAB_METHOD, _FLAT_FIRST),
 ]
 
 
@@ -126,6 +132,15 @@ def test_the_cases_cover_every_place_a_band_can_leave() -> None:
     assert regimes["still-on-column-after-the-end"] == "post_gradient"
     assert predict_retention(*WALKER_INTEGRATION_CASES[6][1:]).eluting_segment is None
     assert regimes["elutes-in-the-initial-hold"] == "isocratic_hold"
+    assert regimes["elutes-in-a-flat-first-segment"] == "isocratic_hold"
+
+
+def test_a_flat_first_segment_is_the_initial_hold_by_another_name() -> None:
+    """Leaving during a flat first segment at φ0 is isocratic elution at k0, segment 0."""
+    result = predict_retention(_FLAT_FIRST_PARAMS, LAB_METHOD, _FLAT_FIRST)
+    assert result.regime == "isocratic_hold"
+    assert result.eluting_segment == 0
+    assert result.t_r == pytest.approx(LAB_METHOD.t0 * (1.0 + 6.0), abs=1e-12)
 
 
 # --- SPEC §10 item 4(c): a segment that starts after a peak has eluted is inert ---
@@ -192,6 +207,7 @@ def test_three_peak_run6_ramp_peaks_are_unchanged_by_the_wash(name: str) -> None
 # multi-segment rests on (SPEC §10 item 4(d)); no Rs claim follows from it.
 _RUN6_UNKNOWN3_WALKED = 47.122
 _COARSE_BAR_MEAN = 0.02
+_COARSE_BAR_WORST = 0.05  # one peak, so the mean is the worst; both halves written anyway
 
 
 def test_run6_unknown3_walks_off_in_the_wash_inside_the_coarse_bar() -> None:
@@ -205,6 +221,7 @@ def test_run6_unknown3_walks_off_in_the_wash_inside_the_coarse_bar() -> None:
     assert result.regime == "post_gradient"  # left in the 95 %B hold: diagnostic 9's flag
     assert result.eluting_segment == 3
     assert abs(result.t_r - measured) / measured <= _COARSE_BAR_MEAN
+    assert abs(result.t_r - measured) / measured <= _COARSE_BAR_WORST
     assert result.t_r == pytest.approx(_RUN6_UNKNOWN3_WALKED, abs=0.0005)
     # The pre-registered hand walk landed on the same side of the measurement and closer;
     # recorded, not asserted as a bound on the walker.

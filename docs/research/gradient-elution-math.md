@@ -306,34 +306,34 @@ $\varphi_{\text{in}}$ is linear on each leg, $x$ advances by a closed form on ev
 and the band's exit is found in the first leg where $x$ reaches 1:
 
 1. *Dwell and initial hold* (§4.1): $x(\tau) = \tau / (t_0 k_0)$. If this is $\ge 1$ the
-   band left isocratically, $t_R = t_0(1 + k_0)$, regime **hold**.
-2. *A ramp* with entry retention $k_{\text{in}} = k(\varphi_{i-1})$ and **signed**
+   band left isocratically, $t_R = t_0(1 + k_0)$, regime **isocratic hold** (`isocratic_hold`).
+2. *A ramp* with entry retention $k_{\text{entry}} = k(\varphi_{i-1})$ and **signed**
    steepness $b_i = t_0\,\Delta\varphi_i\,S_e / D_i$ (the §1.3 expression with the
    leg's own $\Delta\varphi_i$ and $D_i$; negative for a descending leg). Within the
    leg, with $s$ the time since its start,
 
-   $$x(T_i + s) = x(T_i) + \frac{e^{\,b_i s / t_0} - 1}{k_{\text{in}}\, b_i},
+   $$x(T_i + s) = x(T_i) + \frac{e^{\,b_i s / t_0} - 1}{k_{\text{entry}}\, b_i},
    \qquad
-   x(T_i + D_i) = x(T_i) + \frac{k_{\text{in}}/k_{\text{out}} - 1}{k_{\text{in}}\, b_i}$$
+   x(T_i + D_i) = x(T_i) + \frac{k_{\text{entry}}/k_{\text{end}} - 1}{k_{\text{entry}}\, b_i}$$
 
-   using $e^{\,b_i D_i / t_0} = e^{\,S_e \Delta\varphi_i} = k_{\text{in}} / k_{\text{out}}$,
+   using $e^{\,b_i D_i / t_0} = e^{\,S_e \Delta\varphi_i} = k_{\text{entry}} / k_{\text{end}}$,
    exactly §4.2's $x_G$ with the leg's quantities in place of the run's. If the end
    value is $\ge 1$, solve $x(T_i + s) = 1$:
 
-   $$t_R = T_i + t_0 + \frac{t_0}{b_i}\,\ln\!\Big[\,1 + b_i\,k_{\text{in}}\,\big(1 - x(T_i)\big)\Big],
+   $$t_R = T_i + t_0 + \frac{t_0}{b_i}\,\ln\!\Big[\,1 + b_i\,k_{\text{entry}}\,\big(1 - x(T_i)\big)\Big],
    \qquad
-   k_e = \frac{k_{\text{in}}}{1 + b_i\,k_{\text{in}}\,(1 - x(T_i))}$$
+   k_e = \frac{k_{\text{entry}}}{1 + b_i\,k_{\text{entry}}\,(1 - x(T_i))}$$
 
-   regime **gradient** (ascending or descending). For a descending leg both the
+   regime **gradient** (`gradient`, ascending or descending). For a descending leg both the
    numerator and the denominator of the end-value fraction change sign, and the log
-   argument is bounded below by $k_{\text{in}}/k_{\text{out}} > 0$ whenever the band
+   argument is bounded below by $k_{\text{entry}}/k_{\text{end}} > 0$ whenever the band
    leaves on the leg, so the branch needs no special case.
-3. *A hold* at $k_{\text{in}}$: $x$ grows at $1 / (t_0 k_{\text{in}})$, so
-   $x(T_i + D_i) = x(T_i) + D_i / (t_0 k_{\text{in}})$; if that is $\ge 1$,
-   $t_R = T_i + t_0 + (1 - x(T_i))\, t_0\, k_{\text{in}}$ and $k_e = k_{\text{in}}$.
-   Regime **hold** if no ramp has yet been traversed (a flat first segment at
-   $\varphi_0$ is the same physics as $t_{\text{init}}$), otherwise **post-gradient** —
-   the flag SPEC §6 diagnostic 9 reads.
+3. *A hold* at $k_{\text{entry}}$: $x$ grows at $1 / (t_0 k_{\text{entry}})$, so
+   $x(T_i + D_i) = x(T_i) + D_i / (t_0 k_{\text{entry}})$; if that is $\ge 1$,
+   $t_R = T_i + t_0 + (1 - x(T_i))\, t_0\, k_{\text{entry}}$ and $k_e = k_{\text{entry}}$.
+   Regime **isocratic hold** if no ramp has yet been traversed (a flat first segment at
+   $\varphi_0$ is the same physics as $t_{\text{init}}$), otherwise **post-gradient**
+   (`post_gradient`) — the flag SPEC §6 diagnostic 9 reads.
 4. *After the last leg* (§4.2 generalised): still on-column at
    $T_{\text{end}} = \tau + \sum_i D_i$, the band finishes isocratically at
    $k_f = k(\varphi_f)$: $t_R = T_{\text{end}} + t_0 + (1 - x(T_{\text{end}}))\,t_0\,k_f$,
@@ -353,8 +353,8 @@ identical to v0.1 by construction — and enters the walk only for two or more s
 later one, so a segment that starts after the band has left changes its prediction by
 exactly zero — a property of the algorithm, not a tolerance (SPEC §10 item 4c).
 
-**Band compression.** $G$ is taken from the eluting leg: $p = b_i k_{\text{in}} / (1 +
-k_{\text{in}})$ with that leg's $b_i$ and its entry $k_{\text{in}}$, and $G = 1$ for a
+**Band compression.** $G$ is taken from the eluting leg: $p = b_i k_{\text{entry}} / (1 +
+k_{\text{entry}})$ with that leg's $b_i$ and its entry $k_{\text{entry}}$, and $G = 1$ for a
 band leaving in a hold or after the end (§5.3's posture). On one leg that is §5.2
 unchanged. A band leaving on a *descending* leg also gets $G = 1$: Poppe's $G$ (§5.2)
 is derived for a composition rising across the band and neither source here extends it
