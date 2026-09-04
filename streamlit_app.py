@@ -30,11 +30,13 @@ computed in :mod:`app.diagnostics`, SPEC §7's guided empty state in :mod:`app.w
 and SPEC §8's file in :mod:`app.session_io` and :mod:`hplcsim.session`; this file places
 them, at the positions SPEC §6's own presentation sentence gives them.
 
-What it does own, and cannot delegate, is **widget identity** (ticket #21). Restoring a
-session means writing values into ``st.session_state`` under the keys the widgets answer
-to, before those widgets are created — so the keys live in :class:`Keys`, the session
-controls are drawn before everything they can overwrite, and a widget whose default is
-fed by another widget needs its seed written too.
+What it does *not* own any more is the screen's memory (ticket #93). Restoring a session
+means writing values into the widgets under the keys they answer to, before those widgets
+are created — so the keys, the accessor and the restore itself all live in
+:mod:`app.screen_state`, which is the only module that reaches Streamlit's per-session
+store at all. What stays here is the consequence: the session controls are drawn before
+everything they can overwrite, and a widget whose default is fed by another widget needs
+its seed written too.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ from collections.abc import Sequence
 
 import streamlit as st
 
-from app import chromatogram, panels, tables, worksheet
+from app import chromatogram, panels, screen_state, tables, worksheet
 from app.diagnostics import (
     Diagnostic,
     Diagnostics,
@@ -62,12 +64,28 @@ from app.entry import (
 )
 from app.panels import Row
 from app.pipeline import Cockpit, CockpitInputs, run_cockpit
-from app.session_io import (
-    Restore,
-    inputs_from_session,
-    session_filename,
-    session_from_inputs,
+from app.screen_state import (
+    BY_TIME,
+    BY_VOLUME,
+    COLUMN_ID_MM,
+    COLUMN_ID_RANGE,
+    COLUMN_LENGTH_MM,
+    CORE_SHELL,
+    DWELL_TIME_RANGE,
+    ESTIMATED,
+    FLOW_RANGE,
+    FULLY_POROUS,
+    LENGTH_RANGE,
+    MEASURED,
+    PARTICLE_RANGE,
+    PARTICLE_UM,
+    PLATE_COUNT_RANGE,
+    T0_RANGE,
+    TEMPERATURE_C,
+    TEMPERATURE_RANGE,
+    Keys,
 )
+from app.session_io import session_filename, session_from_inputs
 from app.worksheet import Step, needs_guidance, worksheet_steps
 from hplcsim.dead_time import DeadTimeEstimate, estimate_t0
 from hplcsim.model import (
@@ -80,20 +98,17 @@ from hplcsim.model import (
     s_base10_from_s_e,
 )
 from hplcsim.retention import gradient_end_time
-from hplcsim.session import Session, SessionFileError, load_session, save_session
+from hplcsim.session import SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
 
-# The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
-# scopes v0.1 to a single user locally, so the number inputs open on that user's real
-# instrument rather than on a textbook column; the peak table still opens empty.
-_COLUMN_LENGTH_MM = 100.0
-_COLUMN_ID_MM = 2.1
-_PARTICLE_UM = 1.6
+# The rest of the driver's method (validation/method.csv): the two fields no session file
+# can leave out, so `app.screen_state` needs no fallback for them and they stay here as
+# what the widgets open on. Its other four are there, beside the ranges they clamp to.
 _FLOW = 0.4
-_TEMPERATURE_C = 45.0
 # The driver's re-read of the solvent-front time (2026-08-31, method.csv), which
 # supersedes the 0.6 first entered. The engine fixtures are a separate question (#24).
 _T0 = 0.525
+
 # The scouting programme the rail opens on: 5 → 95 %B after a 0.5 min hold, run at
 # tG 15 and 45 min — validation/method.csv's pair. The candidate opens as one ramp over
 # the same range at tG 25 min (v0.1's default) and follows the scouting table until it
@@ -107,19 +122,6 @@ _PLATE_COUNT = 12_000.0
 _MAX_CANDIDATE_TG = 180.0
 _MAX_CANDIDATE_HOLD = 20.0
 
-# Every bounded widget's range, named once. The widget call spreads it and `_restore`
-# clamps to it, so a file carrying a value past the end of a slider cannot reach the
-# widget — Streamlit raises on that, and the whole page becomes a traceback (found by
-# `/code-review` on this ticket). The two ends have to be the same numbers or the clamp
-# is not a clamp, which is the only reason these are constants.
-_LENGTH_RANGE = (1.0, 1000.0)
-_COLUMN_ID_RANGE = (0.05, 50.0)
-_PARTICLE_RANGE = (0.5, 50.0)
-_FLOW_RANGE = (0.001, 20.0)
-_TEMPERATURE_RANGE = (-20.0, 200.0)
-_T0_RANGE = (0.001, 100.0)
-_DWELL_TIME_RANGE = (0.0, 100.0)
-_PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
 # The two programme tables have no slider to clamp to (SPEC §7, v0.2): a 500-minute
 # candidate is a real method and a table cell holds it. Only %B is bounded, by the cells
 # themselves, and the bound is not this file's to choose: it is SPEC §4's domain, held
@@ -137,12 +139,6 @@ _PERCENT_PX = 64
 _CANDIDATE_TIME_PX = 120
 _CANDIDATE_PERCENT_PX = 90
 
-_MEASURED = "Measured marker"
-_ESTIMATED = "Geometry estimate"
-_FULLY_POROUS = "Fully porous"
-_CORE_SHELL = "Core–shell (solid core)"
-_BY_VOLUME = "Volume (mL)"
-_BY_TIME = "Time (min)"
 
 _UNTITLED = "Untitled session"
 
@@ -181,69 +177,6 @@ _INDICATIVE_BY_BADGE = (
     "badge (see Flags, and the selected-peak panel for what it says). Every other pair "
     "on the resolution tab still stands; the Rs grade column says which (SPEC §6)."
 )
-
-
-class Keys:
-    """Every widget's ``session_state`` key, in one place (ticket #21).
-
-    Loading a session file means writing the restored values into the widgets before
-    they are drawn, so each one needs a name that the loader and the widget agree on.
-    Spelling those names as constants is what keeps the two ends from drifting: a typo
-    in a string literal here does not raise, it silently leaves that one field on its
-    default while every other field loads, which is the worst possible shape for the bug.
-
-    The two programme tables (#73) are keyed by a stem and a nonce: the frame a table
-    shows is held under the stem, and the nonce is bumped whenever that frame is
-    *replaced* — a session loaded, a cell put back — so the editor is rebuilt from it
-    rather than layering its last edits over the new frame (the peak table's rule).
-    """
-
-    SESSION_NAME = "session_name"
-    UPLOAD = "session_upload"
-    LOADED_FILE = "loaded_file_id"
-    LOAD_ERROR = "load_error"
-    LOAD_NOTE = "load_note"
-    PEAK_FRAME = "peak_frame"
-    PEAK_TABLE_NONCE = "peak_table_nonce"
-
-    LENGTH = "column_length_mm"
-    COLUMN_ID = "column_id_mm"
-    PARTICLE = "particle_um"
-    FLOW = "flow"
-    TEMPERATURE = "temperature_c"
-    ARCHITECTURE = "particle_architecture"
-    T0_SOURCE = "t0_source"
-    T0 = "t0"
-    T0_MARKER = "t0_marker"
-    # The last value the geometry estimate wrote into the t0 field. Not a widget: it is
-    # how a typed overwrite is told apart from the autofill it replaced.
-    T0_AUTOFILL = "t0_autofill"
-    DWELL_AS = "dwell_entered_as"
-    DWELL_TIME = "dwell_time"
-    DWELL_VOLUME = "dwell_volume"
-    USE_N_ESTIMATE = "use_plate_count_estimate"
-    PLATE_COUNT = "plate_count"
-    # The rail's two programme tables (SPEC §7, v0.2, #73). Each holds the frame its
-    # editor was built from; the candidate also remembers whether it has been typed
-    # into, since until then it follows the scouting table.
-    SCOUTING_FRAME = "scouting_frame"
-    SCOUTING_NONCE = "scouting_nonce"
-    CANDIDATE_FRAME = "candidate_frame"
-    CANDIDATE_NONCE = "candidate_nonce"
-    CANDIDATE_TOUCHED = "candidate_touched"
-
-    # Where the chromatogram's axes begin and end. These are a view onto the prediction,
-    # not an input to it: SPEC §8 keeps the session file to inputs, so they live in
-    # `session_state` and nowhere near `CockpitInputs`.
-    X_AXIS_START = "x_axis_start"
-    X_AXIS_END = "x_axis_end"
-    Y_AXIS_START = "y_axis_start"
-    Y_AXIS_END = "y_axis_end"
-    AXIS_KEYS = (X_AXIS_START, X_AXIS_END, Y_AXIS_START, Y_AXIS_END)
-    # Whether the reader has touched any of the four. Until they have, the boxes follow
-    # the run — a keyed widget keeps its first value across reruns otherwise, and the
-    # window would silently stay the length of the *previous* candidate's run.
-    AXIS_TOUCHED = "axis_touched"
 
 
 _DWELL_REQUIRED = (
@@ -285,6 +218,9 @@ def _notices(diagnostics: Sequence[Diagnostic]) -> None:
 
 
 def main() -> None:
+    # A fresh run: nothing has been read yet, which is what lets `screen_state.restore`
+    # tell a load that arrives before every widget from one that arrives after some.
+    screen_state.begin_run()
     st.set_page_config(page_title="hplcsim — Cockpit", layout="wide")
     st.markdown(panels.STYLE, unsafe_allow_html=True)
 
@@ -407,124 +343,40 @@ def _load_control() -> None:
         # itself something a file restores — a widget instantiated before the restore
         # runs has already claimed its key, and writing to it then is an exception
         # rather than a value that quietly fails to land.
-        uploaded = st.file_uploader("Load a session", type=["json"], key=Keys.UPLOAD)
+        uploaded = st.file_uploader(
+            "Load a session", type=["json"], key=screen_state.claim(Keys.UPLOAD)
+        )
 
-        if uploaded is not None and st.session_state.get(Keys.LOADED_FILE) != uploaded.file_id:
-            st.session_state[Keys.LOADED_FILE] = uploaded.file_id
+        if uploaded is not None and screen_state.get(Keys.LOADED_FILE) != uploaded.file_id:
+            screen_state.put(Keys.LOADED_FILE, uploaded.file_id)
             try:
                 session = load_session(uploaded.getvalue())
             except SessionFileError as error:
                 # A corrupt or unknown-schema file is a hard error (SPEC §8) — but it
                 # is the *file* that is refused, not the session on screen, which is
                 # left exactly as it was for the user to go on working in.
-                st.session_state[Keys.LOAD_ERROR] = str(error)
+                screen_state.put(Keys.LOAD_ERROR, str(error))
                 # Both notices describe the *last file handled*, so a refusal clears the
                 # previous file's out-of-range warning. Left standing it would sit under
                 # this error, naming a number from a session no longer on screen.
-                st.session_state[Keys.LOAD_NOTE] = None
+                screen_state.put(Keys.LOAD_NOTE, None)
             else:
-                st.session_state[Keys.LOAD_ERROR] = None
-                _restore(session)
+                screen_state.put(Keys.LOAD_ERROR, None)
+                screen_state.restore(session)
                 st.rerun()
 
-        error = st.session_state.get(Keys.LOAD_ERROR)
+        error = screen_state.get(Keys.LOAD_ERROR)
         if error:
             st.error(error, icon="🚫")
-        note = st.session_state.get(Keys.LOAD_NOTE)
+        note = screen_state.get(Keys.LOAD_NOTE)
         if note:
             # The file was read; some of it just does not fit on screen. That is a
             # warning, not a refusal (CLAUDE.md's warnings-over-blocks).
             st.warning(note, icon="⚠️")
 
-        st.text_input("Session name", key=Keys.SESSION_NAME, placeholder=_UNTITLED)
-
-
-def _restore(session: Session) -> None:
-    """Write a loaded session into the widgets, under the keys they answer to.
-
-    This is the half of the round trip :mod:`app.session_io` deliberately does not do:
-    the translation between the file's shape and the screen's is logic and lives there,
-    while *which widget holds which value* is a fact about this file and only this one.
-
-    Every number box goes through :class:`~app.session_io.Restore`, against the same
-    ``_*_RANGE`` the widget itself is built from. A file may legitimately hold a value
-    no box on this screen can display — a 5 m column is a real column and the box stops
-    at 1000 mm — and writing it in raw makes Streamlit raise on the rerun, replacing the
-    page with a traceback rather than saying anything useful. The two programme tables
-    are not boxes: they take the file's rows as they are.
-    """
-    method = session.method
-    restore = Restore()
-    # The file's shape crossing the screen's — the two peak tables as one — happens in
-    # `inputs_from_session` and nowhere else.
-    inputs = inputs_from_session(session)
-    st.session_state.update(
-        {
-            Keys.SESSION_NAME: session.session_name,
-            Keys.LENGTH: restore.within(
-                "column length", method.column_length_mm or _COLUMN_LENGTH_MM, *_LENGTH_RANGE
-            ),
-            Keys.COLUMN_ID: restore.within(
-                "column i.d.", method.column_id_mm or _COLUMN_ID_MM, *_COLUMN_ID_RANGE
-            ),
-            Keys.PARTICLE: restore.within(
-                "particle size", method.particle_um or _PARTICLE_UM, *_PARTICLE_RANGE
-            ),
-            Keys.FLOW: restore.within("flow", method.flow, *_FLOW_RANGE),
-            Keys.TEMPERATURE: restore.within(
-                "temperature",
-                _TEMPERATURE_C if method.temperature_c is None else method.temperature_c,
-                *_TEMPERATURE_RANGE,
-            ),
-            Keys.T0_SOURCE: _MEASURED if method.t0_is_measured else _ESTIMATED,
-            Keys.T0: restore.within("t0", method.t0, *_T0_RANGE),
-            Keys.T0_MARKER: method.t0_marker or "",
-            # The file stores the dwell as a time (SPEC §8), so the time is what comes
-            # back. Dividing a volume out of it would be inventing the V_D that was
-            # typed, at whatever the flow happens to be now — the conversion is an
-            # entry boundary and is not meant to run backwards.
-            Keys.DWELL_AS: _BY_TIME,
-            Keys.DWELL_TIME: restore.within("dwell", method.t_dwell, *_DWELL_TIME_RANGE),
-            Keys.USE_N_ESTIMATE: session.plate_count is None,
-            # The two programme tables take the file's programmes as they are (SPEC §7,
-            # §8): a table cell has no slider's end to squeeze to. The file already
-            # refuses a %B outside 0–100. Each frame is *replaced*, so its nonce moves
-            # too — the editor is rebuilt from the file rather than showing the file's
-            # rows with the previous session's edits still layered over them.
-            Keys.SCOUTING_FRAME: tables.scouting_frame(ScoutingEntry.from_runs(*session.runs)),
-            Keys.SCOUTING_NONCE: st.session_state.get(Keys.SCOUTING_NONCE, 0) + 1,
-            Keys.CANDIDATE_FRAME: tables.candidate_frame(points_from_programme(session.candidate)),
-            Keys.CANDIDATE_NONCE: st.session_state.get(Keys.CANDIDATE_NONCE, 0) + 1,
-            # A loaded candidate is the file's, whatever the scouting table says.
-            Keys.CANDIDATE_TOUCHED: True,
-            Keys.PEAK_FRAME: tables.peak_frame_from_rows(inputs.rows),
-            # A fresh identity for the data editor. Its state belongs to its key, so
-            # reusing the key would show the loaded frame's columns with the previous
-            # session's edits still layered over them.
-            Keys.PEAK_TABLE_NONCE: st.session_state.get(Keys.PEAK_TABLE_NONCE, 0) + 1,
-        }
-    )
-    if session.plate_count is not None:
-        st.session_state[Keys.PLATE_COUNT] = restore.within(
-            "plate count N", float(session.plate_count), *_PLATE_COUNT_RANGE
+        st.text_input(
+            "Session name", key=screen_state.claim(Keys.SESSION_NAME), placeholder=_UNTITLED
         )
-    # An undeclared architecture is an *absent* choice, and the selectbox shows that as
-    # its placeholder only when its key holds nothing at all.
-    st.session_state.pop(Keys.ARCHITECTURE, None)
-    if method.particle_is_solid_core is not None:
-        st.session_state[Keys.ARCHITECTURE] = (
-            _CORE_SHELL if method.particle_is_solid_core else _FULLY_POROUS
-        )
-    # A restored estimate is treated as the autofill in place. With an architecture in
-    # the file that means it is *recomputed* from the file's geometry on the same run —
-    # the estimate is derived from inputs, so it recomputes on load exactly as the fit
-    # does (SPEC §8), and a file written before a porosity constant changed comes back
-    # at the current constant. Without an architecture there is nothing to recompute
-    # from and the file's number stands, stamped as the estimate it was saved as.
-    st.session_state.pop(Keys.T0_AUTOFILL, None)
-    if not method.t0_is_measured:
-        st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
-    st.session_state[Keys.LOAD_NOTE] = restore.note
 
 
 def _save_control(inputs: CockpitInputs) -> None:
@@ -535,7 +387,7 @@ def _save_control(inputs: CockpitInputs) -> None:
     the file and the wrong thing to show a chromatographer as a stack trace, so the
     refusal is caught and worded here — the gate is in the UI, and the file stays strict.
     """
-    name = st.session_state.get(Keys.SESSION_NAME, "")
+    name = screen_state.get(Keys.SESSION_NAME, "")
     try:
         text = save_session(session_from_inputs(inputs, session_name=name))
     except SessionFileError as error:
@@ -565,55 +417,72 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         st.caption("Instrument and column — shared by both scouting runs and the candidate.")
 
         length = st.number_input(
-            "Column length (mm)", *_LENGTH_RANGE, _COLUMN_LENGTH_MM, key=Keys.LENGTH
+            "Column length (mm)",
+            *LENGTH_RANGE,
+            COLUMN_LENGTH_MM,
+            key=screen_state.claim(Keys.LENGTH),
         )
         column_id = st.number_input(
-            "Column i.d. (mm)", *_COLUMN_ID_RANGE, _COLUMN_ID_MM, key=Keys.COLUMN_ID
+            "Column i.d. (mm)",
+            *COLUMN_ID_RANGE,
+            COLUMN_ID_MM,
+            key=screen_state.claim(Keys.COLUMN_ID),
         )
         particle = st.number_input(
-            "Particle size (µm)", *_PARTICLE_RANGE, _PARTICLE_UM, key=Keys.PARTICLE
+            "Particle size (µm)",
+            *PARTICLE_RANGE,
+            PARTICLE_UM,
+            key=screen_state.claim(Keys.PARTICLE),
         )
         flow = st.number_input(
-            "Flow F (mL/min)", *_FLOW_RANGE, _FLOW, step=0.05, format="%.3f", key=Keys.FLOW
+            "Flow F (mL/min)",
+            *FLOW_RANGE,
+            _FLOW,
+            step=0.05,
+            format="%.3f",
+            key=screen_state.claim(Keys.FLOW),
         )
         temperature = st.number_input(
-            "Temperature (°C)", *_TEMPERATURE_RANGE, _TEMPERATURE_C, key=Keys.TEMPERATURE
+            "Temperature (°C)",
+            *TEMPERATURE_RANGE,
+            TEMPERATURE_C,
+            key=screen_state.claim(Keys.TEMPERATURE),
         )
         st.caption("Temperature is metadata in v0.1 — the model is fixed-temperature.")
 
         st.subheader("Dead time")
         architecture = st.selectbox(
             "Packing architecture",
-            [_FULLY_POROUS, _CORE_SHELL],
+            [FULLY_POROUS, CORE_SHELL],
             index=None,
             placeholder="Choose — never inferred from the column name",
-            key=Keys.ARCHITECTURE,
+            key=screen_state.claim(Keys.ARCHITECTURE),
         )
-        solid_core = None if architecture is None else architecture == _CORE_SHELL
+        solid_core = None if architecture is None else architecture == CORE_SHELL
         t0_source = st.radio(
             "t0 source",
-            [_MEASURED, _ESTIMATED],
+            [MEASURED, ESTIMATED],
             horizontal=True,
-            key=Keys.T0_SOURCE,
+            key=screen_state.claim(Keys.T0_SOURCE),
             on_change=_t0_source_chosen,
         )
         estimate = None
-        if t0_source == _ESTIMATED:
+        if t0_source == ESTIMATED:
             estimate = _autofill_t0(length, column_id, particle, flow, solid_core)
         t0 = st.number_input(
             "t0 (min)",
-            *_T0_RANGE,
+            *T0_RANGE,
             _T0,
             step=0.05,
             format="%.4f",
-            key=Keys.T0,
+            key=screen_state.claim(Keys.T0),
             on_change=_t0_typed,
         )
         marker: str | None = None
-        if t0_source == _MEASURED:
+        if t0_source == MEASURED:
             marker = st.text_input(
                 "t0 marker",
-                key=Keys.T0_MARKER,
+                key=screen_state.claim(Keys.T0_MARKER),
                 placeholder="uracil, apex — or: solvent front, first disturbance",
                 help=(
                     "What was injected to measure t0, and which point of its trace was "
@@ -623,7 +492,7 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         # SPEC §4's checks on the typed t0 are painted here, beside the field, from the
         # diagnostics `main` computes once everything is entered. Reserved now.
         t0_notices = st.container()
-        if t0_source == _ESTIMATED:
+        if t0_source == ESTIMATED:
             _estimate_caption(estimate)
 
         st.subheader("Dwell")
@@ -641,7 +510,7 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
             column_id_mm=column_id,
             particle_um=particle,
             temperature_c=temperature,
-            t0_is_measured=t0_source == _MEASURED,
+            t0_is_measured=t0_source == MEASURED,
             particle_is_solid_core=solid_core,
             t0_marker=(marker or "").strip() or None,
         )
@@ -674,19 +543,17 @@ def _autofill_t0(
         particle_is_solid_core=solid_core,
     )
     estimate = estimate_t0(geometry)
-    filled = t0_autofill(
-        st.session_state.get(Keys.T0), st.session_state.get(Keys.T0_AUTOFILL), estimate.t0
-    )
+    filled = t0_autofill(screen_state.get(Keys.T0), screen_state.get(Keys.T0_AUTOFILL), estimate.t0)
     if filled is not None:
-        st.session_state[Keys.T0] = filled
-        st.session_state[Keys.T0_AUTOFILL] = filled
+        screen_state.put(Keys.T0, filled)
+        screen_state.put(Keys.T0_AUTOFILL, filled)
     return estimate
 
 
 def _t0_source_chosen() -> None:
     """Choosing the estimate starts a fresh autofill; choosing the marker keeps the field."""
-    if st.session_state.get(Keys.T0_SOURCE) == _ESTIMATED:
-        st.session_state.pop(Keys.T0_AUTOFILL, None)
+    if screen_state.get(Keys.T0_SOURCE) == ESTIMATED:
+        screen_state.pop(Keys.T0_AUTOFILL)
 
 
 def _t0_typed() -> None:
@@ -695,10 +562,10 @@ def _t0_typed() -> None:
     Runs as the widget's callback, before the rerun, which is the one place a widget
     that has already been drawn (the source radio) may have its state written.
     """
-    if st.session_state.get(Keys.T0_SOURCE) != _ESTIMATED:
+    if screen_state.get(Keys.T0_SOURCE) != ESTIMATED:
         return
-    if st.session_state.get(Keys.T0) != st.session_state.get(Keys.T0_AUTOFILL):
-        st.session_state[Keys.T0_SOURCE] = _MEASURED
+    if screen_state.get(Keys.T0) != screen_state.get(Keys.T0_AUTOFILL):
+        screen_state.put(Keys.T0_SOURCE, MEASURED)
 
 
 def _estimate_caption(estimate: DeadTimeEstimate | None) -> None:
@@ -729,19 +596,27 @@ def _dwell(flow: float) -> float | None:
     entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance."
     """
     entered_as = st.radio(
-        "Dwell entered as", [_BY_VOLUME, _BY_TIME], horizontal=True, key=Keys.DWELL_AS
+        "Dwell entered as",
+        [BY_VOLUME, BY_TIME],
+        horizontal=True,
+        key=screen_state.claim(Keys.DWELL_AS),
     )
-    if entered_as != _BY_VOLUME:
+    if entered_as != BY_VOLUME:
         return st.number_input(
             "Dwell time t_D (min)",
-            *_DWELL_TIME_RANGE,
+            *DWELL_TIME_RANGE,
             value=None,
             format="%.4f",
-            key=Keys.DWELL_TIME,
+            key=screen_state.claim(Keys.DWELL_TIME),
         )
 
     volume = st.number_input(
-        "Dwell volume V_D (mL)", 0.0, 100.0, value=None, format="%.4f", key=Keys.DWELL_VOLUME
+        "Dwell volume V_D (mL)",
+        0.0,
+        100.0,
+        value=None,
+        format="%.4f",
+        key=screen_state.claim(Keys.DWELL_VOLUME),
     )
     with st.expander("How to measure V_D"):
         st.markdown(_DWELL_GUIDANCE)
@@ -760,11 +635,15 @@ def _plate_count_knob(method: Method) -> float | None:
     """
     estimate = default_plate_count(method)
     label = f"Use the column estimate (N ≈ {estimate:,.0f})"
-    if st.checkbox(label, value=True, key=Keys.USE_N_ESTIMATE):
+    if st.checkbox(label, value=True, key=screen_state.claim(Keys.USE_N_ESTIMATE)):
         st.caption("N = L/(2·dp) — geometry, not this instrument's real efficiency.")
         return None
     return st.number_input(
-        "Plate count N", *_PLATE_COUNT_RANGE, _PLATE_COUNT, step=500.0, key=Keys.PLATE_COUNT
+        "Plate count N",
+        *PLATE_COUNT_RANGE,
+        _PLATE_COUNT,
+        step=500.0,
+        key=screen_state.claim(Keys.PLATE_COUNT),
     )
 
 
@@ -781,10 +660,10 @@ def _peak_table() -> list[PeakRow]:
     # A restored table arrives as a frame in state; an unloaded one is the blank frame,
     # exactly as before. The nonce in the key is what makes a *second* load land: the
     # editor's edits belong to its key, and reusing the key would leave them on top of
-    # the new data. It is only ever bumped by `_restore`.
+    # the new data. It is only ever bumped by `screen_state.restore`.
     edited = st.data_editor(
-        st.session_state.get(Keys.PEAK_FRAME, tables.blank_peak_frame()),
-        key=f"peak_table_{st.session_state.get(Keys.PEAK_TABLE_NONCE, 0)}",
+        screen_state.get(Keys.PEAK_FRAME, tables.blank_peak_frame()),
+        key=screen_state.claim(Keys.peak_table(screen_state.nonce(Keys.PEAK_TABLE_NONCE))),
         num_rows="dynamic",
         width="stretch",
         # Compact rows (#62): the peak table shares the screen with the pinned
@@ -841,12 +720,12 @@ def _scouting_table() -> tables.ScoutingRead:
     and the editor is rebuilt from it, rather than showing a value the run does not use.
     """
     st.markdown("### Scouting — as run")
-    if Keys.SCOUTING_FRAME not in st.session_state:
-        st.session_state[Keys.SCOUTING_FRAME] = tables.scouting_frame(_DEFAULT_SCOUTING)
-    base = st.session_state[Keys.SCOUTING_FRAME]
+    if not screen_state.has(Keys.SCOUTING_FRAME):
+        screen_state.put(Keys.SCOUTING_FRAME, tables.scouting_frame(_DEFAULT_SCOUTING))
+    base = screen_state.get(Keys.SCOUTING_FRAME)
     edited = st.data_editor(
         base,
-        key=f"scouting_table_{st.session_state.get(Keys.SCOUTING_NONCE, 0)}",
+        key=screen_state.claim(Keys.scouting_table(screen_state.nonce(Keys.SCOUTING_NONCE))),
         num_rows="fixed",
         hide_index=True,
         width="stretch",
@@ -889,14 +768,14 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     """
     st.markdown("### Candidate — predicted")
     seed = tables.candidate_frame(points_from_programme(_seed_programme(scouting)))
-    touched = st.session_state.get(Keys.CANDIDATE_TOUCHED, False)
-    base = st.session_state.get(Keys.CANDIDATE_FRAME)
+    touched = screen_state.get(Keys.CANDIDATE_TOUCHED, False)
+    base = screen_state.get(Keys.CANDIDATE_FRAME)
     if base is None or (not touched and not tables.frames_agree(base, seed)):
         _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, seed)
         base = seed
     edited = st.data_editor(
         base,
-        key=f"candidate_table_{st.session_state.get(Keys.CANDIDATE_NONCE, 0)}",
+        key=screen_state.claim(Keys.candidate_table(screen_state.nonce(Keys.CANDIDATE_NONCE))),
         num_rows="dynamic",
         hide_index=True,
         width="stretch",
@@ -908,11 +787,11 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     )
     if not tables.frames_agree(edited, base):
         # The reader has typed: from here on the table is theirs, not the scouting's.
-        st.session_state[Keys.CANDIDATE_TOUCHED] = True
+        screen_state.put(Keys.CANDIDATE_TOUCHED, True)
     read = programme_from_points(tables.candidate_points_from_frame(edited))
     shown = tables.candidate_frame(read.points)
     if not tables.frames_agree(shown, edited):
-        st.session_state[Keys.CANDIDATE_TOUCHED] = True
+        screen_state.put(Keys.CANDIDATE_TOUCHED, True)
         _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, shown)
         st.rerun()
     caption, reset = st.columns([3.2, 1.0], vertical_alignment="center")
@@ -958,15 +837,15 @@ def _seed_programme(scouting: ScoutingEntry) -> Programme:
 
 def _replace_frame(frame_key: str, nonce_key: str, frame: object) -> None:
     """Replace a table's frame and move its nonce, so the editor is rebuilt from it."""
-    st.session_state[frame_key] = frame
-    st.session_state[nonce_key] = st.session_state.get(nonce_key, 0) + 1
+    screen_state.put(frame_key, frame)
+    screen_state.bump_nonce(nonce_key)
 
 
 def _reset_candidate() -> None:
     """Back to following the scouting table. A callback, so it lands before the redraw."""
-    st.session_state[Keys.CANDIDATE_TOUCHED] = False
-    st.session_state.pop(Keys.CANDIDATE_FRAME, None)
-    st.session_state[Keys.CANDIDATE_NONCE] = st.session_state.get(Keys.CANDIDATE_NONCE, 0) + 1
+    screen_state.put(Keys.CANDIDATE_TOUCHED, False)
+    screen_state.pop(Keys.CANDIDATE_FRAME)
+    screen_state.bump_nonce(Keys.CANDIDATE_NONCE)
 
 
 # --- the guided empty state of SPEC §7 ------------------------------------------------
@@ -1293,13 +1172,13 @@ def _chromatogram(
 
 def _axis_request() -> chromatogram.AxisRequest:
     """What the reader asked of the axes — nothing, until they have touched a box."""
-    if not st.session_state.get(Keys.AXIS_TOUCHED, False):
+    if not screen_state.get(Keys.AXIS_TOUCHED, False):
         return chromatogram.AxisRequest()
     return chromatogram.AxisRequest(
-        x_start=st.session_state.get(Keys.X_AXIS_START),
-        x_end=st.session_state.get(Keys.X_AXIS_END),
-        y_start=st.session_state.get(Keys.Y_AXIS_START),
-        y_end=st.session_state.get(Keys.Y_AXIS_END),
+        x_start=screen_state.get(Keys.X_AXIS_START),
+        x_end=screen_state.get(Keys.X_AXIS_END),
+        y_start=screen_state.get(Keys.Y_AXIS_START),
+        y_end=screen_state.get(Keys.Y_AXIS_END),
     )
 
 
@@ -1316,7 +1195,7 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
     a longer candidate grows the window with it. Once touched, the entries stay put —
     a pinned window is what the reader asked for — until Reset.
     """
-    touched = st.session_state.get(Keys.AXIS_TOUCHED, False)
+    touched = screen_state.get(Keys.AXIS_TOUCHED, False)
     y_step = view.run_y[1] / 20.0 or 0.05
     boxes = (
         ("x start (min)", Keys.X_AXIS_START, view.run_x[0], 0.1, "%.2f"),
@@ -1332,8 +1211,8 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
     # what pushes it to the browser; with the key always written, the widget takes its
     # value from state and is not given a default at all.
     for _label, key, value, _step, _fmt in boxes:
-        if not touched or key not in st.session_state:
-            st.session_state[key] = float(value)
+        if not touched or not screen_state.has(key):
+            screen_state.put(key, float(value))
     cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
     with cols[0]:
         st.markdown(
@@ -1347,7 +1226,7 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
                 min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
                 step=step,
                 format=fmt,
-                key=key,
+                key=screen_state.claim(key),
                 on_change=_mark_axis_touched,
             )
     with cols[5]:
@@ -1356,7 +1235,7 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
 
 def _mark_axis_touched() -> None:
     """From here on the boxes are the reader's, not the run's."""
-    st.session_state[Keys.AXIS_TOUCHED] = True
+    screen_state.put(Keys.AXIS_TOUCHED, True)
 
 
 def _reset_axis_range() -> None:
@@ -1368,7 +1247,7 @@ def _reset_axis_range() -> None:
     not re-pushed by a widget default, and leaving that call here would keep the bug one
     refactor away from coming back on the Reset path.
     """
-    st.session_state[Keys.AXIS_TOUCHED] = False
+    screen_state.put(Keys.AXIS_TOUCHED, False)
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:

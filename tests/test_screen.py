@@ -25,6 +25,7 @@ import pytest
 
 from app.diagnostics import STRONG_WINDOW_WIDTHS
 from app.entry import ProgrammePoint, ScoutingEntry, points_from_programme
+from app.screen_state import Keys
 from app.tables import (
     COMPOUND,
     FLAGS,
@@ -56,13 +57,6 @@ ENTRY_POINT = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 # The sidebar's dwell field opens empty (SPEC §4), and nothing is predicted until it is
 # filled — so every test here starts by filling it, exactly as a user must.
 _DWELL_ML = 0.375
-
-# The session-state keys the entry point builds its two programme tables from (its
-# `Keys`). Spelled out rather than imported: importing the entry point runs `main()`
-# at module scope, which is the app, not a constant.
-_SCOUTING_FRAME = "scouting_frame"
-_CANDIDATE_FRAME = "candidate_frame"
-_CANDIDATE_TOUCHED = "candidate_touched"
 
 # What the rail opens on (validation/method.csv's scouting pair).
 _DEFAULT_SCOUTING = ScoutingEntry(
@@ -154,7 +148,7 @@ def _extrapolation(app: object, severity: str) -> list[str]:
 
 def _seed_scouting(app: object, entry: ScoutingEntry) -> None:
     """Put a scouting programme into the table, the way a loaded file does."""
-    app.session_state[_SCOUTING_FRAME] = scouting_frame(entry)  # type: ignore[attr-defined]
+    app.session_state[Keys.SCOUTING_FRAME] = scouting_frame(entry)  # type: ignore[attr-defined]
     app.run()  # type: ignore[attr-defined]
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
@@ -162,19 +156,19 @@ def _seed_scouting(app: object, entry: ScoutingEntry) -> None:
 def _seed_candidate(app: object, *rows: tuple[float, float]) -> None:
     """Put candidate rows into the table, as typed — so the table stops following."""
     points = tuple(ProgrammePoint(t_min=t, percent_b=b) for t, b in rows)
-    app.session_state[_CANDIDATE_FRAME] = candidate_frame(points)  # type: ignore[attr-defined]
-    app.session_state[_CANDIDATE_TOUCHED] = True  # type: ignore[attr-defined]
+    app.session_state[Keys.CANDIDATE_FRAME] = candidate_frame(points)  # type: ignore[attr-defined]
+    app.session_state[Keys.CANDIDATE_TOUCHED] = True  # type: ignore[attr-defined]
     app.run()  # type: ignore[attr-defined]
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
 
 def _candidate_rows(app: object) -> list[tuple[float, float]]:
-    frame = app.session_state[_CANDIDATE_FRAME]  # type: ignore[attr-defined]
+    frame = app.session_state[Keys.CANDIDATE_FRAME]  # type: ignore[attr-defined]
     return list(zip(frame[T_CANDIDATE].tolist(), frame[PERCENT_B].tolist(), strict=True))
 
 
 def _scouting_columns(app: object) -> dict[str, list[float]]:
-    frame = app.session_state[_SCOUTING_FRAME]  # type: ignore[attr-defined]
+    frame = app.session_state[Keys.SCOUTING_FRAME]  # type: ignore[attr-defined]
     return {column: frame[column].tolist() for column in (T1, T2, PERCENT_B)}
 
 
@@ -387,7 +381,7 @@ def test_a_cell_that_follows_another_is_put_back_when_typed_over() -> None:
     frame.loc[1, PERCENT_B] = 40.0
     frame.loc[1, T2] = 7.0
     frame.loc[0, T1] = 3.0
-    app.session_state[_SCOUTING_FRAME] = frame  # type: ignore[attr-defined]
+    app.session_state[Keys.SCOUTING_FRAME] = frame  # type: ignore[attr-defined]
     app.run()  # type: ignore[attr-defined]
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
@@ -546,7 +540,7 @@ def test_uploading_a_session_restores_the_candidate_into_its_table_as_the_files_
     app.run()  # type: ignore[attr-defined]
 
     assert _candidate_rows(app) == [(0.0, 10.0), (2.5, 10.0), (40.0, 90.0)]
-    assert app.session_state[_CANDIDATE_TOUCHED] is True  # type: ignore[attr-defined]
+    assert app.session_state[Keys.CANDIDATE_TOUCHED] is True  # type: ignore[attr-defined]
     assert "10 → 90 %B · tG 37.5 min · hold 2.5 min · 1 segment" in _status_bar(app)
 
 
@@ -744,7 +738,7 @@ def test_a_two_segment_candidate_loads_into_the_table_and_is_predicted_as_itself
     assert "10 → 90 %B · tG 37.5 min · hold 2.5 min · 2 segments" in _status_bar(app)
     assert not any("no control on this screen" in text for text in _messages(app)["warning"])
     # What the table shows is what a save would write: the same rows, read back.
-    assert list(app.session_state[_CANDIDATE_FRAME][T_CANDIDATE]) == [  # type: ignore[attr-defined]
+    assert list(app.session_state[Keys.CANDIDATE_FRAME][T_CANDIDATE]) == [  # type: ignore[attr-defined]
         point.t_min for point in points_from_programme(two)
     ]
 
