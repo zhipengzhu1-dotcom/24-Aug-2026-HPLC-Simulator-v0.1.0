@@ -87,6 +87,15 @@ Check with `lsof -i :8501 -i :8765`; no output means nothing is running.
   it, or start on another port with `--server.port`.
 - **The page shows a different layout than expected**: check `git branch --show-current`.
   Stop the app, check out the branch you meant, start again.
+- **`ImportError: cannot import name … from 'app.…'`, and the name is plainly there in
+  the file**: the running server is older than the code. Streamlit re-reads
+  `streamlit_app.py` from disk on every rerun but keeps the `app.*` modules it imported
+  at start-up, so a function that arrived in a `git pull` or a merge since then is
+  missing from the module the fresh import line asks for. The branch never changed and
+  nothing in the tree is broken — stop the app and start it again. It bites here because
+  Watchdog is not installed and Streamlit's fallback polling watcher does not reliably
+  reload changed local modules, so `pkill -f "streamlit run"` after every pull is the
+  cheap habit. Worked case: `docs/handoffs/2026-09-04-stale-server-importerror.md`.
 - **Stale caches**: safe to delete any time — `.pytest_cache`, `.ruff_cache`,
   `.mypy_cache`, every `__pycache__`. `uv` recreates what it needs. Never delete `.venv`
   unless you are prepared to wait for `uv` to rebuild it (it will, on the next
