@@ -102,11 +102,10 @@ class RetentionResult:
     ``eluting_segment`` is the index of the programme segment the band left the column
     in — ``None`` when it left before the first segment arrived (the isocratic hold) or
     after the last one ended. For a v0.1 gradient or a one-segment programme it is ``0``
-    in the gradient regime and ``None`` otherwise — what the walker gives too, apart from
-    the flat candidate named below — so the width model can take G from the eluting
-    segment without asking which shape it
-    was handed (SPEC §3, "Band compression for a programme"). Diagnostic 1 brackets per
-    eluting segment on it (#72).
+    when the band left inside that one segment, ramp or hold, and ``None`` otherwise —
+    what the walker gives too — so the width model can take G from the eluting segment
+    without asking which shape it was handed (SPEC §3, "Band compression for a
+    programme"). Diagnostic 1 brackets per eluting segment on it (#72).
 
     ``b_e_seg`` is that segment's own signed steepness (SPEC §3's b_e,seg — not the
     whole-gradient b_e) and ``k_seg_entry`` the retention factor where the band *entered*
@@ -158,13 +157,15 @@ def predict_retention(params: RetentionParams, method: Method, target: Target) -
 
     # A flat gradient (Δφ = 0) is the same isocratic case for every peak, but it is not
     # the same *place*: its single leg is a hold the band can leave in, and the walker
-    # over the same programme calls that leg 0 (#94). The two paths have to agree,
+    # over the same programme calls that leg 0 (#94). The two have to agree on the leg,
     # boundary included — a band still on-column when the programme ends leaves after the
-    # last leg, which is no segment's. The migration fraction is the walker's own
-    # arithmetic, term for term, so the two cannot part company on the last bit.
+    # last leg, which is no segment's — so the hold test is the walker's, shared. The
+    # guard above is v0.1's own form and stays so for SPEC §10 item 4a; at the hairline
+    # of τ/(t0·k0) = 1 it can differ from the walker's by an ulp, and that is accepted.
+    # What still differs is the *regime* when the band outlives the programme (#100).
     if gradient.delta_phi == 0.0:
         x = tau / (t0 * k0)
-        leaves_in_the_hold = x + gradient.t_gradient / (t0 * k0) >= 1.0
+        leaves_in_the_hold = _hold_exit_fraction(x, gradient.t_gradient, t0, k0) >= 1.0
         return _classify(
             t_r=t0 * (1.0 + k0),
             k_e=k0,
@@ -243,8 +244,7 @@ def walk_programme(
     for index, leg in enumerate(programme.legs()):
         k_entry = params.k_at(leg.phi_start)
         if leg.is_hold:
-            # Isocratic at k_entry for the whole leg: x grows at 1/(t0·k).
-            x_end = x + leg.duration / (t0 * k_entry)
+            x_end = _hold_exit_fraction(x, leg.duration, t0, k_entry)
             if x_end >= 1.0:
                 t_r = _isocratic_exit(leg_start, x, t0, k_entry)
                 regime: Regime = "post_gradient" if ramped else "isocratic_hold"
@@ -288,6 +288,15 @@ def walk_programme(
     k_final = params.k_at(programme.phif)
     t_r = _isocratic_exit(leg_start, x, t0, k_final)
     return _classify(t_r=t_r, k_e=k_final, regime="post_gradient", t0=t0, tau=tau)
+
+
+def _hold_exit_fraction(x: float, duration: float, t0: float, k: float) -> float:
+    """Migration fraction at the end of a hold entered at ``x``: isocratic, so 1/(t0·k) per min.
+
+    One expression for the walker's hold leg and the closed form's flat candidate (#94),
+    so the two cannot disagree about whether a band left inside it.
+    """
+    return x + duration / (t0 * k)
 
 
 def _isocratic_exit(leg_start: float, x: float, t0: float, k: float) -> float:

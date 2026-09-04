@@ -190,6 +190,19 @@ def test_the_flat_candidate_has_both_of_the_walkers_answers_to_give() -> None:
     assert outlived.k_seg_entry is None
 
 
+def test_the_outlived_flat_candidates_regime_still_differs_pinned_by_100() -> None:
+    """#100, deliberately not fixed here: the two paths still disagree about the *regime*.
+
+    Pinned rather than asserted equal so the divergence cannot drift unremarked, and so
+    the fix, when it comes, fails this test and replaces it. Which regime is right —
+    diagnostic 2's or diagnostic 9's — is a SPEC §6 ruling, not a code choice.
+    """
+    closed = predict_retention(LAB_PEAKS[2], LAB_METHOD, _FLAT_OUTLIVED)
+    walked = walk_programme(LAB_PEAKS[2], LAB_METHOD, _FLAT_OUTLIVED)
+    assert closed.regime == "isocratic_hold"
+    assert walked.regime == "post_gradient"
+
+
 # --- SPEC §10 item 4(c): a segment that starts after a peak has eluted is inert ---
 
 
