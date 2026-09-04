@@ -37,6 +37,9 @@ from lab_data import (
     LAB_RUN2,
     LAB_RUN3,
     LAB_RUN4,
+    LAB_STAMPED,
+    LAB_STAMPED_IN_BRACKET,
+    LAB_UNSTAMPED,
     LAB_W_HALF_ULP,
 )
 from validation2_data import (
@@ -97,7 +100,8 @@ _LAB_WORST_CASE_BAR = 5.0
 # 0.525 re-baseline) to 0.5 — layer 3's median bar on the den Uijl sets, borrowed as a
 # mean here so one number serves the reference data and the bench data. Largest
 # unstamped today: three-peak run 3 at 0.42 %, four-peak E1 at 0.14 %; the per-run
-# tripwires in each sample's block are the tighter guard.
+# tripwires in each sample's block are the tighter guard. Named `_V2_UNSTAMPED_CEILING_
+# PERCENT` and kept in the four-peak block until #75 wired the three-peak runs onto it.
 _UNSTAMPED_CEILING_PERCENT = 0.5
 
 
@@ -1599,25 +1603,26 @@ _C27_HELD_OUT: dict[str, tuple[Run, dict[str, float]]] = {
 _C27_CAMPAIGN_RUNS = ("run5", "run6", "run7")
 _C27_IDS = ["run5-phi0-15-s-star-matched", "run6-ramp-peaks-only", "run7-phi0-25"]
 
-# Which runs draw the *indicative, not decision-grade* stamp, by the two composition
-# guards #44 decided and the tiers #55 re-pinned — a fixture fact, recorded here the way
-# `VALIDATION2_STAMPED` is on the four-peak sample, so the reality layer can assert the
-# stamp's honesty without importing the app. runs 5, 6 and 7 all start ≥ 10 %B above the
-# scouting pair's 5 %B (diagnostic 7, strong); run 4 (s* 0.26 window-widths below the
-# bracket) and run 6 (0.20) are gentle on diagnostic 1, which does not stamp.
-_C27_STAMPED = ("run5", "run6", "run7")
-_C27_UNSTAMPED = ("run3", "run4")
-# SPEC §10 item 3(a) is scoped to runs strong on 7 whose s* is *inside* the bracket.
-# run 6's s* (0.0084) is below it, and it is the run whose two biases cancel — a shallow
-# s* pulls early (run 4: −0.106 min), a raised start pushes late (run 5: +0.115), and
-# run 6 lands between at +0.039. So it is recorded, not ordered.
-_C27_STAMPED_IN_BRACKET = ("run5", "run7")
+# Which runs draw the *indicative, not decision-grade* stamp is a fixture fact, and it
+# lives in `lab_data` (`LAB_STAMPED` / `LAB_UNSTAMPED` / `LAB_STAMPED_IN_BRACKET`)
+# exactly as `VALIDATION2_STAMPED` lives in `validation2_data` — the reality layer reads
+# it rather than deciding it, and never imports the app to find out.
+
+# The runs whose *only* departure from the scouting pair is a raised φ0: run 5 and run 7
+# keep φf at 95 %B and move the start to 15 and 25 %B. That is the comparison SPEC §10
+# item 1's monotonicity claim is about, and it is a different scoping from item 3(a)'s
+# in-bracket set even though the two coincide today. Run 6 raises φ0 as well, but it also
+# drops φf to 55 %B and so moves s*; its +0.039 min sits *below* run 3's +0.068, which is
+# exactly why the claim is scoped to a raised start and not to every run above 5 %B.
+# `test_campaign27_raised_start_runs_are_the_ones_that_only_move_phi0` derives this
+# membership from the gradients rather than trusting the tuple.
+_C27_RAISED_START = ("run5", "run7")
 
 # Regression tripwires on mean |ΔtR| in percent, set just above where each run sits at
-# t0 = 0.525 (0.82 / 0.21 / 1.67), not at the 2 % contract — a drift to 1.9 % would clear
-# the contract with nobody noticing. The 0.6-era figures were 0.73 (run 5) and 1.52
+# t0 = 0.525 (0.8154 / 0.2070 / 1.6706), not at the 2 % contract — a drift to 1.9 % would
+# clear the contract with nobody noticing. The 0.6-era figures were 0.73 (run 5) and 1.52
 # (run 7), research doc §1.3; run 6 has no 0.6-era figure on record.
-_C27_TR_TRIPWIRE = {"run5": 0.85, "run6": 0.25, "run7": 1.75}
+_C27_TR_TRIPWIRE = {"run5": 0.85, "run6": 0.22, "run7": 1.75}
 
 # SPEC §10 item 1, layer two: each run's mean signed residual, predicted − measured in
 # minutes, pinned where it was measured at t0 = 0.525 (#24's re-baseline, tabulated on
@@ -1629,13 +1634,22 @@ _C27_PINNED_MEAN_OFFSET = {"run5": 0.1146, "run6": 0.0387, "run7": 0.1981}
 _C27_PIN_TOLERANCE_FRACTION = 0.001
 
 
+def _c27_fits() -> list[FitResult]:
+    """The three-peak sample's one fit: run1 + run2, tG = 15/45 at 5 → 95 %B."""
+    return fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
+
+
 def _c27_scored_peaks(run_name: str) -> list[str]:
     """The peaks of a three-peak held-out run that the single-segment engine may score.
 
     Run 6 ends at 55 %B, where Unknown-3 never leaves the hold; the 46.8 min on file is
     the 45.1 min wash step bringing it off under a two-segment programme (SPEC §10 item
-    4(d), the walker's reality point). `LAB_CAMPAIGN27_WASH_ELUTED` is the fixture that
-    says so, and it — not a hard-coded peak list — is what excludes it here.
+    4(d), the walker's reality point). Two fixtures say so and both are applied: the tR
+    table simply has no run6/Unknown-3 entry, and `LAB_CAMPAIGN27_WASH_ELUTED` names the
+    pair and the reason. The second clause is inert while the first holds — deliberately
+    so, because it is the clause that carries the *reason*, and it is what would keep the
+    exclusion right if a later ticket put the 46.8 min reading into the tR table for the
+    walker to score. The companion test pins both halves rather than either alone.
     """
     _, measured = _C27_HELD_OUT[run_name]
     return [
@@ -1649,10 +1663,9 @@ def _c27_predicted_and_measured(run_name: str) -> tuple[list[float], list[float]
     """Predicted and measured tR (min) at a three-peak held-out run, in fixture order."""
     target, measured = _C27_HELD_OUT[run_name]
     scored = _c27_scored_peaks(run_name)
-    fits = fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
     predicted = [
         predict_retention(fit.params, LAB_METHOD, target.gradient).t_r
-        for fit, peak in zip(fits, LAB_MEASURED_PEAKS, strict=True)
+        for fit, peak in zip(_c27_fits(), LAB_MEASURED_PEAKS, strict=True)
         if peak.name in scored
     ]
     return predicted, [measured[name] for name in scored]
@@ -1736,18 +1749,40 @@ def test_campaign27_in_bracket_stamped_runs_miss_by_more_than_every_unstamped_ru
     largest unstamped figure on either sample, so this sample is where the ceiling
     binds; run 4 is gentle on diagnostic 1 only, which does not stamp.
 
-    Which runs are stamped is a fixture fact (`_C27_STAMPED`); that the app's diagnostics
+    Which runs are stamped is a fixture fact (`LAB_STAMPED`); that the app's diagnostics
     draw it on exactly those runs is SPEC §10 item 2, left to the build.
     """
-    assert set(_C27_STAMPED_IN_BRACKET) < set(_C27_STAMPED)
-    assert set(_C27_STAMPED) | set(_C27_UNSTAMPED) == set(_C27_HELD_OUT)
-    assert not set(_C27_STAMPED) & set(_C27_UNSTAMPED)
+    assert set(LAB_STAMPED_IN_BRACKET) < set(LAB_STAMPED)
+    assert set(LAB_STAMPED) | set(LAB_UNSTAMPED) == set(_C27_HELD_OUT)
+    assert not set(LAB_STAMPED) & set(LAB_UNSTAMPED)
 
-    ordered = {run: _c27_mean_magnitude(run) for run in _C27_STAMPED_IN_BRACKET}
-    unstamped = {run: _c27_mean_magnitude(run) for run in _C27_UNSTAMPED}
+    ordered = {run: _c27_mean_magnitude(run) for run in LAB_STAMPED_IN_BRACKET}
+    unstamped = {run: _c27_mean_magnitude(run) for run in LAB_UNSTAMPED}
 
     assert min(ordered.values()) > max(unstamped.values()), (ordered, unstamped)
     assert max(unstamped.values()) <= _UNSTAMPED_CEILING_PERCENT, unstamped
+
+
+def test_campaign27_raised_start_runs_are_the_ones_that_only_move_phi0() -> None:
+    """What `_C27_RAISED_START` means, derived from the gradients rather than asserted.
+
+    A raised-start run starts above the scouting pair's 5 %B and ends where the scouting
+    pair ends, so φ0 is its only departure. Run 6 raises φ0 too but drops φf to 55 %B,
+    which moves s* as well — a different comparison, and the next test says what that
+    costs. This is deliberately *not* the same rule as item 3(a)'s s*-bracket membership,
+    though the two pick out the same two runs today.
+    """
+    scouting_phi0 = LAB_RUN1.gradient.phi0
+    scouting_phif = LAB_RUN1.gradient.phif
+    raised = tuple(
+        name
+        for name, (run, _) in _C27_HELD_OUT.items()
+        if run.gradient.phi0 > scouting_phi0 and run.gradient.phif == scouting_phif
+    )
+
+    assert raised == _C27_RAISED_START
+    assert LAB_CAMPAIGN27_RUNS["run6"].gradient.phi0 > scouting_phi0
+    assert LAB_CAMPAIGN27_RUNS["run6"].gradient.phif < scouting_phif
 
 
 def test_campaign27_residual_at_a_raised_phi0_is_not_below_the_scouting_phi0() -> None:
@@ -1755,11 +1790,15 @@ def test_campaign27_residual_at_a_raised_phi0_is_not_below_the_scouting_phi0() -
 
     Starting above the scouting pair's 5 %B has not made the residual smaller: run 5
     (15 %B, +0.115 min) and run 7 (25 %B, +0.198) both sit above run 3 (5 %B, +0.068).
-    Run 6 also starts at 15 %B but moves s* as well, so it is not a raised-start
-    comparison and is excluded here for the same reason it is excluded from 3(a).
-    The doubling rule (×2.1 per 10 %B) is *not* asserted: it holds on this sample and
-    fails on the four-peak one, and the bar records only the ordering both share.
+    Run 6 is not part of the claim and would break it if it were (+0.039 min, below run
+    3): it moves φf and therefore s* as well, and its shallow-s* and raised-start biases
+    partly cancel — which is the whole reason SPEC §10 item 1 scopes this to a raised
+    start rather than to every run above 5 %B. The doubling rule (×2.1 per 10 %B) is
+    *not* asserted: it holds on this sample and fails on the four-peak one, and the bar
+    records only the ordering both share.
     """
     baseline = fmean(_c27_offsets("run3"))
-    for run_name in _C27_STAMPED_IN_BRACKET:
+    for run_name in _C27_RAISED_START:
         assert fmean(_c27_offsets(run_name)) >= baseline, (run_name, baseline)
+    # And the run the claim excludes really is the one that would break it.
+    assert fmean(_c27_offsets("run6")) < baseline

@@ -172,3 +172,18 @@ LAB_CAMPAIGN27_W_HALF_ULP = {"run5": 0.0005, "run6": 0.0005, "run7": 0.0005}
 # φ0 ordering above is what a dwell term does, not what LSS error looks like. Substituting
 # a data-tuned dwell to make it go away is not on the table; a tripwire on these runs
 # should simply be set where the residual actually sits.
+
+# Which held-out three-peak runs draw the *indicative, not decision-grade* stamp, by the
+# two composition guards #44 decided and the tiers #55 re-pinned (SPEC §10 items 2–3).
+# Runs 5, 6 and 7 all start ≥ 10 %B above the scouting pair's 5 %B — diagnostic 7,
+# strong. Run 4 (s* 0.26 window-widths below the scouting bracket) and run 6 (0.20) are
+# gentle on diagnostic 1, which does not stamp. Recorded here as a fixture fact, the way
+# `VALIDATION2_STAMPED` is on the four-peak sample, so the reality layer can assert the
+# stamp's honesty without importing the app; the app's own diagnostics are tested there.
+LAB_STAMPED = ("run5", "run6", "run7")
+LAB_UNSTAMPED = ("run3", "run4")
+# SPEC §10 item 3(a) orders only runs strong on 7 whose s* is *inside* the scouting
+# bracket [0.0105, 0.0315]. Run 6's s* (0.0084) is below it, and it is the run whose two
+# biases cancel — a shallow s* pulls early (run 4: −0.106 min), a raised start pushes
+# late (run 5: +0.115), and run 6 lands between at +0.039. So it is recorded, not ordered.
+LAB_STAMPED_IN_BRACKET = ("run5", "run7")
