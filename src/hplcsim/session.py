@@ -565,7 +565,9 @@ def _check_percent(at: str, phi: float) -> None:
     percent = percent_b_from_phi(phi)
     low, high = PERCENT_B_RANGE
     if not low <= percent <= high:
-        raise SessionFileError(f"session file: {at} must be between 0 and 100, got {percent:g}")
+        raise SessionFileError(
+            f"session file: {at} must be between {low:g} and {high:g}, got {percent:g}"
+        )
 
 
 def _check_finite(at: str, value: float | None) -> None:
