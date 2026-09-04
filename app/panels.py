@@ -28,6 +28,10 @@ _GOOD = "#1f9d55"
 _FAIR = "#c77700"
 _POOR = "#c0392b"
 
+# The one amber the screen uses for "shown, but mind it" — an untracked row, a defaulted
+# N. Public so the entry point names the colour rather than repeating its hex (#25).
+CAUTION_COLOUR = _FAIR
+
 
 @dataclass(frozen=True)
 class Row:
@@ -56,10 +60,25 @@ class WorksheetStep(Protocol):
 
 
 def resolution_colour(rs: float) -> str:
-    """Green at the robustness target, amber at baseline, red below it."""
+    """Green at the robustness target, amber at baseline, red below it.
+
+    The one threshold function behind every Rs the screen shows (#25): the rail's
+    Min. Rs, the selected peak's neighbours, the resolution table and the status bar
+    all colour through here, so the reading cannot differ between them.
+    """
     if rs >= _RS_ROBUST:
         return _GOOD
     return _FAIR if rs >= _RS_BASELINE else _POOR
+
+
+def resolution_cell_style(rs: float) -> str:
+    """:func:`resolution_colour` as the CSS a pandas Styler paints a table cell with.
+
+    ``st.dataframe`` takes a Styler and carries its per-cell CSS to the grid, which is
+    how the resolution table's Rs column shows the same traffic light as the rail. The
+    declaration is the same one :func:`panel` writes on a coloured row.
+    """
+    return _declaration(resolution_colour(rs))
 
 
 def panel(title: str, rows: Sequence[Row]) -> str:
@@ -81,7 +100,11 @@ def panel(title: str, rows: Sequence[Row]) -> str:
 
 
 def _style(colour: str | None) -> str:
-    return "" if colour is None else f' style="color:{colour};font-weight:600"'
+    return "" if colour is None else f' style="{_declaration(colour)}"'
+
+
+def _declaration(colour: str) -> str:
+    return f"color:{colour};font-weight:600"
 
 
 def worksheet(title: str, lead: str, steps: Sequence[WorksheetStep]) -> str:
@@ -108,10 +131,23 @@ def worksheet(title: str, lead: str, steps: Sequence[WorksheetStep]) -> str:
     )
 
 
-def status_bar(fields: Sequence[str]) -> str:
-    """The foot of the screen: the condition on show, in one line."""
-    cells = "".join(f'<span class="hs-status-cell">{escape(field)}</span>' for field in fields)
+def status_bar(fields: Sequence[str | Row]) -> str:
+    """The foot of the screen: the condition on show, in one line.
+
+    A plain string is one cell. A :class:`Row` is a cell whose value is set off from
+    its label and colour-coded the way the panels colour theirs — the bar's Rs reads
+    on the same traffic light as the rail's (#25).
+    """
+    cells = "".join(
+        f'<span class="hs-status-cell">{_status_cell(field)}</span>' for field in fields
+    )
     return f'<div class="hs-status">{cells}</div>'
+
+
+def _status_cell(field: str | Row) -> str:
+    if isinstance(field, str):
+        return escape(field)
+    return f"{escape(field.label)} <span{_style(field.colour)}>{escape(field.value)}</span>"
 
 
 def axis_strip_title(run_end: float, tallest_peak: float) -> str:

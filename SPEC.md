@@ -94,10 +94,10 @@ pairs and no tG slider**: two controls for one number pushed the inline warnings
 table cell steps with the keyboard, and the sweep a slider stood in for is the resolution map's job.
 The two candidate-control warnings (§6, 1 and 7) sit directly beneath the candidate table. (v0.1's
 rail carried scouting tG values, candidate tG and initial hold as sliders.) Below: a **Method
-summary** panel (peaks fitted, untracked count, minimum Rs and its critical pair, run time, minimum
-k) and a **Selected peak** panel (tR, k at elution, W½, N and where it came from, log10 k0, S, Rs to
-either neighbour). A **tabbed main view** holds resolution map,
-table of peaks, fit parameters and resolution. The **chromatogram is pinned beneath the tabs**,
+summary** panel (peaks fitted, untracked count, minimum Rs and its critical pair, programme length,
+last peak, minimum k) and a **Selected peak** panel (tR, k at elution, W½, N and where it came from,
+log10 k0, S, Rs to either neighbour). A **tabbed main view** opens on the table of peaks, then fit
+parameters, resolution, and the resolution map last. The **chromatogram is pinned beneath the tabs**,
 always visible. A **status bar** at the foot carries the condition on show.
 
 Carried forward from the prototype: numbered 1→4 worksheet guidance as the **empty state**;

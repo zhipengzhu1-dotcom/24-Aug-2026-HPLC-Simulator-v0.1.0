@@ -16,9 +16,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
+from pandas.io.formats.style import Styler
 
 from app.diagnostics import CompositionWindow, Diagnostic, Diagnostics
 from app.entry import ProgrammePoint, ScoutingEntry
+from app.panels import resolution_cell_style
 from app.pipeline import Cockpit, PeakOutcome
 from hplcsim.model import (
     PeakRow,
@@ -273,6 +275,22 @@ def resolution_frame(cockpit: Cockpit, diagnostics: Diagnostics) -> pd.DataFrame
         ],
         columns=RESOLUTION_COLUMNS,
     )
+
+
+def styled_resolution_frame(cockpit: Cockpit, diagnostics: Diagnostics) -> Styler:
+    """:func:`resolution_frame` with its Rs column coloured like the rail's Min. Rs (#25).
+
+    A Styler is the one way ``st.dataframe`` takes per-cell colour, and it is pandas,
+    which is why it is made here and not in the entry point. The numbers and their
+    display format are untouched; what a test reads back through ``AppTest`` is the
+    plain frame, and the colour travels beside it as CSS.
+    """
+    return resolution_frame(cockpit, diagnostics).style.map(_rs_cell, subset=["Rs"])
+
+
+def _rs_cell(value: Any) -> str:
+    # A Styler hands its function the cell as a bare scalar; the Rs column is float.
+    return resolution_cell_style(float(value))
 
 
 def window_position_label(window: CompositionWindow) -> str:

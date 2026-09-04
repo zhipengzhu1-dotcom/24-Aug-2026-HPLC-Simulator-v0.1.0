@@ -17,7 +17,7 @@ diagnostics have a logic layer to attach to.
 Layout follows the instrument software this tool sits beside (DryLab and its
 relatives), at the driver's direction: a narrow left rail carrying the condition — the
 scouting programme and the candidate programme as two No. / Time / %B tables (v0.2,
-#45, #73) — and its summary, a tabbed main view with the resolution map first, the
+#45, #73) — and its summary, a tabbed main view opening on the table of peaks, the
 chromatogram pinned underneath, and a status bar at the foot.
 
 Panels are filled out of render order. Streamlit containers are reserved first and
@@ -167,6 +167,11 @@ _INDICATIVE_SHORT = (
 # read as a field if it did.
 _INDICATIVE_STATUS = "Rs indicative — not decision-grade"
 
+# What a data grid shows for a missing value. Streamlit's default is the word "None",
+# in spare rows and unfilled optional columns alike; the frames' dtypes were never the
+# cause (#25). Both dynamic-row editors pass this.
+_BLANK_CELL = ""
+
 # The same downgrade reached by the other road (SPEC §6): no method-level guard fired,
 # but a peak in the critical pair carries a low-k0 or wash-eluted badge, which downgrades
 # the pairs that peak is in and only those. Its own reason, because the stamp's sentence
@@ -257,8 +262,11 @@ def main() -> None:
 
     with main_view:
         worksheet_slot = st.container()
-        map_tab, peaks_tab, fit_tab, resolution_tab = st.tabs(
-            ["Resolution map", "Table of peaks", "Fit parameters", "Resolution"]
+        # Data first (#25): the map is a deliberately empty frame until v0.7 draws it,
+        # and a new session used to open on that one tab with nothing in it. SPEC §7
+        # fixes what the tabs hold, not their order.
+        peaks_tab, fit_tab, resolution_tab, map_tab = st.tabs(
+            ["Table of peaks", "Fit parameters", "Resolution", "Resolution map"]
         )
         with peaks_tab:
             rows = _peak_table()
@@ -301,7 +309,7 @@ def main() -> None:
         # re-expression on s* with diagnostic 7 beside it once that lands.
         _notices(diagnostics.candidate)
     with summary_slot:
-        _summary_panels(cockpit, diagnostics)
+        _summary_panels(cockpit, diagnostics, inputs.programme_length)
     with peaks_tab:
         _entry_notes(cockpit, diagnostics)
     with map_tab:
@@ -666,6 +674,7 @@ def _peak_table() -> list[PeakRow]:
         key=screen_state.claim(Keys.peak_table(screen_state.nonce(Keys.PEAK_TABLE_NONCE))),
         num_rows="dynamic",
         width="stretch",
+        placeholder=_BLANK_CELL,
         # Compact rows (#62): the peak table shares the screen with the pinned
         # chromatogram and the axis strip, and Streamlit's default row spends a third of
         # their budget on four peaks. The column names are the frame's own and are not
@@ -779,6 +788,7 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
         num_rows="dynamic",
         hide_index=True,
         width="stretch",
+        placeholder=_BLANK_CELL,
         row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             tables.T_CANDIDATE: _time_column(_CANDIDATE_TIME_PX),
@@ -863,14 +873,14 @@ def _worksheet(steps: Sequence[Step]) -> None:
     )
 
 
-def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
+def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics, programme_length: float) -> None:
     """What the condition on screen comes to, and then one peak in detail."""
     if cockpit.blocked is not None:
         st.error(cockpit.blocked)
         return
     indicative = critical_pair_is_indicative(cockpit, diagnostics)
     st.markdown(
-        panels.panel("Method summary", _summary_rows(cockpit, indicative)),
+        panels.panel("Method summary", _summary_rows(cockpit, indicative, programme_length)),
         unsafe_allow_html=True,
     )
     _peak_detail(cockpit, diagnostics)
@@ -881,14 +891,16 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     _indicative_caption(diagnostics, indicative)
 
 
-def _summary_rows(cockpit: Cockpit, indicative: bool) -> list[Row]:
+def _summary_rows(cockpit: Cockpit, indicative: bool, programme_length: float) -> list[Row]:
     resolution = cockpit.resolution
     if resolution is None or not resolution.peaks:
         return []
 
     rows = [Row("Peaks fitted", str(len(resolution.peaks)))]
     if cockpit.entry.untracked_count:
-        rows.append(Row("Untracked", str(cockpit.entry.untracked_count), colour="#c77700"))
+        rows.append(
+            Row("Untracked", str(cockpit.entry.untracked_count), colour=panels.CAUTION_COLOUR)
+        )
 
     critical = resolution.critical_pair
     if critical is not None:
@@ -898,16 +910,24 @@ def _summary_rows(cockpit: Cockpit, indicative: bool) -> list[Row]:
         # about rather than over the whole panel, and the caption beneath says why.
         mark = " (indicative)" if indicative else ""
         rows += [
-            Row(f"Min. Rs{mark}", f"{critical.rs:.2f}", panels.resolution_colour(critical.rs)),
+            _rs_row(f"Min. Rs{mark}", critical.rs),
             Row(f"Critical pair{mark}", f"{critical.earlier.name} / {critical.later.name}"),
         ]
+    # Beside tG and the hold, a "run time" read as the programmed method length; what
+    # was shown was where the last band landed. Both are wanted, under their own names
+    # (#25). The last peak can sit past the programme's end — a wash-eluted band does.
     rows += [
-        Row("Run time", f"{max(p.retention.t_r for p in resolution.peaks):.2f} min"),
+        Row("Programme length", f"{programme_length:.2f} min"),
+        Row("Last peak", f"{max(p.retention.t_r for p in resolution.peaks):.2f} min"),
         Row("Min. k", f"{min(p.retention.k_e for p in resolution.peaks):.2f}"),
     ]
     if cockpit.defaulted_width_names:
         rows.append(
-            Row("N estimated for", f"{len(cockpit.defaulted_width_names)} peak(s)", "#c77700")
+            Row(
+                "N estimated for",
+                f"{len(cockpit.defaulted_width_names)} peak(s)",
+                panels.CAUTION_COLOUR,
+            )
         )
     return rows
 
@@ -935,7 +955,7 @@ def _peak_detail(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
             Row("S", f"{s_base10_from_s_e(fit.params.s_e):.2f}"),
         ]
     before, after = _neighbouring_resolution(cockpit, name)
-    rows.append(Row("Rs before/after", f"{_rs_text(before)} / {_rs_text(after)}"))
+    rows += [_rs_row("Rs to previous", before), _rs_row("Rs to next", after)]
     st.markdown(panels.panel("Selected peak", rows), unsafe_allow_html=True)
     # SPEC §6's per-peak badges (diagnostics 2 and 4), in full, for the peak on show.
     # The table of peaks carries the same badges as one scannable word per row.
@@ -951,8 +971,11 @@ def _neighbouring_resolution(cockpit: Cockpit, name: str) -> tuple[float | None,
     return before, after
 
 
-def _rs_text(rs: float | None) -> str:
-    return "—" if rs is None else f"{rs:.2f}"
+def _rs_row(label: str, rs: float | None) -> Row:
+    """An Rs on the panel, coloured like every other Rs on the screen; a dash for none."""
+    if rs is None:
+        return Row(label, "—")
+    return Row(label, f"{rs:.2f}", panels.resolution_colour(rs))
 
 
 # --- the main view --------------------------------------------------------------------
@@ -1061,7 +1084,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
         },
     )
     st.dataframe(
-        tables.resolution_frame(cockpit, diagnostics),
+        tables.styled_resolution_frame(cockpit, diagnostics),
         width="stretch",
         hide_index=True,
         row_height=panels.TABLE_ROW_HEIGHT_PX,
@@ -1076,10 +1099,10 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
 def _status_bar(
     cockpit: Cockpit, inputs: CockpitInputs, read: ProgrammeRead, diagnostics: Diagnostics
 ) -> None:
-    fields = [_candidate_line(inputs, read)]
+    fields: list[str | Row] = [_candidate_line(inputs, read)]
     critical = cockpit.resolution.critical_pair if cockpit.resolution else None
     if critical is not None:
-        fields.append(f"Rs {critical.rs:.2f}")
+        fields.append(_rs_row("Rs", critical.rs))
     fields.append(_programme_kind(inputs))
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.
