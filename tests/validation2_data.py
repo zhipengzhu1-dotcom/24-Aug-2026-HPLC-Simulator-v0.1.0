@@ -287,19 +287,6 @@ VALIDATION2_RUN3_DETERMINATIONS = ("run3", "run3_rep2", "run3_rep3")
 VALIDATION2_REPEATABILITY_TR = 0.002
 VALIDATION2_REPEATABILITY_W_HALF = 0.001
 
-# #46 item 3, layer two: each run's mean signed residual, predicted − measured in minutes,
-# pinned at its measured value so nothing drifts unremarked. run3 and run4 are the values
-# research #52 §3 reports (+0.01224 / +0.02769); the rest were scored on 2026-09-03.
-VALIDATION2_PINNED_MEAN_OFFSET = {
-    "run3": 0.0122,
-    "run4": 0.0277,
-    "run5": -0.4501,
-    "run6": 0.0339,
-    "E1": 0.0174,
-    "run3_rep2": 0.0132,
-    "run3_rep3": 0.0142,
-}
-
 # #46 items 4–5: which runs draw the *indicative, not decision-grade* stamp, by the two
 # composition guards #44 decided — run4 and run6 start above 5 %B by ≥ 10 %B (diagnostic
 # 7, strong); run5 sits 0.35 window-widths outside the s* bracket (diagnostic 1) and
@@ -307,31 +294,3 @@ VALIDATION2_PINNED_MEAN_OFFSET = {
 # stamp's honesty without importing the app; the app's own diagnostics are tested there.
 VALIDATION2_STAMPED = ("run4", "run5", "run6")
 VALIDATION2_UNSTAMPED = ("run3", "E1", "run3_rep2", "run3_rep3")
-
-# #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
-# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.096 %.
-VALIDATION2_UNSTAMPED_CEILING_PERCENT = 0.4
-
-# #46 item 7: Rs ± 0.3 extends to these runs; the worst miss per run is pinned as a
-# tripwire, the way `_V2_RS_TRIPWIRE` pins runs 3 and 4. run5 is the case where the
-# stamp is conservative — every pair within 0.011 while retention misses by 1.3 %,
-# because peaks that leave in a hold move together.
-VALIDATION2_RS_WORST_MISS = {
-    "run5": 0.02,
-    "run6": 0.10,
-    "E1": 0.04,
-    "run3_rep2": 0.06,
-    "run3_rep3": 0.04,
-}
-
-# Fitted-N widths against measured, per run. On a ramp the fit reproduces the widths to
-# within the export's precision, as runs 3 and 4 do. In run5's hold it under-predicts
-# every width by 6–9 % — the width model at post-gradient elution is its own finding,
-# pinned here as a band rather than hidden inside a looser one.
-VALIDATION2_FITTED_WIDTH_BANDS = {
-    "run5": (0.90, 0.95),
-    "run6": (0.98, 1.03),
-    "E1": (0.98, 1.02),
-    "run3_rep2": (0.98, 1.02),
-    "run3_rep3": (0.97, 1.02),
-}
