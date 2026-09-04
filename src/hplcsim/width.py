@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run
-from hplcsim.retention import Target, as_single_gradient, gradient_steepness, predict_retention
+from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run, Target, as_single_gradient
+from hplcsim.retention import gradient_steepness, predict_retention
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
 # A documented textbook basis for the default, not a fit to any one instrument —
@@ -152,7 +152,7 @@ def peak_width(
     ``target`` is a v0.1 :class:`~hplcsim.model.Gradient` or a v0.2
     :class:`~hplcsim.model.Programme`; a one-segment programme takes this same path and
     is bitwise identical to its gradient, and two or more segments raise
-    :class:`~hplcsim.retention.MultiSegmentNotSupportedError` (the walker, #70).
+    :class:`~hplcsim.model.MultiSegmentNotSupportedError` (the walker, #70).
 
     ``plate_count`` is a number the user supplied, a :class:`FittedPlateCount` from
     that peak's own measured widths, or ``None`` for :func:`default_plate_count`.

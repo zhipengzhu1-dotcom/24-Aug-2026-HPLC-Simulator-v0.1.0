@@ -143,9 +143,11 @@ class Segment:
 class Leg:
     """One :class:`Segment` resolved against the composition it starts from.
 
-    The shape the piecewise walker (#70) and the per-segment diagnostics
-    (`#72 <https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/72>`_)
-    both read, so neither has to re-derive entry compositions from the segment list.
+    A segment records only where it ends, so nothing about it — not whether it is a
+    hold, not which way it runs — can be read without the composition it starts from.
+    Chaining that through the list is what :meth:`Programme.legs` does, and this is the
+    shape it hands back: the one the walker (#70) and the per-segment diagnostics (#72)
+    both read, so neither re-derives entry compositions for itself.
     """
 
     phi_start: float
@@ -159,7 +161,13 @@ class Leg:
 
     @property
     def is_hold(self) -> bool:
-        """A segment that repeats its entry composition is a hold (SPEC §3)."""
+        """A segment that repeats its entry composition is a hold (SPEC §3).
+
+        Exact equality, deliberately: a hold is the *same* composition, and the walker's
+        Δφ = 0 branch has to agree with this predicate exactly. A tolerance would open a
+        band where a leg reads as a hold while its steepness is non-zero, which is worse
+        than either answer alone.
+        """
         return self.phi_end == self.phi_start
 
 
@@ -220,10 +228,10 @@ class Programme:
     def as_gradient(self) -> Gradient | None:
         """The :class:`Gradient` this programme *is*, or ``None`` if it has two or more segments.
 
-        The exit side of the same correspondence as :meth:`from_gradient`, and the
-        single gate every v0.1 closed form is entered through: returning ``None``
-        rather than an approximation is what keeps a multi-segment programme from
-        being silently predicted as its first segment.
+        The exit side of the same correspondence as :meth:`from_gradient`. Total rather
+        than raising, because asking *whether* a programme is a single segment is a fair
+        question with a non-exceptional answer — the app's rail has to know without
+        catching. :func:`as_single_gradient` is the variant that refuses.
         """
         if len(self.segments) != 1:
             return None
@@ -279,3 +287,40 @@ class RetentionParams:
     def k_at(self, phi: float) -> float:
         """Retention factor at composition ``phi`` under the LSS model."""
         return math.exp(self.ln_k0 - self.s_e * (phi - self.phi_ref))
+
+
+# The two shapes a prediction target may take (SPEC §4). v0.1's :class:`Gradient` and
+# v0.2's :class:`Programme` are accepted wherever either is: the programme lands beside
+# the gradient rather than replacing it, so no v0.1 caller changes.
+Target = Gradient | Programme
+
+
+class MultiSegmentNotSupportedError(NotImplementedError):
+    """A programme of two or more segments reached a path that only knows one.
+
+    The piecewise walker that predicts them is #70. Until it lands, prediction refuses
+    by type rather than returning the number the first segment alone would give — a
+    wrong retention time is indistinguishable from a right one on screen, and a missing
+    feature should not be discoverable only by disagreeing with the instrument.
+    """
+
+
+def as_single_gradient(target: Target) -> Gradient:
+    """The one-segment gradient ``target`` is, or :class:`MultiSegmentNotSupportedError`.
+
+    The single door every v0.1 closed form is entered through, so the refusal is stated
+    once and the bitwise identity of a one-segment programme is structural: it is not
+    *reproduced* by the gradient path, it *is* the gradient path. It sits here beside
+    :meth:`Programme.as_gradient` and :meth:`Programme.from_gradient` so the whole
+    correspondence between the two shapes is written down in one place.
+    """
+    if isinstance(target, Gradient):
+        return target
+    gradient = target.as_gradient()
+    if gradient is None:
+        raise MultiSegmentNotSupportedError(
+            f"a {len(target.segments)}-segment programme needs the piecewise walker "
+            "(issue #70), which is not built yet; only one-segment programmes and "
+            "gradients can be predicted today"
+        )
+    return gradient

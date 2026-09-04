@@ -15,8 +15,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from hplcsim.model import Method, RetentionParams
-from hplcsim.retention import RetentionResult, Target, predict_retention
+from hplcsim.model import Method, RetentionParams, Target
+from hplcsim.retention import RetentionResult, predict_retention
 from hplcsim.width import FittedPlateCount, PeakWidth, peak_width
 
 

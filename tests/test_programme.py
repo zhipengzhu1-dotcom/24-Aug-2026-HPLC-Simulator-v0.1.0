@@ -11,13 +11,15 @@ import math
 import pytest
 
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Gradient, Programme, RetentionParams, Segment
-from hplcsim.resolution import resolution_table
-from hplcsim.retention import (
+from hplcsim.model import (
+    Gradient,
     MultiSegmentNotSupportedError,
-    gradient_end_time,
-    predict_retention,
+    Programme,
+    RetentionParams,
+    Segment,
 )
+from hplcsim.resolution import resolution_table
+from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.width import peak_width
 from lab_data import (
     LAB_METHOD,
@@ -241,3 +243,18 @@ def test_a_gradient_still_predicts_unchanged() -> None:
     params = RetentionParams(ln_k0=math.log(500.0), s_e=10.0, phi_ref=0.05)
     gradient = Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.5)
     assert predict_retention(params, LAB_METHOD, gradient).regime == "gradient"
+
+
+def test_the_refusal_is_the_same_class_from_either_module() -> None:
+    """The re-export is a convenience, not a second type.
+
+    ``predict_retention`` raises it, so code that catches it will reach for it on
+    :mod:`hplcsim.retention`; it is defined on :mod:`hplcsim.model` with the rest of the
+    Gradient/Programme correspondence (SPEC §9). Two classes with one name would make
+    an ``except`` silently miss.
+    """
+    from hplcsim import model, retention
+
+    assert retention.MultiSegmentNotSupportedError is model.MultiSegmentNotSupportedError
+    assert retention.as_single_gradient is model.as_single_gradient
+    assert retention.Target is model.Target
