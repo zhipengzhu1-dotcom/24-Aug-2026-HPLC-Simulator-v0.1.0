@@ -66,6 +66,7 @@ from hplcsim.model import (
     Gradient,
     Method,
     Run,
+    Target,
     log10_k0_from_ln_k0,
     percent_b_from_phi,
     s_base10_from_s_e,
@@ -1095,7 +1096,7 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     )
 
 
-def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics) -> None:
+def _status_bar(cockpit: Cockpit, candidate: Target, diagnostics: Diagnostics) -> None:
     fields = [
         f"tG {candidate.t_gradient:g} min; hold {candidate.t_init:g} min",
         f"%B {percent_b_from_phi(candidate.phi0):g} → {percent_b_from_phi(candidate.phif):g}",

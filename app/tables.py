@@ -57,6 +57,8 @@ PREDICTION_COLUMNS = (COMPOUND, "tR (min)", "W½ (min)", "k at elution", FLAGS)
 _BADGE_LABEL = {
     "early_eluter": "early eluter",
     "prediction_crossing": "crossing",
+    "low_k0": "low k0",
+    "wash_eluted": "wash-eluted",
 }
 
 

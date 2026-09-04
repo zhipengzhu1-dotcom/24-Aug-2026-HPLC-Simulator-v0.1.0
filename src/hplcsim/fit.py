@@ -21,8 +21,10 @@ from hplcsim.width import FittedPlateCount, fit_plate_count
 
 # Guillarme et al.'s constraint on the closed form: below log10 k0 = 2.1 the large-k0
 # approximation is worth tens of percent in S, so the data are thin even though the
-# root-find itself stays exact (research doc §3.2).
-_LOW_K0_LOG10 = 2.1
+# root-find itself stays exact (research doc §3.2). Public because SPEC §6 diagnostic 8
+# applies the same floor at the *candidate's* start (#72), and a second copy of the
+# number in the app layer is how a floor drifts.
+LOW_K0_LOG10 = 2.1
 
 # SPEC §4's spacing-ratio tiers — "warning < 2.5, strong < 1.2, never a hard block".
 # Research doc §7.2's table is the evidence behind them: at β = 1.2 a 0.6 s timing
@@ -113,7 +115,7 @@ def fit_peak(peak: Peak, method: Method, run1: Run, run2: Run) -> FitResult:
         abs(predict_retention(params, method, run.gradient).t_r - t_r)
         for run, t_r in ((run1, peak.t_r_run1), (run2, peak.t_r_run2))
     )
-    low_k0 = log10_k0_from_ln_k0(params.ln_k0) < _LOW_K0_LOG10
+    low_k0 = log10_k0_from_ln_k0(params.ln_k0) < LOW_K0_LOG10
     beta_spacing = classify_spacing(oriented.beta)
     return FitResult(
         params=params,

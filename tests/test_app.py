@@ -835,7 +835,7 @@ def test_a_badged_peak_is_labelled_in_the_flags_column() -> None:
     frame = prediction_frame(cockpit, diagnose(inputs, cockpit).badges)
 
     flags = dict(zip(frame[COMPOUND], frame[FLAGS], strict=True))
-    assert flags["Early"] == "early eluter"
+    assert flags["Early"] == "early eluter; low k0"  # k0 at 5 %B is below 8's floor too
     assert flags["Unknown-1"] == ""
 
 

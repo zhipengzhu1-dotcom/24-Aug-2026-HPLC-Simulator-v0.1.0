@@ -20,6 +20,7 @@ Cockpit can produce (two scouting runs at the same tG) is still
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -32,9 +33,21 @@ from hplcsim.dead_time import (
     check_measured_t0,
     classify_marker,
 )
-from hplcsim.fit import BETA_STRONG, BETA_WARNING, classify_spacing
-from hplcsim.model import Gradient, Method, Peak, Run
-from hplcsim.resolution import PredictedPeak
+from hplcsim.fit import BETA_STRONG, BETA_WARNING, LOW_K0_LOG10, FitResult, classify_spacing
+from hplcsim.model import (
+    Gradient,
+    Leg,
+    Method,
+    Peak,
+    Programme,
+    RetentionParams,
+    Run,
+    Target,
+    as_programme,
+    log10_k0_from_ln_k0,
+    percent_b_from_phi,
+)
+from hplcsim.resolution import PredictedPeak, ResolutionTable
 
 Severity = Literal["info", "warning", "strong"]
 
@@ -44,7 +57,11 @@ Severity = Literal["info", "warning", "strong"]
 # nothing. SPEC §6's six, then SPEC §5's two entry checks, then SPEC §4's two checks on
 # a measured dead time (ticket #24).
 Code = Literal[
-    "tg_extrapolation",
+    "steepness_extrapolation",
+    "phi0_departure",
+    "low_k0",
+    "wash_eluted",
+    "indicative",
     "early_eluter",
     "beta_spacing",
     "prediction_crossing",
@@ -56,11 +73,29 @@ Code = Literal[
     "t0_marker",
 ]
 
-# SPEC §6 diagnostic 1: "info flag when candidate tG leaves [tG1, tG2]; strong warning
-# beyond ~2× outside". "Outside" is multiplicative — the candidate's tG against the
-# bracket edge it passed — which is the measure the spec's own evidence is quoted in:
-# the lab dataset's tG = 60 sits 1.33× outside a 15–45 bracket and scored 0.34%.
-STRONG_EXTRAPOLATION = 2.0
+# SPEC §6 diagnostic 1, re-expressed on s* by #44 and re-pinned by #55: the overshoot
+# past the scouting bracket is measured in *window-widths* — log_β(s*_edge / s*_cand),
+# the distance beyond every peak's calibrated composition window in units of that
+# window's own width (composition-extrapolation.md §7.3; S_e cancels, so it is one
+# method-level number). Gentle to ~0.6, strong beyond. 0.6 is v0.1 continuity: log₃ 2 =
+# 0.63 is the "~2× outside" tier v0.1 users already had on plain tG extrapolation. Not a
+# number the data set — no on-ramp run sits beyond 0.26 window-widths (SPEC §6 item 1).
+STRONG_WINDOW_WIDTHS = 0.6
+
+# SPEC §6 diagnostic 7 (#44, re-pinned by #55): Δφ0 = φ0,cand − φ0,scout, the candidate's
+# *start* against the scouting start, as a fraction like every φ in the engine. Gentle
+# for any departure above; strong from +10 %B, the smallest departure measured — at that
+# step the retention error doubled on both samples and reached λ = 1.58 on one. No run
+# sits between 0 and +10 %B, so the tier is untested below it.
+STRONG_PHI0_DEPARTURE = 0.10
+
+# What was *observed* on this instrument from scouting pairs starting at 5 %B — mean
+# |ΔtR| at the scouting start, at +10 %B and at +20 %B, both samples, at t0 = 0.525
+# (SPEC §6 item 7, #55). Quoted in the message as an observation, never evaluated for
+# the candidate: a rule right on one sample is wrong on the other.
+_LADDER_THREE_PEAK = (0.42, 0.82, 1.67)
+_LADDER_FOUR_PEAK = (0.11, 0.23, 0.26)
+_LADDER_SCOUTING_START_PERCENT_B = 5.0
 
 # SPEC §5's area-share tracking check: "default threshold ~30% relative change". The
 # change is measured against the *first* run's share, which is the larger base for a
@@ -106,6 +141,14 @@ class Diagnostics:
     # SPEC §4's checks on the *measured* t0 — beside the field that holds it, in the
     # sidebar, since they are about the number typed rather than about any result.
     method: tuple[Diagnostic, ...] = ()
+    # SPEC §6's *indicative, not decision-grade* stamp (#44 decision 8): on Min. Rs, the
+    # resolution tab and the status bar, in the manner of 6 — but its own field, not one
+    # of ``stamps``, because the two say different things on different surfaces and the
+    # t0 stamp's short form must not be painted for this one.
+    indicative: Diagnostic | None = None
+    # The per-peak composition-window readout for the fit-parameters tab (SPEC §6,
+    # presentation): the per-peak fact behind diagnostic 1, whose tier is method-level.
+    windows: tuple[CompositionWindow, ...] = ()
 
     @property
     def all(self) -> tuple[Diagnostic, ...]:
@@ -117,8 +160,81 @@ class Diagnostics:
             + self.stamps
             + self.entry
             + self.method
+            + _zero_or_one(self.indicative)
             + tuple(d for badges in self.badges.values() for d in badges)
         )
+
+    def indicative_pairs(self, pair: tuple[str, str]) -> bool:
+        """Whether the Rs of ``pair`` is indicative rather than decision-grade.
+
+        The stamp downgrades every pair; a low-k0 or wash-eluted badge downgrades only
+        the pairs involving that peak (SPEC §6, "What a prediction may claim").
+        """
+        if self.indicative is not None:
+            return True
+        return any(
+            badge.code in _PAIR_DOWNGRADING_BADGES
+            for name in pair
+            for badge in self.badges.get(name, ())
+        )
+
+
+# The per-peak badges that downgrade a peak's own Rs pairs (SPEC §6 items 8 and 9).
+_PAIR_DOWNGRADING_BADGES: frozenset[str] = frozenset({"low_k0", "wash_eluted"})
+
+# The method-level guards whose strong tier drives the stamp (SPEC §6 items 1 and 7).
+_STAMPING_GUARDS: frozenset[str] = frozenset({"steepness_extrapolation", "phi0_departure"})
+
+WindowPosition = Literal["inside", "below", "above"]
+
+
+@dataclass(frozen=True)
+class CompositionWindow:
+    """One peak's calibrated composition window, and where the candidate puts it.
+
+    The window is [φ_e,run2, φ_e,run1] — the two elution compositions the fit was shown,
+    which is all it was shown (composition-extrapolation.md §7.1); its width is ln β / S_e
+    under the large-k0 law and is ~9 %B per peak on the 5 → 95 %B scouting pairs on
+    file, disjoint between peaks. ``candidate_phi_e`` is the composition at which the
+    candidate elutes this peak, read back from the predicted k at elution. Every value
+    is a fraction; the fit tab converts at its display boundary.
+    """
+
+    name: str
+    phi_low: float
+    phi_high: float
+    candidate_phi_e: float
+
+    @property
+    def width(self) -> float:
+        return self.phi_high - self.phi_low
+
+    @property
+    def position(self) -> WindowPosition:
+        if self.candidate_phi_e < self.phi_low - _WINDOW_EDGE_TOLERANCE:
+            return "below"
+        if self.candidate_phi_e > self.phi_high + _WINDOW_EDGE_TOLERANCE:
+            return "above"
+        return "inside"
+
+    @property
+    def window_widths_outside(self) -> float:
+        """The per-peak distance past the window, in units of this window's width.
+
+        The same number as the method-level one for every peak when the candidate is a
+        ramp (S_e cancels, research doc §7.3); different, and honest, for a peak brought
+        off in a hold.
+        """
+        if self.position == "below":
+            return (self.phi_low - self.candidate_phi_e) / self.width
+        if self.position == "above":
+            return (self.candidate_phi_e - self.phi_high) / self.width
+        return 0.0
+
+
+# A candidate on a scouting run's own edge elutes at that run's φ_e up to rounding; the
+# tolerance keeps "on the edge" inside, which is where the bracket puts it too.
+_WINDOW_EDGE_TOLERANCE = 1e-9
 
 
 def diagnose(
@@ -153,21 +269,32 @@ def diagnose(
             method=dead_time_notices(inputs.method),
         )
 
+    programme = as_programme(inputs.candidate)
+    candidate = (
+        *_zero_or_one(
+            _steepness_extrapolation(
+                inputs.method, programme, inputs.run1, inputs.run2, cockpit.resolution
+            )
+        ),
+        *_zero_or_one(_phi0_departure(programme, inputs.run1.gradient)),
+    )
     return Diagnostics(
-        candidate=_zero_or_one(_tg_extrapolation(inputs.candidate, inputs.run1, inputs.run2)),
+        candidate=candidate,
+        indicative=_indicative(candidate),
+        windows=_composition_windows(cockpit),
         fit=_zero_or_one(_beta_spacing(inputs.run1, inputs.run2)),
         stamps=_zero_or_one(_estimated_t0(inputs.method)),
         banners=_zero_or_one(_defaulted_widths(cockpit.defaulted_width_names)),
         entry=entry,
-        badges=_badges(cockpit, inputs.method, inputs.candidate),
+        badges=_badges(cockpit, inputs.method, programme),
         method=dead_time_notices(inputs.method),
     )
 
 
 def _badges(
-    cockpit: Cockpit, method: Method, candidate: Gradient
+    cockpit: Cockpit, method: Method, programme: Programme
 ) -> dict[str, tuple[Diagnostic, ...]]:
-    """SPEC §6's two per-peak diagnostics, one entry per predicted peak.
+    """SPEC §6's four per-peak diagnostics (2, 4, 8, 9), one entry per predicted peak.
 
     Every predicted peak gets a key, clean ones with an empty tuple, so the table and
     the selected-peak panel can read ``badges[name]`` for a row without asking first
@@ -175,13 +302,18 @@ def _badges(
     """
     if cockpit.resolution is None:
         return {}
-    early = _early_eluters(cockpit.resolution.peaks, method, candidate)
-    crossing = _prediction_crossings(cockpit)
+    peaks = cockpit.resolution.peaks
+    per_peak = (
+        _early_eluters(peaks, method, programme),
+        _prediction_crossings(cockpit),
+        _low_k0_at_start(cockpit, programme),
+        _wash_eluted(peaks, programme),
+    )
     return {
         peak.name: tuple(
-            found for found in (early.get(peak.name), crossing.get(peak.name)) if found is not None
+            found for found in (group.get(peak.name) for group in per_peak) if found is not None
         )
-        for peak in cockpit.resolution.peaks
+        for peak in peaks
     }
 
 
@@ -190,7 +322,7 @@ def _zero_or_one(diagnostic: Diagnostic | None) -> tuple[Diagnostic, ...]:
     return () if diagnostic is None else (diagnostic,)
 
 
-# --- diagnostic 1: how far outside the scouting bracket the candidate sits --------------
+# --- diagnostic 1: how far outside the scouting bracket the candidate's steepness sits ---
 
 
 def scouting_bracket(run1: Run, run2: Run) -> tuple[float, float]:
@@ -199,55 +331,260 @@ def scouting_bracket(run1: Run, run2: Run) -> tuple[float, float]:
     return lo, hi
 
 
-def extrapolation_factor(candidate: Gradient, run1: Run, run2: Run) -> float:
-    """How far past the nearer bracket edge the candidate sits, as a multiple.
+def steepness(method: Method, leg: Leg) -> float:
+    """s* = t0·|Δφ| / duration for one leg — the one number a candidate enters φ_e through.
 
-    1.0 anywhere inside the bracket, including on either edge. Multiplicative rather
-    than additive because gradient steepness b_e goes as 1/tG: a candidate 10 min past
-    a 15 min run is a different animal from one 10 min past a 120 min run, and the
-    ratio is what research doc §7.3's "predict inside the bracket" is really about.
+    composition-extrapolation.md §7.2: the elution composition depends on the candidate
+    only through s*, so the tG question and the composition question are one question.
+    Unsigned, because a bracket has no direction; the walker's signed b_e is a different
+    quantity with a different home (:func:`hplcsim.retention.segment_steepness`). Zero
+    for a hold.
     """
-    lo, hi = scouting_bracket(run1, run2)
-    t_gradient = candidate.t_gradient
-    if t_gradient > hi:
-        return t_gradient / hi
-    if t_gradient < lo:
-        return lo / t_gradient
-    return 1.0
+    return method.t0 * abs(leg.delta_phi) / leg.duration
 
 
-def _tg_extrapolation(candidate: Gradient, run1: Run, run2: Run) -> Diagnostic | None:
-    """SPEC §6 diagnostic 1, at the candidate controls."""
-    factor = extrapolation_factor(candidate, run1, run2)
-    if factor <= 1.0:
-        return None
-    lo, hi = scouting_bracket(run1, run2)
-    where = "longer" if candidate.t_gradient > hi else "shorter"
-    head = (
-        f"**Candidate tG {candidate.t_gradient:g} min is {factor:.2f}× outside the "
-        f"{lo:g}–{hi:g} min scouting bracket** ({where} than either scouting run)."
+def steepness_bracket(method: Method, run1: Run, run2: Run) -> tuple[float, float]:
+    """[s*₂, s*₁]: the steepnesses the scouting pair calibrated between, shallowest first."""
+    values = sorted(
+        steepness(method, leg)
+        for run in (run1, run2)
+        for leg in Programme.from_gradient(run.gradient).legs()
     )
-    if factor > STRONG_EXTRAPOLATION:
+    return values[0], values[-1]
+
+
+def window_widths_outside(method: Method, leg: Leg, run1: Run, run2: Run) -> float:
+    """How far past the scouting bracket ``leg``'s s* sits, in window-widths.
+
+    log_β(s*_edge / s*_cand) — research doc §7.3, where dividing the φ overshoot by the
+    peak's window width ln β / S_e cancels S_e, so the number is the same for every
+    peak. 0 inside the bracket and on its edges, and 0 for a hold: s* = 0 has no
+    position in a steepness bracket (SPEC §6 item 1, #58).
+    """
+    if leg.is_hold:
+        return 0.0
+    lo, hi = steepness_bracket(method, run1, run2)
+    s_star = steepness(method, leg)
+    if lo <= s_star <= hi:
+        return 0.0
+    edge = hi if s_star > hi else lo
+    beta = scouting_beta(run1, run2)
+    return abs(math.log(edge / s_star)) / math.log(beta)
+
+
+def _steepness_extrapolation(
+    method: Method,
+    programme: Programme,
+    run1: Run,
+    run2: Run,
+    resolution: ResolutionTable | None,
+) -> Diagnostic | None:
+    """SPEC §6 diagnostic 1, at the candidate controls.
+
+    Per ramp segment, tier from the worst segment *in which at least one peak is
+    predicted to elute* (#58): an inert trailing wash cannot fire it, and it is silent
+    when every peak leaves in a hold or after the programme ends. With nothing predicted
+    yet — no peak table, or no peak that fitted — there is no elution to attribute, so
+    every ramp is read: the candidate is the programme as typed, which is what a v0.1
+    session without peaks was told too.
+    """
+    legs = programme.legs()
+    predicted = resolution.peaks if resolution is not None else ()
+    eluting = {peak.retention.eluting_segment for peak in predicted} - {None}
+    if predicted:
+        read = [index for index in range(len(legs)) if index in eluting]
+    else:
+        read = [index for index, leg in enumerate(legs) if not leg.is_hold]
+    distances = {index: window_widths_outside(method, legs[index], run1, run2) for index in read}
+    if not distances or max(distances.values()) <= 0.0:
+        return None
+    worst = max(distances, key=lambda index: distances[index])
+    widths = distances[worst]
+    leg = legs[worst]
+    lo, hi = steepness_bracket(method, run1, run2)
+    s_star = steepness(method, leg)
+    where = "steeper" if s_star > hi else "shallower"
+
+    # The v0.1 reading of the same distance, kept where it still applies: one segment
+    # over the scouting range makes the s* ratio the tG ratio, and "1.33× outside the
+    # 15–45 min bracket" is the sentence v0.1 users already read.
+    single = programme.as_gradient()
+    scouting = run1.gradient
+    if single is not None and (single.phi0, single.phif) == (scouting.phi0, scouting.phif):
+        t_lo, t_hi = scouting_bracket(run1, run2)
+        factor = single.t_gradient / t_hi if single.t_gradient > t_hi else t_lo / single.t_gradient
+        longer = "longer" if single.t_gradient > t_hi else "shorter"
+        head = (
+            f"**Candidate tG {single.t_gradient:g} min is {factor:.2f}× outside the "
+            f"{t_lo:g}–{t_hi:g} min scouting bracket** ({longer} than either scouting run) — "
+            f"{widths:.2f} window-widths past the calibrated composition window of every peak."
+        )
+    else:
+        which = f"segment {worst + 1}" if len(legs) > 1 else "the candidate"
+        head = (
+            f"**The steepness of {which}, s* = {s_star:.4f}, is {widths:.2f} window-widths "
+            f"{where} than the scouting bracket** (s* {lo:.4f}–{hi:.4f}), past the "
+            "calibrated composition window of every peak that elutes on it."
+        )
+    if widths > STRONG_WINDOW_WIDTHS:
         return Diagnostic(
-            code="tg_extrapolation",
+            code="steepness_extrapolation",
             severity="strong",
             message=(
                 f"{head} That is well past the point where the fit is a prediction: "
                 "outside the bracket the LSS line is being extended, and log k against "
-                "%B is genuinely curved. Run a confirmation injection before committing "
-                "to this method, or move a scouting run out to meet it."
+                "%B is genuinely curved. Confirm by injection before committing to this "
+                "method, or move a scouting run out to meet it."
             ),
         )
     return Diagnostic(
-        code="tg_extrapolation",
+        code="steepness_extrapolation",
         severity="info",
         message=(
             f"{head} Modest extrapolation of this kind holds up on the validation "
-            "dataset — its held-out tG = 60 min run sits 1.33× outside a 15–45 min "
-            "bracket and predicted to 0.34%. Treat it as a prediction to confirm, not "
-            "as a reason to stop."
+            "dataset — its held-out tG = 60 min run sits 0.26 window-widths outside a "
+            "15–45 min bracket and predicted to 0.34%. Treat it as a prediction to "
+            "confirm, not as a reason to stop."
         ),
     )
+
+
+# --- diagnostic 7: the candidate's start against the scouting start ---------------------
+
+
+def phi0_departure(programme: Programme, scouting: Gradient) -> float:
+    """Δφ0 = φ0,cand − φ0,scout as a fraction, rounded so 0.15 − 0.05 is exactly 0.10.
+
+    The candidate's *start* only: a later segment that steps above the scouting start
+    earns no term, because every mechanism #52 left standing acts while the band sits
+    at the head of the column (#58). Binary floating point puts 0.15 − 0.05 a hair under
+    0.1, which would read a +10 %B departure as gentle; the rounding is to the ninth
+    decimal, the same place the display boundary rounds.
+    """
+    return round(programme.phi0 - scouting.phi0, 9)
+
+
+def _phi0_departure(programme: Programme, scouting: Gradient) -> Diagnostic | None:
+    """SPEC §6 diagnostic 7, at the candidate controls beside 1.
+
+    Method-level. Raising is gentle at any amount and strong from +10 %B; lowering is
+    gentle at any amount with no data either way. No correction is fitted and no
+    multiplier is evaluated — the message quotes the two ladders as observations from
+    5 %B starts, so a pair scouted elsewhere has the guard and not the numbers.
+    """
+    departure = phi0_departure(programme, scouting)
+    if departure == 0.0:
+        return None
+    sign = "+" if departure > 0.0 else "−"
+    start = percent_b_from_phi(programme.phi0)
+    scout = percent_b_from_phi(scouting.phi0)
+    head = (
+        f"**The candidate starts at {start:g} %B, a {sign}{percent_b_from_phi(abs(departure)):g} "
+        f"%B departure from the scouting start of {scout:g} %B.** The fit was never shown a "
+        "run starting anywhere else."
+    )
+    if departure < 0.0:
+        return Diagnostic(
+            code="phi0_departure",
+            severity="info",
+            message=(
+                f"{head} Lowering the start is a departure too, and there is no data either "
+                "way: no run on file started below its scouting start. Read the prediction "
+                "as one to confirm."
+            ),
+        )
+    three = _LADDER_THREE_PEAK
+    four = _LADDER_FOUR_PEAK
+    observed = (
+        "What was observed on this instrument, from scouting pairs starting at "
+        f"{_LADDER_SCOUTING_START_PERCENT_B:g} %B: the first 10 %B above the scouting start "
+        f"roughly doubled the retention error on both samples ({three[0]:.2f} → {three[1]:.2f} % "
+        f"on the three-peak sample, {four[0]:.2f} → {four[1]:.2f} % on the four-peak); beyond "
+        f"that, one sample kept doubling ({three[2]:.2f} % at +20 %B) and the other flattened "
+        f"({four[2]:.2f} %). An observation, not a rule. No correction is fitted and no "
+        "multiplier is evaluated for this candidate — the ladders were measured from "
+        f"{_LADDER_SCOUTING_START_PERCENT_B:g} %B starts, so a pair scouted elsewhere has the "
+        "guard and not the numbers."
+    )
+    if departure >= STRONG_PHI0_DEPARTURE:
+        return Diagnostic(
+            code="phi0_departure",
+            severity="strong",
+            message=(
+                f"{head} {observed} At +10 %B the retention error already stood at over one "
+                "peak width (λ = 1.58) on the three-peak sample: confirm by injection before "
+                "committing to this method."
+            ),
+        )
+    return Diagnostic(
+        code="phi0_departure",
+        severity="info",
+        message=(
+            f"{head} {observed} No run sits between the scouting start and +10 %B, so the "
+            "tier below +10 %B is untested: treat the prediction as one to confirm."
+        ),
+    )
+
+
+# --- the indicative stamp: what a prediction may claim (SPEC §6, #44 decision 8) -----------
+
+
+def _indicative(candidate: Sequence[Diagnostic]) -> Diagnostic | None:
+    """Strong on 1 or 7 stamps Rs and the critical pair *indicative, not decision-grade*.
+
+    Driven by the worse of the two guards; gentle on either leaves the numbers
+    unstamped. Retention times stay shown as numbers. Nowhere is curvature-corrected
+    accuracy claimed — two parameters cannot see curvature.
+    """
+    strong = [d for d in candidate if d.code in _STAMPING_GUARDS and d.severity == "strong"]
+    if not strong:
+        return None
+    reasons = []
+    for guard in strong:
+        if guard.code == "steepness_extrapolation":
+            reasons.append("the candidate's steepness is far outside the scouting bracket")
+        else:
+            reasons.append("the candidate starts well above the scouting start")
+    return Diagnostic(
+        code="indicative",
+        severity="strong",
+        message=(
+            "**Rs and the critical pair are indicative, not decision-grade** at this "
+            f"candidate: {_and_list(reasons)}, so the LSS line was never pinned where "
+            "these peaks are being predicted. The retention times stay shown as numbers "
+            "and nothing here is a curvature-corrected accuracy claim — two parameters "
+            "cannot see curvature. Confirm by injection before a method decision rests "
+            "on this resolution."
+        ),
+    )
+
+
+# --- the per-peak composition-window readout (SPEC §6, presentation) -----------------------
+
+
+def _composition_windows(cockpit: Cockpit) -> tuple[CompositionWindow, ...]:
+    """Each fitted peak's [φ_e,run2, φ_e,run1] and where the candidate elutes it."""
+    predicted = cockpit.predicted_by_name
+    return tuple(
+        _composition_window(peak.name, fit, predicted[peak.name].retention.k_e)
+        for peak, fit in cockpit.fitted
+        if peak.name in predicted
+    )
+
+
+def _composition_window(name: str, fit: FitResult, k_e: float) -> CompositionWindow:
+    low, high = sorted((fit.phi_e_run1, fit.phi_e_run2))
+    return CompositionWindow(
+        name=name,
+        phi_low=low,
+        phi_high=high,
+        candidate_phi_e=_elution_composition(fit.params, k_e),
+    )
+
+
+def _elution_composition(params: RetentionParams, k_e: float) -> float:
+    """φ_e from the k at elution — the LSS line read backwards, natural-log throughout."""
+    return params.phi_ref + (params.ln_k0 - math.log(k_e)) / params.s_e
 
 
 # --- diagnostic 3: the spacing of the two scouting runs ----------------------------------
@@ -276,7 +613,10 @@ def _beta_spacing(run1: Run, run2: Run) -> Diagnostic | None:
     )
     tail = (
         "Every peak is still fitted — this is a warning about how much the two runs "
-        "can tell you, not a refusal. About 3× is the usual recommendation."
+        "can tell you, not a refusal. About 3× is the usual recommendation. A narrow β "
+        "also narrows every peak's calibrated composition window, ln β / S_e — about "
+        "10 %B per peak on the 5 → 95 %B scouting pairs on file, and disjoint between "
+        "peaks."
     )
     if tier == "strong":
         return Diagnostic(
@@ -597,7 +937,7 @@ def _area_share_disagreements(entry: Entry, threshold: float) -> list[Diagnostic
 
 
 def _early_eluters(
-    peaks: Sequence[PredictedPeak], method: Method, candidate: Gradient
+    peaks: Sequence[PredictedPeak], method: Method, candidate: Target
 ) -> dict[str, Diagnostic]:
     """SPEC §6 diagnostic 2: "elutes near t0 + dwell + hold".
 
@@ -638,6 +978,80 @@ def _early_eluters(
                 "least reliable in the chromatogram — the LSS model assumes k ≫ 1 and "
                 "this peak is nowhere near it. Raise the starting %B, shorten the hold, "
                 "or read this peak's position as indicative."
+            ),
+            peaks=(peak.name,),
+        )
+    return found
+
+
+# --- diagnostic 8: k0 at the candidate's start below the closed form's floor ------------
+
+
+def _low_k0_at_start(cockpit: Cockpit, programme: Programme) -> dict[str, Diagnostic]:
+    """SPEC §6 diagnostic 8: log₁₀ k0 at the candidate's φ0 below Guillarme's 2.1 floor.
+
+    The engine's own floor (:data:`hplcsim.fit.LOW_K0_LOG10`), applied where the
+    candidate starts rather than where the scouting runs did — the fit's ``low_k0`` is
+    the same test at the scouting φ0. A limit of the closed form rather than of the
+    arithmetic, and one point of evidence: three-peak run 7 Unknown-1 at log₁₀ k0 ≈ 1.7
+    had the dataset's worst λ, 1.90. One point, hence one tier.
+    """
+    found = {}
+    for peak, fit in cockpit.fitted:
+        log10_k0 = log10_k0_from_ln_k0(math.log(fit.params.k_at(programme.phi0)))
+        if log10_k0 >= LOW_K0_LOG10:
+            continue
+        found[peak.name] = Diagnostic(
+            code="low_k0",
+            severity="warning",
+            message=(
+                f"**{peak.name}: log₁₀ k0 = {log10_k0:.2f} at the candidate's "
+                f"{percent_b_from_phi(programme.phi0):g} %B start, below the {LOW_K0_LOG10:g} "
+                "floor** the LSS closed form needs. The one measured crossing on this "
+                "instrument — three-peak run 7 Unknown-1 at log₁₀ k0 ≈ 1.7 — had the "
+                "dataset's worst retention error in peak-width units (λ = 1.90). Read "
+                "this peak's position, and every Rs pair it is in, as indicative; a lower "
+                "starting %B brings it back inside the model."
+            ),
+            peaks=(peak.name,),
+        )
+    return found
+
+
+# --- diagnostic 9: peaks brought off in a later hold or after the programme ends ----------
+
+
+def _wash_eluted(peaks: Sequence[PredictedPeak], programme: Programme) -> dict[str, Diagnostic]:
+    """SPEC §6 diagnostic 9 (#58): the post-gradient regime — a *later* hold or after the end.
+
+    The initial hold is diagnostic 2's. Such a peak's retention rests on k extrapolated
+    to a composition the fit never saw. Evidence cutting both ways: three-peak run 6
+    Unknown-3 left in the wash at 46.8 min against a pre-registered 47.0 — the
+    extrapolation held on the one case measured, which is why this is one tier and not
+    a stamp; it was unmarked, which is why it exists.
+    """
+    legs = programme.legs()
+    found = {}
+    for peak in peaks:
+        if peak.retention.regime != "post_gradient":
+            continue
+        index = peak.retention.eluting_segment
+        composition = programme.phif if index is None else legs[index].phi_end
+        percent_b = percent_b_from_phi(composition)
+        if index is None:
+            where = f"after the programme ends, isocratically at its final {percent_b:g} %B"
+        else:
+            where = f"in the hold at {percent_b:g} %B (segment {index + 1})"
+        found[peak.name] = Diagnostic(
+            code="wash_eluted",
+            severity="warning",
+            message=(
+                f"**{peak.name} is brought off {where}**, not on a ramp: its retention time "
+                f"rests on k at {percent_b:g} %B, a composition the fit never saw, "
+                "extrapolated along the LSS line. The one "
+                "such case measured — three-peak run 6 Unknown-3, 46.8 min against a "
+                "pre-registered 47.0 — held; it was unmarked, which is why this badge "
+                "exists. Read the Rs pairs this peak is in as indicative."
             ),
             peaks=(peak.name,),
         )

@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 from statistics import fmean
 
 from hplcsim.fit import FitResult, fit_peak
-from hplcsim.model import Gradient, Method, Peak, Run, phi_from_percent_b
+from hplcsim.model import Gradient, Method, Peak, Run, Target, phi_from_percent_b
 from hplcsim.resolution import PredictedPeak, ResolutionTable, resolution_table
 
 
@@ -173,7 +173,7 @@ class CockpitInputs:
     method: Method
     run1: Run
     run2: Run
-    candidate: Gradient
+    candidate: Target
     rows: tuple[PeakRow, ...] = ()
     plate_count: float | None = None
 

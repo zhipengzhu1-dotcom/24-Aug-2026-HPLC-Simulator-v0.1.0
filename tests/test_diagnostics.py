@@ -17,7 +17,7 @@ from dataclasses import replace
 
 from app.diagnostics import (
     AREA_SHARE_THRESHOLD,
-    STRONG_EXTRAPOLATION,
+    STRONG_WINDOW_WIDTHS,
     Diagnostic,
     Diagnostics,
     diagnose,
@@ -100,7 +100,7 @@ def test_a_candidate_just_outside_the_bracket_is_an_info_flag_not_a_warning() ->
     """SPEC §6: "the near-bracket flag stays gentle" — the tG = 60 evidence, 0.34%."""
     inputs = _lab_inputs(candidate=Gradient(0.05, 0.95, t_gradient=60.0, t_init=0.5))
     (flag,) = _at(inputs).candidate
-    assert flag.code == "tg_extrapolation"
+    assert flag.code == "steepness_extrapolation"
     assert flag.severity == "info"
 
 
@@ -134,8 +134,8 @@ def test_the_extrapolation_flag_says_how_far_outside_the_candidate_sits() -> Non
 
 
 def test_the_strong_tier_starts_where_spec_6_puts_it() -> None:
-    """Pinned so "~2× outside" cannot drift into a different number unremarked."""
-    assert STRONG_EXTRAPOLATION == 2.0
+    """Pinned so "~0.6 window-widths" cannot drift into a different number unremarked."""
+    assert STRONG_WINDOW_WIDTHS == 0.6
 
 
 # --- the entry-side spacing ratio (SPEC §4, ticket #20's acceptance criteria) -----------
@@ -315,7 +315,9 @@ def test_a_peak_leaving_within_t0_of_the_gradient_arriving_gets_the_early_badge(
     """SPEC §6 diagnostic 2: "elutes near t0 + dwell + hold" — research doc §4.3's t'R < t0."""
     inputs = _lab_inputs(rows=_rows_predicted_at(LAB_RUN1, LAB_RUN2, [_EARLY, _SHALLOW_S]))
     badges = _at(inputs).badges
-    assert _codes(badges["Early"]) == ["early_eluter"]
+    # log10 k0 = 0.5 is also below diagnostic 8's floor — the same physics from the
+    # other side (SPEC §6 item 8), so both badges are right here.
+    assert _codes(badges["Early"]) == ["early_eluter", "low_k0"]
     assert _codes(badges["Shallow S"]) == []
 
 
@@ -338,7 +340,7 @@ def test_the_early_badge_is_about_the_candidate_not_the_scouting_runs() -> None:
     rows = _rows_predicted_at(LAB_RUN1, LAB_RUN2, [_MID, _SHALLOW_S])
     quick = _lab_inputs(rows=rows, candidate=Gradient(0.05, 0.95, 25.0, t_init=0.5))
     held = _lab_inputs(rows=rows, candidate=Gradient(0.05, 0.95, 25.0, t_init=6.0))
-    assert _codes(_at(quick).badges["Mid"]) == []
+    assert "early_eluter" not in _codes(_at(quick).badges["Mid"])
     assert "early_eluter" in _codes(_at(held).badges["Mid"])
 
 

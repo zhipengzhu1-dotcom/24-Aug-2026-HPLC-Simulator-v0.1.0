@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 
 from app.pipeline import CockpitInputs, PeakRow, split_rows
-from hplcsim.model import Gradient, Peak, Programme, percent_b_from_phi
+from hplcsim.model import Gradient, Peak, Programme, as_programme, percent_b_from_phi
 from hplcsim.session import Session, UntrackedPeak
 
 _FILENAME_FALLBACK = "hplcsim-session"
@@ -127,7 +127,7 @@ def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Ses
         runs=(inputs.run1, inputs.run2),
         peaks=entry.tracked,
         untracked=tuple(_as_untracked(row) for row in entry.untracked),
-        candidate=Programme.from_gradient(inputs.candidate),
+        candidate=as_programme(inputs.candidate),
         session_name=session_name,
         plate_count=_whole(inputs.plate_count),
     )
