@@ -1,4 +1,4 @@
-"""SPEC §5's entry checks and SPEC §6's six diagnostics, computed (ticket #20).
+"""SPEC §5's entry checks and SPEC §6's nine diagnostics, computed (tickets #20, #72).
 
 Streamlit-free, like the rest of the app's logic layer, and for a specific reason:
 every diagnostic here is a *threshold*, and a threshold whose only expression is a
@@ -7,10 +7,11 @@ numbers live here as named constants, `tests/test_diagnostics.py` pins them, and
 ``streamlit_app.py`` decides only where each one is painted.
 
 Placement is SPEC §6's own sentence, which is why :class:`Diagnostics` has the fields
-it has rather than one flat list: "per-peak badges (2, 4), fit-page notices (3),
-result banners (5), output stamps (6), candidate-control inline warnings (1)". The
-entry checks of SPEC §5 get a sixth field of their own, and the dead-time checks a
-seventh, painted beside the t0 field they are about.
+it has rather than one flat list: "per-peak badges (2, 4, 8, 9), fit-page notices (3),
+result banners (5), output stamps (6, and the indicative stamp), candidate-control
+inline warnings (1, 7)", plus the per-peak composition-window readout for the fit tab.
+The entry checks of SPEC §5 get a field of their own, and the dead-time checks another,
+painted beside the t0 field they are about.
 
 Nothing here blocks. CLAUDE.md's warnings-over-blocks posture is the whole shape of
 the module: :func:`diagnose` returns annotations, and the one impossibility the
@@ -54,8 +55,8 @@ Severity = Literal["info", "warning", "strong"]
 # Every diagnostic this module can emit. A Literal rather than a bare str because three
 # places downstream switch on it — the table's badge labels, the status bar's stamp, the
 # chromatogram's crossing caption — and a typo in any of them would silently match
-# nothing. SPEC §6's six, then SPEC §5's two entry checks, then SPEC §4's two checks on
-# a measured dead time (ticket #24).
+# nothing. SPEC §6's nine (v0.2's 1, 7, 8, 9 and the indicative stamp first), then SPEC
+# §5's two entry checks, then SPEC §4's two checks on a measured dead time (ticket #24).
 Code = Literal[
     "steepness_extrapolation",
     "phi0_departure",
@@ -96,6 +97,11 @@ STRONG_PHI0_DEPARTURE = 0.10
 _LADDER_THREE_PEAK = (0.42, 0.82, 1.67)
 _LADDER_FOUR_PEAK = (0.11, 0.23, 0.26)
 _LADDER_SCOUTING_START_PERCENT_B = 5.0
+
+# The method-level guards whose strong tier drives the indicative stamp (SPEC §6 items 1
+# and 7), and the per-peak badges that downgrade only a peak's own Rs pairs (items 8, 9).
+_STAMPING_GUARDS: frozenset[str] = frozenset({"steepness_extrapolation", "phi0_departure"})
+_PAIR_DOWNGRADING_BADGES: frozenset[str] = frozenset({"low_k0", "wash_eluted"})
 
 # SPEC §5's area-share tracking check: "default threshold ~30% relative change". The
 # change is measured against the *first* run's share, which is the larger base for a
@@ -164,7 +170,7 @@ class Diagnostics:
             + tuple(d for badges in self.badges.values() for d in badges)
         )
 
-    def indicative_pairs(self, pair: tuple[str, str]) -> bool:
+    def pair_is_indicative(self, pair: tuple[str, str]) -> bool:
         """Whether the Rs of ``pair`` is indicative rather than decision-grade.
 
         The stamp downgrades every pair; a low-k0 or wash-eluted badge downgrades only
@@ -179,13 +185,11 @@ class Diagnostics:
         )
 
 
-# The per-peak badges that downgrade a peak's own Rs pairs (SPEC §6 items 8 and 9).
-_PAIR_DOWNGRADING_BADGES: frozenset[str] = frozenset({"low_k0", "wash_eluted"})
-
-# The method-level guards whose strong tier drives the stamp (SPEC §6 items 1 and 7).
-_STAMPING_GUARDS: frozenset[str] = frozenset({"steepness_extrapolation", "phi0_departure"})
-
 WindowPosition = Literal["inside", "below", "above"]
+
+# A candidate on a scouting run's own edge elutes at that run's φ_e up to rounding; the
+# tolerance keeps "on the edge" inside, which is where the bracket puts it too.
+_WINDOW_EDGE_TOLERANCE = 1e-9
 
 
 @dataclass(frozen=True)
@@ -218,23 +222,18 @@ class CompositionWindow:
         return "inside"
 
     @property
-    def window_widths_outside(self) -> float:
+    def distance_in_widths(self) -> float:
         """The per-peak distance past the window, in units of this window's width.
 
-        The same number as the method-level one for every peak when the candidate is a
-        ramp (S_e cancels, research doc §7.3); different, and honest, for a peak brought
-        off in a hold.
+        The same number as the method-level :func:`window_widths_outside` for every peak
+        when the candidate is a ramp (S_e cancels, research doc §7.3); different, and
+        honest, for a peak brought off in a hold.
         """
         if self.position == "below":
             return (self.phi_low - self.candidate_phi_e) / self.width
         if self.position == "above":
             return (self.candidate_phi_e - self.phi_high) / self.width
         return 0.0
-
-
-# A candidate on a scouting run's own edge elutes at that run's φ_e up to rounding; the
-# tolerance keeps "on the edge" inside, which is where the bracket puts it too.
-_WINDOW_EDGE_TOLERANCE = 1e-9
 
 
 def diagnose(
@@ -390,9 +389,12 @@ def _steepness_extrapolation(
     """
     legs = programme.legs()
     predicted = resolution.peaks if resolution is not None else ()
-    eluting = {peak.retention.eluting_segment for peak in predicted} - {None}
     if predicted:
-        read = [index for index in range(len(legs)) if index in eluting]
+        read = sorted(
+            index
+            for index in {peak.retention.eluting_segment for peak in predicted}
+            if index is not None
+        )
     else:
         read = [index for index, leg in enumerate(legs) if not leg.is_hold]
     distances = {index: window_widths_outside(method, legs[index], run1, run2) for index in read}
@@ -479,9 +481,9 @@ def _phi0_departure(programme: Programme, scouting: Gradient) -> Diagnostic | No
     start = percent_b_from_phi(programme.phi0)
     scout = percent_b_from_phi(scouting.phi0)
     head = (
-        f"**The candidate starts at {start:g} %B, a {sign}{percent_b_from_phi(abs(departure)):g} "
-        f"%B departure from the scouting start of {scout:g} %B.** The fit was never shown a "
-        "run starting anywhere else."
+        f"**The candidate starts at {start:g} %B, a {sign}{abs(start - scout):g} %B departure "
+        f"from the scouting start of {scout:g} %B.** The fit was never shown a run starting "
+        "anywhere else."
     )
     if departure < 0.0:
         return Diagnostic(

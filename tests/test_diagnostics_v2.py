@@ -332,7 +332,7 @@ def test_the_initial_hold_is_diagnostic_2s_not_diagnostic_9s() -> None:
 def test_inside_the_bracket_at_the_scouting_start_nothing_is_stamped() -> None:
     diagnostics = _lab(_scouting(25.0))
     assert diagnostics.indicative is None
-    assert diagnostics.indicative_pairs(("Unknown-1", "Unknown-2")) is False
+    assert diagnostics.pair_is_indicative(("Unknown-1", "Unknown-2")) is False
 
 
 def test_gentle_on_1_or_7_leaves_the_numbers_unstamped() -> None:
@@ -353,17 +353,17 @@ def test_strong_on_1_stamps_too_and_the_ladder_is_the_worse_of_the_two() -> None
     diagnostics = _lab(_scouting(120.0))  # 0.89 window-widths, φ0 unchanged
     assert diagnostics.indicative is not None
     assert "steepness" in diagnostics.indicative.message
-    assert diagnostics.indicative_pairs(("Unknown-1", "Unknown-2")) is True
+    assert diagnostics.pair_is_indicative(("Unknown-1", "Unknown-2")) is True
 
 
 def test_a_badge_downgrades_only_the_pairs_involving_that_peak() -> None:
     diagnostics = _lab(LAB_RUN6_PROGRAMME)  # Unknown-3 wash-eluted; run 6 is also strong on 7
-    assert diagnostics.indicative_pairs(("Unknown-2", "Unknown-3")) is True
+    assert diagnostics.pair_is_indicative(("Unknown-2", "Unknown-3")) is True
     unstamped = _lab(Gradient(0.05, 0.55, 25.0, 0.5))  # same ramp from the scouting start
     assert unstamped.indicative is None
     assert list(_badges(unstamped, "wash_eluted")) == ["Unknown-3"]
-    assert unstamped.indicative_pairs(("Unknown-2", "Unknown-3")) is True
-    assert unstamped.indicative_pairs(("Unknown-1", "Unknown-2")) is False
+    assert unstamped.pair_is_indicative(("Unknown-2", "Unknown-3")) is True
+    assert unstamped.pair_is_indicative(("Unknown-1", "Unknown-2")) is False
 
 
 def test_the_stamp_never_claims_curvature_corrected_accuracy() -> None:
@@ -397,7 +397,7 @@ def test_the_readout_says_where_the_candidate_puts_each_peak() -> None:
     assert all(w.position == "below" for w in below.values())
     # 0.260–0.262 per peak against the research doc's 0.262: the exact LSS elution
     # composition against the large-k0 law the doc's number was worked with.
-    assert all(w.window_widths_outside == pytest.approx(0.262, abs=0.003) for w in below.values())
+    assert all(w.distance_in_widths == pytest.approx(0.262, abs=0.003) for w in below.values())
     above = {w.name: w for w in _lab(_scouting(7.0)).windows}
     assert all(w.position == "above" for w in above.values())
 
