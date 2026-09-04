@@ -1198,7 +1198,10 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
             st.session_state[key] = float(value)
     cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
     with cols[0]:
-        st.markdown(panels.axis_strip_title(view.run_x[1]), unsafe_allow_html=True)
+        st.markdown(
+            panels.axis_strip_title(view.run_x[1], view.run_y[1] / chromatogram.Y_HEADROOM),
+            unsafe_allow_html=True,
+        )
     for col, (label, key, _value, step, fmt) in zip(cols[1:], boxes, strict=False):
         with col:
             st.number_input(
@@ -1219,10 +1222,15 @@ def _mark_axis_touched() -> None:
 
 
 def _reset_axis_range() -> None:
-    """Back to the whole run. A callback, so it lands before the widgets are redrawn."""
+    """Back to the whole run. A callback, so it lands before the widgets are redrawn.
+
+    Clearing the touched flag is the whole of it: `_axis_controls` re-seeds every key
+    from the run whenever the flag is down. The keys are deliberately *not* popped —
+    popping them is the mechanism behind #57, since a key the browser still holds is
+    not re-pushed by a widget default, and leaving that call here would keep the bug one
+    refactor away from coming back on the Reset path.
+    """
     st.session_state[Keys.AXIS_TOUCHED] = False
-    for key in Keys.AXIS_KEYS:
-        st.session_state.pop(key, None)
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:

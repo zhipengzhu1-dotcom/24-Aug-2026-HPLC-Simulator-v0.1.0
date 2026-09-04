@@ -114,17 +114,19 @@ def status_bar(fields: Sequence[str]) -> str:
     return f'<div class="hs-status">{cells}</div>'
 
 
-def axis_strip_title(run_end: float) -> str:
-    """The axis strip's first cell: what the strip is, and where the run ends (#62).
+def axis_strip_title(run_end: float, tallest_peak: float) -> str:
+    """The axis strip's first cell: what the strip is, and what the run's own range is.
 
-    The strip is a fixed-height pinned row, so the sentence the collapsed expander used
-    to carry ("the run ends at … and the tallest peak reaches …") does not fit in it.
-    The one number a reader needs while typing an x end is where the run ends, so that
-    is the half that survives, under the strip's own title.
+    The strip is a fixed-height row, so the sentence the collapsed expander used to
+    carry does not fit in it as prose. What it said that a reader needs is the two
+    numbers the boxes are typed against — where the run ends, for the x boxes, and how
+    tall the tallest peak is, for the y ones — so both survive, as a two-line note
+    under the strip's title rather than a sentence beside it (#62).
     """
     return (
         '<div class="hs-axis-title">Axis range</div>'
         f'<div class="hs-axis-note">run ends {escape(f"{run_end:.2f}")} min</div>'
+        f'<div class="hs-axis-note">top peak {escape(f"{tallest_peak:.4g}")}</div>'
     )
 
 
@@ -193,6 +195,11 @@ STYLE = _with_layout_numbers("""
     --hs-block-gap: __BLOCK_GAP__;
   }
 
+  /* 2.2rem on main, and it has to *grow* in the one ticket that is otherwise about
+     compaction (#62): the compact block gap lifts the whole main column, and at
+     2.2rem the tab row rides up under Streamlit's own floating header and is clipped
+     along its top edge. Checked in a browser at 1440 x 900 both ways. This is the
+     only padding in the stylesheet that #62 increases; it costs 14 px of page. */
   .block-container { padding-top: 3.1rem; padding-bottom: 1rem; max-width: 100%; }
 
   /* Compact spacing (#62). Streamlit's 1rem block gap, its element margins and its
@@ -271,9 +278,8 @@ STYLE = _with_layout_numbers("""
     position: sticky; bottom: calc(var(--hs-status-height) + var(--hs-axis-height));
     z-index: 80;
     background: var(--hs-surface); border-top: 1px solid #c3ceda; padding-top: 4px;
-    /* `flex: 0 0 auto` for the same reason the axis strip has it: the page is a column
-       flex container, so once the content overflows the viewport every child shrinks —
-       and what this block loses off its foot is the area caveat and the stamp, the two
+    /* `flex: 0 0 auto` for the reason given on `.st-key-hs-axis` below. What this block
+       loses off its foot without it is the area caveat and diagnostic 6's stamp, the two
        lines a trace must not be read without. `max-height` still caps it on a short
        viewport, which is the yielding the cap was put there for. */
     flex: 0 0 auto; max-height: 46vh; overflow: auto;

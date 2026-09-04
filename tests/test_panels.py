@@ -215,13 +215,16 @@ def test_the_axis_strip_is_pinned_at_the_height_python_says_it_is() -> None:
     assert "flex: 0 0 auto" in rule
 
 
-def test_the_axis_strip_says_where_the_run_ends() -> None:
-    """The one number a reader needs while typing an x end, in the strip's own cell."""
+def test_the_axis_strip_says_what_the_boxes_are_typed_against() -> None:
+    """The two numbers a reader needs while typing a range, in the strip's own cell."""
     from app.panels import axis_strip_title
 
-    html = axis_strip_title(25.126)
+    html = axis_strip_title(25.126, 0.10804)
     assert "Axis range" in html
+    # Both numbers the boxes are typed against: the x ones against the run's end, the y
+    # ones against the tallest peak. Losing either leaves half the strip unreferenced.
     assert "25.13 min" in html
+    assert "0.108" in html
 
 
 def test_the_block_gap_is_the_compact_one() -> None:
