@@ -4,6 +4,12 @@ The domain language of the HPLC gradient simulator: two scouting runs in, fitted
 
 ## Language
 
+### The peak table
+
+**Untracked row**:
+A non-blank peak table row missing one or both retention times. Visible and counted (SPEC §5), never sent to the fit, the prediction or the resolution table. It is a `PeakRow` that yields no `Peak` — not a separate kind of thing.
+_Avoid_: incomplete peak, partial peak, half-paired peak (a row, not a peak)
+
 ### Resolution and the optimizer
 
 **Critical pair**:

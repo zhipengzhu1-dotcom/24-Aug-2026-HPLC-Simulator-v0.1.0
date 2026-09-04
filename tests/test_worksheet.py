@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from app.pipeline import CockpitInputs, PeakRow, run_cockpit
+from app.pipeline import CockpitInputs, run_cockpit
 from app.worksheet import needs_guidance, worksheet_steps
-from hplcsim.model import Gradient, Method, Run
+from hplcsim.model import Gradient, Method, PeakRow, Run
 
 _SHARED = Gradient(phi0=0.05, phif=0.95, t_gradient=0.0, t_init=0.5)
 

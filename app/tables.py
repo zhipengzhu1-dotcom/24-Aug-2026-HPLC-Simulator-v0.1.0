@@ -18,8 +18,13 @@ from typing import Any
 import pandas as pd
 
 from app.diagnostics import CompositionWindow, Diagnostic, Diagnostics
-from app.pipeline import Cockpit, PeakOutcome, PeakRow, ProgrammePoint, ScoutingEntry
-from hplcsim.model import log10_k0_from_ln_k0, percent_b_from_phi, s_base10_from_s_e
+from app.pipeline import Cockpit, PeakOutcome, ProgrammePoint, ScoutingEntry
+from hplcsim.model import (
+    PeakRow,
+    log10_k0_from_ln_k0,
+    percent_b_from_phi,
+    s_base10_from_s_e,
+)
 from hplcsim.width import PlateCountSource
 
 COMPOUND = "Compound"
@@ -31,7 +36,7 @@ W_HALF_RUN1 = "W½ run 1 (min)"
 W_HALF_RUN2 = "W½ run 2 (min)"
 
 # Every optional per-peak measurement of SPEC §4, as a display column against the
-# :class:`~app.pipeline.PeakRow` field it fills. One mapping rather than a column list
+# :class:`~hplcsim.model.PeakRow` field it fills. One mapping rather than a column list
 # beside a hand-written constructor: adding a measurement is then one line here.
 _MEASUREMENT_FIELDS = {
     TR_RUN1: "t_r_run1",
@@ -156,7 +161,7 @@ def _na(value: float | None) -> Any:
 
 
 def peak_rows_from_frame(frame: pd.DataFrame) -> list[PeakRow]:
-    """The edited table back as :class:`~app.pipeline.PeakRow`, blanks and all.
+    """The edited table back as :class:`~hplcsim.model.PeakRow`, blanks and all.
 
     Nothing is dropped or validated here — :func:`~app.pipeline.split_rows` decides what
     counts as a row and what counts as tracked, so that judgement stays in one place.

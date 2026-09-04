@@ -35,10 +35,9 @@ from app.tables import (
     candidate_frame,
     scouting_frame,
 )
-from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
+from hplcsim.model import Gradient, Method, Peak, PeakRow, Programme, Run, Segment
 from hplcsim.session import (
     Session,
-    UntrackedPeak,
     save_session,
 )
 from lab_data import (
@@ -100,7 +99,7 @@ RESTORED = Session(
         Peak(t_r_run1=9.855, t_r_run2=20.831, name="Acetanilide"),
         Peak(t_r_run1=11.592, t_r_run2=25.932, name="Ketoprofen"),
     ),
-    untracked=(UntrackedPeak(name="Impurity B", t_r_run1=13.204),),
+    untracked=(PeakRow(name="Impurity B", t_r_run1=13.204),),
     candidate=Programme.from_gradient(replace(_RESTORED_GRADIENT, t_gradient=37.5, t_init=2.5)),
 )
 

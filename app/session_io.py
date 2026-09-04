@@ -3,7 +3,7 @@
 :class:`~hplcsim.session.Session` and :class:`~app.pipeline.CockpitInputs` describe the
 same experiment and disagree about almost every detail of how: the runs are a pair
 there and two fields here, N is a whole count there and a widget's float here, the peak
-table is split in two there and one list of :class:`~app.pipeline.PeakRow` here. Both
+table is split in two there and one list of :class:`~hplcsim.model.PeakRow` here. Both
 shapes are right for where they live, so the disagreement is translated in one place
 rather than negotiated at each call site.
 
@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import re
 
-from app.pipeline import CockpitInputs, PeakRow, split_rows
-from hplcsim.model import Peak, as_programme
-from hplcsim.session import Session, UntrackedPeak
+from app.pipeline import CockpitInputs, split_rows
+from hplcsim.model import Peak, PeakRow, as_programme
+from hplcsim.session import Session
 
 _FILENAME_FALLBACK = "hplcsim-session"
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -87,7 +87,7 @@ def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Ses
         method=inputs.method,
         runs=(inputs.run1, inputs.run2),
         peaks=entry.tracked,
-        untracked=tuple(_as_untracked(row) for row in entry.untracked),
+        untracked=entry.untracked,
         candidate=as_programme(inputs.target),
         session_name=session_name,
         plate_count=_whole(inputs.plate_count),
@@ -113,8 +113,7 @@ def inputs_from_session(session: Session) -> CockpitInputs:
 
 def peak_rows_from_session(session: Session) -> tuple[PeakRow, ...]:
     """Both of the file's peak tables back as the one table the editor shows."""
-    tracked: tuple[Peak | UntrackedPeak, ...] = session.peaks
-    return tuple(_as_row(peak) for peak in (*tracked, *session.untracked))
+    return tuple(_as_row(peak) for peak in session.peaks) + session.untracked
 
 
 def session_filename(session_name: str) -> str:
@@ -131,24 +130,12 @@ def session_filename(session_name: str) -> str:
 
 
 # The six measurements are copied field by field rather than by `getattr` over a list of
-# names. The loop reads shorter, but it types as `Any`, and these two functions are
-# exactly where a field silently going to the wrong slot would cost a measurement —
-# spelled out, mypy checks every one of them (CLAUDE.md: strict on `app/`).
+# names. The loop reads shorter, but it types as `Any`, and this function is exactly
+# where a field silently going to the wrong slot would cost a measurement — spelled out,
+# mypy checks every one of them (CLAUDE.md: strict on `app/`).
 
 
-def _as_untracked(row: PeakRow) -> UntrackedPeak:
-    return UntrackedPeak(
-        name=row.name,
-        t_r_run1=row.t_r_run1,
-        t_r_run2=row.t_r_run2,
-        area_run1=row.area_run1,
-        area_run2=row.area_run2,
-        w_half_run1=row.w_half_run1,
-        w_half_run2=row.w_half_run2,
-    )
-
-
-def _as_row(peak: Peak | UntrackedPeak) -> PeakRow:
+def _as_row(peak: Peak) -> PeakRow:
     return PeakRow(
         name=peak.name,
         t_r_run1=peak.t_r_run1,

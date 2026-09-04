@@ -13,7 +13,7 @@ from dataclasses import replace
 
 import pytest
 
-from app.pipeline import CockpitInputs, PeakRow, split_rows
+from app.pipeline import CockpitInputs, split_rows
 from app.session_io import (
     Restore,
     inputs_from_session,
@@ -21,7 +21,7 @@ from app.session_io import (
     session_filename,
     session_from_inputs,
 )
-from hplcsim.model import Gradient, Method, Programme, Run, Segment, phi_from_percent_b
+from hplcsim.model import Gradient, Method, PeakRow, Programme, Run, Segment, phi_from_percent_b
 from hplcsim.session import load_session, save_session
 
 _SHARED = Gradient(phi0=0.05, phif=0.95, t_gradient=0.0, t_init=0.5)

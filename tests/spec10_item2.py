@@ -12,8 +12,8 @@ at the measured t0 = 0.525.
 
 from __future__ import annotations
 
-from app.pipeline import CockpitInputs, PeakRow
-from hplcsim.model import Method, Peak, Programme, Run, Target
+from app.pipeline import CockpitInputs
+from hplcsim.model import Method, Peak, PeakRow, Programme, Run, Target
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
