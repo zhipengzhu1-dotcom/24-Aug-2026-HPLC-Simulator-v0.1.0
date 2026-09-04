@@ -1,12 +1,12 @@
 """The four tables the Cockpit shows, as DataFrames (SPEC §7).
 
 Pandas lives here and in nothing else; the numbers arrive already computed by
-:mod:`app.pipeline`. This module's only real work is the *display* boundary for
-the tables: the base-10 quantities a chromatographer reads (log10 k0, S, %B) are
-made from the natural-log ones the engine holds, through ``model``'s converters
-and never by hand (CLAUDE.md's log-convention rule). The left rail formats a few
-of those same quantities in ``streamlit_app.py``, calling the same converters —
-the rule holds, but this is not the only file that crosses the boundary.
+:mod:`app.entry` and :mod:`app.pipeline`. This module's only real work is the
+*display* boundary for the tables: the base-10 quantities a chromatographer reads
+(log10 k0, S, %B) are made from the natural-log ones the engine holds, through
+``model``'s converters and never by hand (CLAUDE.md's log-convention rule). The left
+rail formats a few of those same quantities in ``streamlit_app.py``, calling the same
+converters — the rule holds, but this is not the only file that crosses the boundary.
 """
 
 from __future__ import annotations

@@ -1,9 +1,10 @@
 """The Cockpit's logic layer, exercised without a browser (SPEC §7, ticket #19).
 
 Streamlit is nowhere in this file. `app.streamlit_app` is widgets and layout; every
-number it renders comes from `app.pipeline`, `app.chromatogram` and `app.tables`,
-which is what makes the ticket's third acceptance criterion — the app's run-3
-prediction against the engine's own fixtures — an assertion rather than a habit.
+number it renders comes from `app.entry`, `app.pipeline`, `app.chromatogram` and
+`app.tables`, which is what makes the ticket's third acceptance criterion — the
+app's run-3 prediction against the engine's own fixtures — an assertion rather than
+a habit.
 """
 
 from __future__ import annotations
