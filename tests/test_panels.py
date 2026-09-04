@@ -292,7 +292,8 @@ def test_nothing_sits_between_the_status_bars_block_and_the_foot_of_the_page() -
     distance, and a sticky box may not be positioned outside its containing block, so
     the bar stopped short by exactly their sum.
     """
-    assert "padding-bottom: 0" in _rule('div[data-testid="stMainBlockContainer"]')
+    # `.block-container` is `stMainBlockContainer`; one element, one declaration.
+    assert "padding-bottom: 0" in _rule(".block-container")
     outer = _rule('div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"]')
     assert "gap: 0" in outer
 

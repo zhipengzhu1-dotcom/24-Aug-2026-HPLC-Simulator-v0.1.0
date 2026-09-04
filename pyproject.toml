@@ -42,13 +42,21 @@ strict = true
 # root streamlit_app.py entry point is excluded, and only because Streamlit widget calls
 # would cost a type: ignore apiece. Nothing governed by a documented rule is allowed to
 # hide there: SPEC §4's two entry conversions (%B → φ, V_D ÷ F) live in app.pipeline.
-packages = ["hplcsim", "app"]
+# One `files` list rather than `packages` plus `files`: mypy accepts only one of the two,
+# and `scripts/` is a directory rather than an importable package.
+# `scripts/` is checked too. It holds the browser measurements that `AppTest` cannot make
+# (#79), which is exactly the code no other gate can see — the first version of that
+# script called `measure(page, "max")` against a `float | None` parameter and nothing
+# said a word. A directory outside every gate is where the next one hides.
+files = ["src/hplcsim", "app", "scripts"]
 mypy_path = ["src", "."]
 exclude = "^streamlit_app\\.py$"
 
 [[tool.mypy.overrides]]
 # plotly ships no type information; pandas' and streamlit's are followed normally.
-module = ["plotly.*"]
+# Playwright is not a project dependency at all — the browser check runs under
+# `uv run --with playwright`, so its stubs are absent from the ordinary environment.
+module = ["plotly.*", "playwright.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

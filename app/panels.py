@@ -200,7 +200,10 @@ STYLE = _with_layout_numbers("""
      2.2rem the tab row rides up under Streamlit's own floating header and is clipped
      along its top edge. Checked in a browser at 1440 x 900 both ways. This is the
      only padding in the stylesheet that #62 increases; it costs 14 px of page. */
-  .block-container { padding-top: 3.1rem; padding-bottom: 1rem; max-width: 100%; }
+  /* `padding-bottom` is 0, not the 1rem it was: this is `stMainBlockContainer`, the
+     status bar's containing block, and its offset is measured from the foot of the
+     page. Any padding here sits between the two and the bar stops that far short (#79). */
+  .block-container { padding-top: 3.1rem; padding-bottom: 0; max-width: 100%; }
 
   /* Compact spacing (#62). Streamlit's 1rem block gap, its element margins and its
      heading margins are what the white bands between the rail's panels were; the target
@@ -253,9 +256,15 @@ STYLE = _with_layout_numbers("""
   .st-key-hs-status div:has(.hs-status) { display: contents; }
 
   /* The status bar's pin line is the foot of the page, so nothing may sit between its
-     containing block and that foot. Two things did: the page's own bottom padding, and
-     the block gap above the row. */
-  div[data-testid="stMainBlockContainer"] { padding-bottom: 0; }
+     containing block and that foot. Two things did: the page's own bottom padding —
+     now 0 on `.block-container` above, which is the same element — and the block gap
+     above the row.
+
+     This gap rule reaches the *outermost* vertical block only, so what it closes is
+     every seam between the page's top-level blocks, not just the one above the bar:
+     the worksheet, the two columns and the status bar now sit flush. The rows inside
+     the columns keep `--hs-block-gap`, which is why the chromatogram's offset still
+     has to carry one (see its rule). */
   div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] { gap: 0; }
 
   .hs-panel {
@@ -327,7 +336,10 @@ STYLE = _with_layout_numbers("""
        are stretched to equal height, so when the rail is the taller one its extra height
        lands as free space at the foot of this column — and a sticky row is never pushed
        *below* its natural position, so at full scroll both rows floated that far above
-       the status bar. `margin-top: auto` collects the slack above them instead. */
+       the status bar. `margin-top: auto` collects the slack above them instead, which
+       does change the resting picture: the white space that used to sit under the axis
+       strip now sits between the tab body and the plot. That is the better place for it,
+       because it is the pinned rows that must reach the foot. */
     margin-top: auto;
     background: var(--hs-surface); border-top: 1px solid #c3ceda; padding-top: 4px;
     /* `flex: 0 0 auto` for the reason given on `.st-key-hs-axis` below. What this block

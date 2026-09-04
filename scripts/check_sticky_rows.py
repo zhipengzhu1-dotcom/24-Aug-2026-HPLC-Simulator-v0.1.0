@@ -27,7 +27,8 @@ import argparse
 import json
 import pathlib
 import sys
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 # The rows of SPEC §7, foot of the screen upward, with the class the app addresses each
 # by. `app/panels.py` sets the offsets; this only has to know which boxes to measure.
@@ -44,12 +45,68 @@ SCROLLPORT = "section.stMain"
 # of rounding is ordinary; anything more is the row moving with the page.
 TOLERANCE_PX = 2.0
 
+# Below this much scroll travel the check proves nothing: with nothing to scroll past, a
+# row that cannot pin looks exactly like one that can. Two of the three rows are about
+# 120 px of stacked height, so a page that overflows by less than a third of that has no
+# room to show a failure.
+MIN_USEFUL_TRAVEL_PX = 40.0
+
 # The browser already on this machine. The pip package's expected build moves faster than
 # the cache, so the launch names the cached binary rather than downloading a new one.
 CACHED_CHROMIUM = (
     "~/Library/Caches/ms-playwright/chromium_headless_shell-1223"
     "/chrome-headless-shell-mac-arm64/chrome-headless-shell"
 )
+
+
+def browser_binary() -> pathlib.Path:
+    """The cached headless build, or a message naming what to install.
+
+    The path is machine-specific by design — the pip package's expected build moves
+    faster than the cache, so naming the cached one is what avoids a download on every
+    run. When it is not there, say so rather than letting Playwright fail with its own
+    "run playwright install" banner, which points at the *newer* build and would leave
+    two copies on disk.
+    """
+    binary = pathlib.Path(CACHED_CHROMIUM).expanduser()
+    if not binary.is_file():
+        raise SystemExit(
+            f"no cached browser at {binary}\n"
+            "Install one with `uv run --with playwright playwright install chromium`, "
+            "then point CACHED_CHROMIUM at whatever landed under "
+            "~/Library/Caches/ms-playwright."
+        )
+    return binary
+
+
+@dataclass(frozen=True)
+class Rect:
+    """One row's box in scrollport coordinates, and the offset it asked to sit at."""
+
+    top: float
+    bottom: float
+    height: float
+    offset: float
+    """The row's own computed `bottom`, i.e. how far above the foot it asked to be."""
+
+
+@dataclass(frozen=True)
+class Sample:
+    """Every row's box at one scroll offset, with the scrollport it was measured in."""
+
+    label: str
+    port_height: float
+    scroll_height: float
+    rows: dict[str, Rect]
+
+    @property
+    def travel(self) -> float:
+        return self.scroll_height - self.port_height
+
+    def wanted(self, name: str) -> float:
+        """Where this row's foot belongs: the foot of the scrollport, less its offset."""
+        return self.port_height - self.rows[name].offset
+
 
 # The row list crosses into the browser as JSON, not as a Python repr: a repr'd tuple
 # is a comma expression in JavaScript, not an array, so `for (const [a, b] of ...)`
@@ -74,37 +131,32 @@ _MEASURE = """
 """
 
 
-def measure(page: Any, scroll_top: float | None) -> dict[str, Any]:
+ScrollTo = float | Literal["max"]
+
+
+def measure(page: Any, label: str, scroll_to: ScrollTo) -> Sample:
     """Every row's rectangle, in scrollport coordinates, at one scroll offset."""
-    if scroll_top is not None:
-        page.evaluate(
-            "([sel, top]) => { const p = document.querySelector(sel);"
-            " p.scrollTop = top === 'max' ? p.scrollHeight : top; }",
-            [SCROLLPORT, scroll_top],
-        )
-        page.wait_for_timeout(400)
+    page.evaluate(
+        "([sel, top]) => { const p = document.querySelector(sel);"
+        " p.scrollTop = top === 'max' ? p.scrollHeight : top; }",
+        [SCROLLPORT, scroll_to],
+    )
+    page.wait_for_timeout(400)
     script = _MEASURE % (json.dumps(SCROLLPORT), json.dumps([list(r) for r in ROWS]))
-    return dict(page.evaluate(script))
+    raw = page.evaluate(script)
+    return Sample(
+        label=label,
+        port_height=float(raw["port"]["height"]),
+        scroll_height=float(raw["port"]["scrollHeight"]),
+        rows={
+            name: Rect(**{k: float(v) for k, v in raw[name].items()})
+            for name, _selector in ROWS
+            if raw.get(name) is not None
+        },
+    )
 
 
-def expected_bottoms(sample: dict[str, Any]) -> dict[str, float]:
-    """Where each row's bottom edge belongs: the foot of the scrollport, less its offset.
-
-    Read from the row's own computed `bottom` rather than summed from the heights of the
-    rows beneath it. Those two agreed until the chromatogram's offset gained the block
-    gap that separates it from the axis strip, at which point the summed version was
-    simply wrong by one gap. Whether the offsets themselves are the right ones is
-    `tests/test_panels.py`'s question; this one asks only whether each row *reaches* the
-    place it asks for, which is the whole of #79.
-    """
-    return {
-        name: sample["port"]["height"] - sample[name]["offset"]
-        for name, _selector in ROWS
-        if sample.get(name) is not None
-    }
-
-
-def stacking_faults(label: str, sample: dict[str, Any]) -> list[str]:
+def stacking_faults(sample: Sample) -> list[str]:
     """The rows must sit in SPEC §7's order, not overlap, and all be on screen.
 
     A row that reaches its own offset is still wrong if the offsets put two of them on
@@ -112,42 +164,40 @@ def stacking_faults(label: str, sample: dict[str, Any]) -> list[str]:
     the picture as well as against itself.
     """
     faults = []
-    for name, _selector in ROWS:
-        row = sample.get(name)
-        if row is None:
-            continue
-        if row["bottom"] > sample["port"]["height"] + TOLERANCE_PX:
-            faults.append(f"{label}: {name} hangs below the fold")
-        if row["top"] < -TOLERANCE_PX:
-            faults.append(f"{label}: {name} is cut off at the top")
+    for name, rect in sample.rows.items():
+        if rect.bottom > sample.port_height + TOLERANCE_PX:
+            faults.append(f"{sample.label}: {name} hangs below the fold")
+        if rect.top < -TOLERANCE_PX:
+            faults.append(f"{sample.label}: {name} is cut off at the top")
     for (lower, _a), (upper, _b) in zip(ROWS, ROWS[1:], strict=False):
-        low, up = sample.get(lower), sample.get(upper)
-        if low is None or up is None:
-            continue
-        if up["bottom"] > low["top"] + TOLERANCE_PX:
-            faults.append(f"{label}: {upper} overlaps {lower}")
+        low, up = sample.rows.get(lower), sample.rows.get(upper)
+        if low is not None and up is not None and up.bottom > low.top + TOLERANCE_PX:
+            faults.append(f"{sample.label}: {upper} overlaps {lower}")
     return faults
 
 
-def report(samples: list[tuple[str, dict[str, Any]]]) -> list[str]:
+def report(samples: list[Sample]) -> list[str]:
     """Every row that failed to hold its place, worded for the issue's own table."""
     failures = []
-    for label, sample in samples:
-        wanted = expected_bottoms(sample)
+    for sample in samples:
         for name, _selector in ROWS:
-            row = sample.get(name)
-            if row is None:
-                failures.append(f"{label}: {name} is not on the page at all")
+            rect = sample.rows.get(name)
+            if rect is None:
+                failures.append(f"{sample.label}: {name} is not on the page at all")
                 continue
-            drift = row["bottom"] - wanted[name]
+            wanted = sample.wanted(name)
+            drift = rect.bottom - wanted
             verdict = "held" if abs(drift) <= TOLERANCE_PX else "MOVED"
             print(
-                f"  {label:<14} {name:<14} top {row['top']:7.1f}  bottom {row['bottom']:7.1f}"
-                f"  wanted {wanted[name]:7.1f}  drift {drift:+7.1f}  {verdict}"
+                f"  {sample.label:<14} {name:<14} top {rect.top:7.1f}"
+                f"  bottom {rect.bottom:7.1f}  wanted {wanted:7.1f}"
+                f"  drift {drift:+7.1f}  {verdict}"
             )
             if verdict == "MOVED":
-                failures.append(f"{label}: {name} sits {drift:+.0f} px from its pinned position")
-        failures.extend(stacking_faults(label, sample))
+                failures.append(
+                    f"{sample.label}: {name} sits {drift:+.0f} px from its pinned position"
+                )
+        failures.extend(stacking_faults(sample))
     return failures
 
 
@@ -172,29 +222,30 @@ def main() -> int:
         return 2
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            executable_path=str(pathlib.Path(CACHED_CHROMIUM).expanduser())
-        )
+        browser = pw.chromium.launch(executable_path=str(browser_binary()))
         page = browser.new_page(viewport={"width": args.width, "height": args.height})
         page.goto(f"http://localhost:{args.port}/", wait_until="networkidle")
-        page.wait_for_timeout(2000)
         page.set_input_files(
             'section[data-testid="stFileUploaderDropzone"] input[type=file]', str(session)
         )
-        page.wait_for_timeout(6000)
+        # Wait on the thing being measured rather than on a clock: the pinned rows only
+        # exist once a session has been read and a chromatogram drawn, and a fixed sleep
+        # long enough for a slow machine is wasted on every fast one.
+        page.wait_for_selector(".st-key-hs-chromatogram", timeout=30_000)
+        page.wait_for_selector(".hs-status", timeout=30_000)
+        page.wait_for_timeout(1500)
 
-        samples = [("at rest", measure(page, 0))]
-        port = samples[0][1]["port"]
-        travel = port["scrollHeight"] - port["height"]
+        samples = [measure(page, "at rest", 0.0)]
+        first = samples[0]
         print(
-            f"\nviewport {args.width}x{args.height} · scrollport {port['height']:.0f} px"
-            f" · content {port['scrollHeight']:.0f} px · travel {travel:.0f} px\n"
+            f"\nviewport {args.width}x{args.height} · scrollport {first.port_height:.0f} px"
+            f" · content {first.scroll_height:.0f} px · travel {first.travel:.0f} px\n"
         )
-        if travel < 40:
+        if first.travel < MIN_USEFUL_TRAVEL_PX:
             print("the page barely overflows, so there is nothing to scroll past —")
             print("shorten the viewport or load a session with more peaks.\n")
-        samples.append(("mid scroll", measure(page, travel / 2.0)))
-        samples.append(("at the foot", measure(page, "max")))
+        samples.append(measure(page, "mid scroll", first.travel / 2.0))
+        samples.append(measure(page, "at the foot", "max"))
 
         failures = report(samples)
         if args.shot:
