@@ -1150,18 +1150,23 @@ def test_validation2_offset_growth_is_not_explained_by_any_dwell_error() -> None
     The argument is one derivative. For these strongly-retained peaks ∂tR/∂τ = 1 − k_e/k0
     is within 0.25% of 1 at both conditions (worst 0.223%, run4), so *any* dwell error
     shifts both runs by the same number of minutes. Two offsets differing by a factor
-    of 2.3 therefore cannot both come from one wrong dwell — no value of V_D fits them.
-    That is a reason to leave V_D at the instrument's 0.375 mL, not one to revisit it.
+    of 2.3 therefore cannot both come from one wrong dwell — closing the 0.0155 min gap
+    between them by dwell alone would take δτ ≈ 9.7 min, about 3.9 mL of V_D (research
+    #52 §2.1).
 
     The derivative is asserted to the 0.25% the sentence above claims, not looser: a
     tolerance wider than the claim would let the claim rot while the test still passed.
     (The bound was written as 0.2% before it was ever asserted; tightening the test to
     match found run4 at 0.223% and the prose was corrected, not the tolerance.)
 
-    Note the scope of the derivative argument. It holds *here* because every peak is
-    strongly retained at both conditions. It does not transfer to campaign #27, where
-    k_e/k0 reaches ~9% at φ0 = 25 %B; there the dwell hypothesis fails for a different
-    reason — no single V_D fits #27 and this sample at once.
+    **Insensitivity is this sample's argument, not the general one** (research #52 §2.2,
+    restated under #54). It holds *here* because every peak is strongly retained at both
+    conditions. On campaign #27 it fails: k_e/k0 reaches 2.2% on run5 and 8.8% on run7
+    (Unknown-1, φ0 = 25 %B), and there a dwell error *does* close the residual growth,
+    at δτ ≈ 1.9–2.4 min. Read on #27 alone, the dwell hypothesis survives. What rules it
+    out is that no single δτ fits both samples — ≈ 2 min for #27 against ≈ 10 min here —
+    on one instrument with one V_D. That cross-dataset inconsistency, not insensitivity,
+    is the reason to leave V_D at the instrument's 0.375 mL rather than revisit it.
 
     Kept small and factual: this says what the residual is *not*. Naming what it is
     needs the injection #49 records, and is `docs/research/` work, not this test's.
