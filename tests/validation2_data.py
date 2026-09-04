@@ -19,7 +19,7 @@ reason `lab_data.py` keys campaign #27 by name.
 
 from __future__ import annotations
 
-from hplcsim.model import Gradient, Method, Peak, Run
+from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
 
 # No method.csv of its own: the driver confirmed 2026-09-02 that the column, instrument,
 # t0 and dwell are the parent `validation/method.csv` set. Restated here rather than
@@ -74,6 +74,23 @@ VALIDATION2_RUN4 = Run(Gradient(phi0=0.15, phif=0.95, t_gradient=20.0, t_init=0.
 # hold, flagged low-confidence — which is what happened. The engine sees only the single
 # ramp; the hold and the wash are what the programme table records and v0.1 cannot model.
 VALIDATION2_RUN5 = Run(Gradient(phi0=0.15, phif=0.55, t_gradient=25.0, t_init=0.5), name="run5")
+
+# The same file's full programme table: the ramp above, the 19.5 min hold at 55 %B, the
+# step to the 95 %B wash and 2.9 min there, the step down and 3.9 min at 25 %B. Every
+# peak leaves in the first hold, ~10 min before the wash arrives — which is what makes
+# this run SPEC §10 item 4(c)'s inertness case: the wash changes nothing.
+VALIDATION2_RUN5_PROGRAMME = Programme(
+    phi0=0.15,
+    t_init=0.5,
+    segments=(
+        Segment(25.0, 0.55),
+        Segment(19.5, 0.55),
+        Segment(0.1, 0.95),
+        Segment(2.9, 0.95),
+        Segment(0.1, 0.25),
+        Segment(3.9, 0.25),
+    ),
+)
 
 # 4peaks_run6.csv — raised start: 25 → 95 %B at tG 25. Δφ 0.70 and s* = 0.0168, inside
 # the scouting bracket, so this run moves φ0 by 20 %B with the composition interpolated.

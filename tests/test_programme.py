@@ -2,8 +2,8 @@
 
 Ticket #69 — the expand half of an expand–contract. What is asserted here is that the
 new type *is* the old one when it has a single segment (SPEC §10 item 4a, first half),
-that it refuses rather than guesses when it has more, and that its validation matches
-SPEC §4's posture. The piecewise walker that predicts two or more segments is #70.
+and that its validation matches SPEC §4's posture. Two or more segments predict through
+the piecewise walker (#70, ``tests/test_walker.py``); only the one-segment door refuses.
 """
 
 import math
@@ -184,7 +184,7 @@ def test_legs_chain_entry_compositions_through_the_programme() -> None:
     assert programme.t_gradient == pytest.approx(23.0)
 
 
-# --- a typed, named refusal — never a wrong number ---
+# --- two or more segments predict, through the walker; only the one-segment door refuses ---
 
 
 def _two_segment_programme() -> Programme:
@@ -202,30 +202,34 @@ def _two_segment_programme() -> Programme:
         ),
     ],
 )
-def test_two_segments_are_refused_by_type_not_mispredicted(name: str, call) -> None:
-    programme = _two_segment_programme()
-    with pytest.raises(MultiSegmentNotSupportedError) as raised:
-        call(LAB_PEAKS[0], LAB_METHOD, programme)
-    # The refusal names the walker ticket, so the message is a route and not a wall.
-    assert "#70" in str(raised.value)
-    assert "2-segment" in str(raised.value)
+def test_two_segments_are_predicted_not_refused(name: str, call) -> None:
+    """#69's refusal was a placeholder for the walker (#70); now every path predicts."""
+    call(LAB_PEAKS[0], LAB_METHOD, _two_segment_programme())
 
 
-def test_the_refusal_is_not_the_first_segments_answer() -> None:
-    """The failure mode this ticket exists to prevent: a plausible, wrong number.
+def test_two_segments_are_not_the_first_segments_answer() -> None:
+    """The failure mode #69's refusal existed to prevent: a plausible, wrong number.
 
-    Truncating a two-segment programme to its first segment predicts perfectly happily —
-    a finite time, in the gradient regime, with nothing on the result to say it ignored
-    half the method. That is why the refusal has to be a raise and not a flag.
+    Truncating a two-segment programme to its first segment predicts perfectly happily.
+    The walker's answer must be a different number — the second segment is a shallower
+    continuation here, so the band leaves later than the truncation says.
     """
     programme = _two_segment_programme()
     truncated = Gradient(phi0=0.05, phif=0.45, t_gradient=10.0, t_init=0.5)
 
-    silent_wrong_answer = predict_retention(LAB_PEAKS[0], LAB_METHOD, truncated)
-    assert math.isfinite(silent_wrong_answer.t_r)
+    truncated_answer = predict_retention(LAB_PEAKS[0], LAB_METHOD, truncated)
+    walked = predict_retention(LAB_PEAKS[0], LAB_METHOD, programme)
+    assert math.isfinite(walked.t_r)
+    assert walked.t_r != truncated_answer.t_r
 
-    with pytest.raises(MultiSegmentNotSupportedError):
-        predict_retention(LAB_PEAKS[0], LAB_METHOD, programme)
+
+def test_the_single_gradient_door_still_refuses_two_segments() -> None:
+    """The scouting-run paths only know one segment, and say so by type."""
+    from hplcsim.model import as_single_gradient
+
+    with pytest.raises(MultiSegmentNotSupportedError) as raised:
+        as_single_gradient(_two_segment_programme())
+    assert "2-segment" in str(raised.value)
 
 
 def test_gradient_end_time_answers_a_multi_segment_programme() -> None:

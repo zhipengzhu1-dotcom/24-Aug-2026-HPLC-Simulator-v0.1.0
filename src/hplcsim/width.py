@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run, Target, as_single_gradient
-from hplcsim.retention import gradient_steepness, predict_retention
+from hplcsim.model import Gradient, Method, Peak, Programme, RetentionParams, Run, Target
+from hplcsim.retention import predict_retention, segment_steepness
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
 # A documented textbook basis for the default, not a fit to any one instrument —
@@ -150,36 +150,41 @@ def peak_width(
     """Predict the width of one peak under ``target`` (research doc §5.1, §5.3).
 
     ``target`` is a v0.1 :class:`~hplcsim.model.Gradient` or a v0.2
-    :class:`~hplcsim.model.Programme`; a one-segment programme takes this same path and
-    is bitwise identical to its gradient, and two or more segments raise
-    :class:`~hplcsim.model.MultiSegmentNotSupportedError` (the walker, #70).
+    :class:`~hplcsim.model.Programme`; a one-segment programme is bitwise identical to
+    its gradient, and two or more segments take the walker's retention with G from the
+    segment the band leaves on.
 
     ``plate_count`` is a number the user supplied, a :class:`FittedPlateCount` from
     that peak's own measured widths, or ``None`` for :func:`default_plate_count`.
     """
-    gradient = as_single_gradient(target)
     n, plate_count_source = _resolve_plate_count(plate_count, method)
     if n <= 0.0:
         raise ValueError(f"plate count must be positive, got {n}")
 
-    retention = predict_retention(params, method, gradient)
+    retention = predict_retention(params, method, target)
 
     # §5.3: compression is a property of migrating through a rising composition.
     # A band that left before the ramp arrived, or that finishes isocratically at
     # φf after it ends, never experiences one — G = 1 for both (§4.1, §4.2).
     #
-    # The programme rule this generalises to is settled and waiting for the walker
-    # (SPEC §3, "Band compression for a programme"; #70): G comes from the *segment in
-    # which the band elutes* — p formed from that segment's own b_e,seg and the k at
-    # the band's entry to that segment — and G = 1 for a band leaving in a hold or
-    # after the last segment ends. The cumulative compression integral (Hao et al.
-    # Eq. 10) was considered and deferred; this rule is the approximation that ships,
-    # and on one segment it is exactly the branch below.
-    if retention.regime == "gradient":
-        b_e = gradient_steepness(method, gradient, params.s_e)
-        g = band_compression_factor(b_e, k0=params.k_at(gradient.phi0))
-    else:
-        g = 1.0
+    # For a programme, SPEC §3's rule ("Band compression for a programme"): G comes from
+    # the *segment in which the band elutes* — p formed from that segment's own b_e,seg
+    # and the k at the band's entry to that segment — and G = 1 for a band leaving in a
+    # hold or after the last segment ends. On one segment the entry composition is φ0
+    # and b_e,seg is b_e, so this is exactly the v0.1 branch. The cumulative compression
+    # integral (Hao et al. Eq. 10) was considered and deferred; this is the approximation
+    # that ships, unvalidated by any multi-segment width (SPEC §10 makes no Rs claim).
+    #
+    # A band leaving on a *descending* leg gets G = 1 as well: Poppe's G is derived for
+    # a composition rising across the band, and no source here extends it to a falling
+    # one, so nothing is claimed — the same posture as the hold.
+    g = 1.0
+    if retention.regime == "gradient" and retention.eluting_segment is not None:
+        programme = target if isinstance(target, Programme) else Programme.from_gradient(target)
+        leg = programme.legs()[retention.eluting_segment]
+        b_e = segment_steepness(method, leg, params.s_e)
+        if b_e > 0.0:
+            g = band_compression_factor(b_e, k0=params.k_at(leg.phi_start))
 
     sigma = g * method.t0 * (1.0 + retention.k_e) / math.sqrt(n)
     return PeakWidth(
