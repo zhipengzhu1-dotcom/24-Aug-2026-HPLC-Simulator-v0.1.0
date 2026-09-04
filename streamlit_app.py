@@ -17,7 +17,7 @@ diagnostics have a logic layer to attach to.
 Layout follows the instrument software this tool sits beside (DryLab and its
 relatives), at the driver's direction: a narrow left rail carrying the condition — the
 scouting programme and the candidate programme as two No. / Time / %B tables (v0.2,
-#45, #73) — and its summary, a tabbed main view with the resolution map first, the
+#45, #73) — and its summary, a tabbed main view opening on the table of peaks, the
 chromatogram pinned underneath, and a status bar at the foot.
 
 Panels are filled out of render order. Streamlit containers are reserved first and
@@ -167,6 +167,11 @@ _INDICATIVE_SHORT = (
 # read as a field if it did.
 _INDICATIVE_STATUS = "Rs indicative — not decision-grade"
 
+# What a data grid shows for a missing value. Streamlit's default is the word "None",
+# in spare rows and unfilled optional columns alike; the frames' dtypes were never the
+# cause (#25). Both dynamic-row editors pass this.
+_BLANK_CELL = ""
+
 # The same downgrade reached by the other road (SPEC §6): no method-level guard fired,
 # but a peak in the critical pair carries a low-k0 or wash-eluted badge, which downgrades
 # the pairs that peak is in and only those. Its own reason, because the stamp's sentence
@@ -304,7 +309,7 @@ def main() -> None:
         # re-expression on s* with diagnostic 7 beside it once that lands.
         _notices(diagnostics.candidate)
     with summary_slot:
-        _summary_panels(cockpit, diagnostics, _programme_length(inputs))
+        _summary_panels(cockpit, diagnostics, inputs.programme_length)
     with peaks_tab:
         _entry_notes(cockpit, diagnostics)
     with map_tab:
@@ -669,10 +674,7 @@ def _peak_table() -> list[PeakRow]:
         key=screen_state.claim(Keys.peak_table(screen_state.nonce(Keys.PEAK_TABLE_NONCE))),
         num_rows="dynamic",
         width="stretch",
-        # A cell with nothing in it shows nothing. Streamlit's default paints every
-        # missing value as the word "None", spare rows and unfilled optional columns
-        # alike — the frame's dtypes were never the cause (#25).
-        placeholder="",
+        placeholder=_BLANK_CELL,
         # Compact rows (#62): the peak table shares the screen with the pinned
         # chromatogram and the axis strip, and Streamlit's default row spends a third of
         # their budget on four peaks. The column names are the frame's own and are not
@@ -786,7 +788,7 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
         num_rows="dynamic",
         hide_index=True,
         width="stretch",
-        placeholder="",
+        placeholder=_BLANK_CELL,
         row_height=panels.TABLE_ROW_HEIGHT_PX,
         column_config={
             tables.T_CANDIDATE: _time_column(_CANDIDATE_TIME_PX),
@@ -889,12 +891,6 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics, programme_length
     _indicative_caption(diagnostics, indicative)
 
 
-def _programme_length(inputs: CockpitInputs) -> float:
-    """How long the pump programme runs: the initial hold plus every segment (min)."""
-    target = inputs.target
-    return target.t_init + target.t_gradient
-
-
 def _summary_rows(cockpit: Cockpit, indicative: bool, programme_length: float) -> list[Row]:
     resolution = cockpit.resolution
     if resolution is None or not resolution.peaks:
@@ -914,7 +910,7 @@ def _summary_rows(cockpit: Cockpit, indicative: bool, programme_length: float) -
         # about rather than over the whole panel, and the caption beneath says why.
         mark = " (indicative)" if indicative else ""
         rows += [
-            Row(f"Min. Rs{mark}", f"{critical.rs:.2f}", panels.resolution_colour(critical.rs)),
+            _rs_row(f"Min. Rs{mark}", critical.rs),
             Row(f"Critical pair{mark}", f"{critical.earlier.name} / {critical.later.name}"),
         ]
     # Beside tG and the hold, a "run time" read as the programmed method length; what
@@ -1087,12 +1083,8 @@ def _resolution_tab(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
             tables.FLAGS: st.column_config.TextColumn(width="small"),
         },
     )
-    # The Rs column reads on the same traffic light as the rail's Min. Rs (#25). A
-    # Styler is the one way `st.dataframe` takes per-cell colour; the numbers and their
-    # format are untouched, and the frame a test reads back is the plain one.
-    resolution = tables.resolution_frame(cockpit, diagnostics)
     st.dataframe(
-        resolution.style.map(panels.resolution_cell_style, subset=["Rs"]),
+        tables.styled_resolution_frame(cockpit, diagnostics),
         width="stretch",
         hide_index=True,
         row_height=panels.TABLE_ROW_HEIGHT_PX,
@@ -1110,7 +1102,7 @@ def _status_bar(
     fields: list[str | Row] = [_candidate_line(inputs, read)]
     critical = cockpit.resolution.critical_pair if cockpit.resolution else None
     if critical is not None:
-        fields.append(Row("Rs", f"{critical.rs:.2f}", panels.resolution_colour(critical.rs)))
+        fields.append(_rs_row("Rs", critical.rs))
     fields.append(_programme_kind(inputs))
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.

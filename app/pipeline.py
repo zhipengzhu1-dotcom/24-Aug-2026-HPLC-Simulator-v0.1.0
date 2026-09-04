@@ -107,6 +107,16 @@ class CockpitInputs:
         """What the engine predicts: the programme when there is one, else the gradient."""
         return self.candidate if self.programme is None else self.programme
 
+    @property
+    def programme_length(self) -> float:
+        """How long the pump programme runs: the initial hold plus every segment (min).
+
+        The method length a chromatographer writes down — not where the last band
+        lands, which can be later (#25). Here rather than in the entry point so the
+        one arithmetic on it is typed and tested with the rest of the inputs.
+        """
+        return self.target.t_init + self.target.t_gradient
+
 
 def single_segment_reading(programme: Programme) -> Gradient:
     """A programme as the one gradient the v0.1 surfaces can read (until #72).

@@ -660,7 +660,7 @@ def resolution_map_placeholder(
     candidate: tuple[float, float],
     height: int = 430,
 ) -> Any:
-    """The frame of the v0.2 resolution map, with nothing drawn inside it.
+    """The frame of the resolution map, with nothing drawn inside it.
 
     SPEC §11 puts the map — "max-of-minimum Rs over swept tG/hold" — in v0.7. The
     engine could already sweep it, which is exactly why this stays empty: a filled

@@ -45,7 +45,15 @@ from app.tables import (
     resolution_frame,
 )
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Peak, PeakRow, Programme, log10_k0_from_ln_k0, s_base10_from_s_e
+from hplcsim.model import (
+    Gradient,
+    Peak,
+    PeakRow,
+    Programme,
+    Segment,
+    log10_k0_from_ln_k0,
+    s_base10_from_s_e,
+)
 from hplcsim.resolution import PredictedPeak, ResolutionTable
 from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.session import Session, save_session
@@ -855,3 +863,22 @@ class TestT0Autofill:
 
     def test_an_empty_field_is_filled(self) -> None:
         assert t0_autofill(None, 0.4503, 0.4503) == pytest.approx(0.4503)
+
+
+# --- #25: the Method summary's programme length -----------------------------------------
+
+
+def test_the_programme_length_is_the_hold_plus_every_segment() -> None:
+    """What the pump runs — not where the last band lands, which can be later."""
+    gradient = Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5)
+    assert _lab_inputs(candidate=gradient).programme_length == pytest.approx(25.5)
+
+    two_segments = Programme(
+        phi0=0.05,
+        t_init=1.0,
+        segments=(Segment(duration=10.0, phif=0.40), Segment(duration=5.0, phif=0.95)),
+    )
+    inputs = CockpitInputs.with_programme(
+        method=LAB_METHOD, run1=LAB_RUN1, run2=LAB_RUN2, programme=two_segments
+    )
+    assert inputs.programme_length == pytest.approx(16.0)

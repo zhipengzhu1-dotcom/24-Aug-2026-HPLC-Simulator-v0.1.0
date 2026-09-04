@@ -25,6 +25,7 @@ import pytest
 
 from app.diagnostics import STRONG_WINDOW_WIDTHS
 from app.entry import ProgrammePoint, ScoutingEntry, points_from_programme
+from app.panels import resolution_cell_style, resolution_colour
 from app.screen_state import Keys
 from app.tables import (
     COMPOUND,
@@ -934,8 +935,6 @@ def _rs_frame(app: object) -> object:
 
 def test_every_rs_on_the_screen_is_coloured_on_the_one_threshold_function() -> None:
     """SPEC §7: Rs is colour-coded on the conventional reading — everywhere it is shown."""
-    from app.panels import resolution_cell_style, resolution_colour
-
     app = _loaded(_QUIET_CANDIDATE)
     frame = _rs_frame(app)
     rs_values = frame.value["Rs"].tolist()  # type: ignore[attr-defined]
