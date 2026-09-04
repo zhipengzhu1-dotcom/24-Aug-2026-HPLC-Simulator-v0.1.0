@@ -1,8 +1,10 @@
 # HPLC Gradient Method Simulator
 
-A Python HPLC simulator for working chromatographers, inspired by ACD/Labs Method Selection Suite: enter two gradient scouting runs, fit per-peak LSS retention parameters, and predict retention times, peak widths, resolution, and the chromatogram for any candidate linear gradient.
+A Python HPLC simulator for working chromatographers, inspired by ACD/Labs Method Selection Suite: enter two gradient scouting runs, fit per-peak LSS retention parameters, and predict retention times, peak widths, resolution, and the chromatogram for any candidate gradient programme.
 
-**Status: v0.1.0.** The approved specification is [SPEC.md](SPEC.md); the science was validated against real lab runs before build (see `validation/`). Planning ran as a [wayfinder map (#1)](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1).
+**Status: v0.2.0 — gradient freedom.** The candidate is no longer tied to the scouting runs' composition range: it carries its own start, its own end and any number of segments, entered as a programme table in the rail. Predictions outside what the two scouting runs calibrated are still made, and are marked for what they are — the composition-window readout says per peak how far outside it sits, and resolution that was never pinned there is stamped *indicative, not decision-grade*.
+
+The approved specification is [SPEC.md](SPEC.md); the science was validated against real lab runs before build (see `validation/`). Planning ran as two wayfinder maps: [#1](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1) for v0.1 and [#41](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/41) for v0.2.
 
 ## Quickstart
 
