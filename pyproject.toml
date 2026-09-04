@@ -41,7 +41,8 @@ strict = true
 # Strict on the engine (CLAUDE.md) and on the app's whole logic layer. Only the
 # root streamlit_app.py entry point is excluded, and only because Streamlit widget calls
 # would cost a type: ignore apiece. Nothing governed by a documented rule is allowed to
-# hide there: SPEC §4's two entry conversions (%B → φ, V_D ÷ F) live in app.entry.
+# hide there: SPEC §4's two entry conversions (%B → φ, V_D ÷ F) live in app.entry, and
+# every `st.session_state` touch in app.screen_state (CLAUDE.md's session-state rule).
 # One `files` list rather than `packages` plus `files`: mypy accepts only one of the two,
 # and `scripts/` is a directory rather than an importable package.
 # `scripts/` is checked too. It holds the browser measurements that `AppTest` cannot make

@@ -6,6 +6,7 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 
 - The engine (`src/hplcsim`) is a **pure library**: it imports no UI code (no streamlit/pandas/plotly). The app (`app/` plus the root `streamlit_app.py` entry point) depends on the engine, never the reverse.
 - **Log-convention rule**: retention math runs in the natural-log convention internally (S_e, b_e). Base-10 values (S, log10 k0) appear only at display boundaries, and the conversion lives in exactly one function.
+- **Session-state rule**: `st.session_state` is read and written in exactly one module, `app/screen_state.py`; a test asserts by grep that no other file in `app/`, `scripts/` or `streamlit_app.py` names it. Restoring a session file writes widget state, and state written after a widget is created for that run is state the widget never sees — so `restore()` refuses to run after a read.
 - **Units**: minutes, mL, mm, µm, °C. φ is a fraction 0–1 internally; %B 0–100 exists only at entry/display boundaries.
 - **Session persistence is inputs-only** (SPEC §8): fitted results are never serialized; the fit recomputes on load.
 - **Warnings over blocks**: user-facing validation warns and annotates; it hard-fails only on impossibilities (e.g. equal scouting gradient times).
