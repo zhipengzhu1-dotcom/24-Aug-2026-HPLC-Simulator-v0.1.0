@@ -25,9 +25,11 @@ from app.diagnostics import (
 )
 from app.pipeline import CockpitInputs
 from hplcsim.model import Gradient, PeakRow, Programme, Run, Segment, Target
+from hplcsim.retention import predict_retention
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
+    LAB_PEAKS,
     LAB_RUN1,
     LAB_RUN2,
     LAB_RUN4,
@@ -85,6 +87,23 @@ def test_inside_the_bracket_and_on_its_edges_the_distance_is_zero() -> None:
 def test_a_hold_has_no_position_in_a_steepness_bracket() -> None:
     (leg,) = Programme(phi0=0.05, segments=(Segment(10.0, 0.05),)).legs()
     assert window_widths_outside(LAB_METHOD, leg, LAB_RUN1, LAB_RUN2) == 0.0
+
+
+def test_a_flat_candidate_is_silent_though_it_now_reports_a_segment() -> None:
+    """#94: correcting the eluting segment hands diagnostic 1 segment 0 of a hold.
+
+    SPEC §6 item 1: *flat segments are holds and are never bracketed (s\\* = 0 has no
+    position in a steepness bracket)*. That rule lives one level down, inside
+    :func:`window_widths_outside`, so the segment the fix newly attributes measures 0.0
+    and the diagnostic stays silent — which is what it did before the fix, by having no
+    segment to read at all.
+    """
+    flat = Programme.from_gradient(Gradient(phi0=0.70, phif=0.70, t_gradient=25.0, t_init=0.5))
+    assert any(predict_retention(p, LAB_METHOD, flat).eluting_segment == 0 for p in LAB_PEAKS), (
+        "the peaks must actually leave inside the hold, or this asserts nothing"
+    )
+
+    assert _steepness(_lab(flat)) == []
 
 
 def test_a_v01_session_outside_the_bracket_names_the_distance_in_window_widths() -> None:
