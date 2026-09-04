@@ -11,21 +11,38 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, RetentionParams
+from hplcsim.model import Gradient, Method, Programme, RetentionParams, gradient_from_programme
 
 Regime = Literal["isocratic_hold", "gradient", "post_gradient"]
 
 
-def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
-    """b_e = t0·Δφ·S_e/tG — the natural-log gradient steepness (research doc §1.3).
+def _steepness(t0: float, delta_phi: float, s_e: float, duration: float) -> float:
+    """b_e = t0·Δφ·S_e/duration — the one place the natural-log steepness is written.
 
-    The single home for this expression, and deliberately so: it is the most
-    exposed surface of the natural-log convention CLAUDE.md names as the project's
-    #1 hazard. Retention, band compression (§5.2) and the tests that reconstruct
-    counterfactual G conventions must all read the same b_e — a correction applied
-    here to one of them and not the others would desync them silently.
+    Deliberately one expression: it is the most exposed surface of the natural-log
+    convention CLAUDE.md names as the project's #1 hazard. Retention, band compression
+    (§5.2), the programme's per-segment steepness and the tests that reconstruct
+    counterfactual G conventions must all read the same b_e — a correction applied to
+    one of them and not the others would desync them silently.
     """
-    return method.t0 * gradient.delta_phi * s_e / gradient.t_gradient
+    return t0 * delta_phi * s_e / duration
+
+
+def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
+    """b_e = t0·Δφ·S_e/tG for a v0.1 single-ramp gradient (research doc §1.3)."""
+    return _steepness(method.t0, gradient.delta_phi, s_e, gradient.t_gradient)
+
+
+def segment_steepness(method: Method, programme: Programme, index: int, s_e: float) -> float:
+    """b_e,seg for segment ``index`` of a programme — the same expression, **signed**.
+
+    SPEC §3: b_e,seg = t0·Δφ_seg·S_e / duration, with Δφ_seg the segment's signed
+    composition change. It is zero in a hold and negative in a descending segment,
+    where a positive-only reading would make the band appear to speed up.
+    """
+    return _steepness(
+        method.t0, programme.delta_phi(index), s_e, programme.segments[index].duration
+    )
 
 
 def gradient_end_time(method: Method, gradient: Gradient) -> float:
@@ -90,6 +107,23 @@ def predict_retention(
     log_arg = b_e * (k0 - tau / t0) + 1.0
     t_r = tau + t0 + (t0 / b_e) * math.log(log_arg)
     return _classify(t_r=t_r, k_e=k0 / log_arg, regime="gradient", t0=t0, tau=tau)
+
+
+def predict_retention_programme(
+    params: RetentionParams, method: Method, programme: Programme
+) -> RetentionResult:
+    """Predict tR (min) for ``params`` run under a candidate ``programme`` (SPEC §3, v0.2).
+
+    One segment is what a v0.1 candidate always was: the programme is converted to its
+    gradient (:func:`~hplcsim.model.gradient_from_programme`, the one door) and
+    :func:`predict_retention` runs unchanged, so the answer is bitwise identical to the
+    gradient's — SPEC §10 item 4(a).
+
+    Two or more segments raise
+    :class:`~hplcsim.model.MultiSegmentProgrammeError`: the piecewise walker of SPEC §3
+    is ticket #70, and refusing is the only honest answer until it lands.
+    """
+    return predict_retention(params, method, gradient_from_programme(programme))
 
 
 def _classify(*, t_r: float, k_e: float, regime: Regime, t0: float, tau: float) -> RetentionResult:

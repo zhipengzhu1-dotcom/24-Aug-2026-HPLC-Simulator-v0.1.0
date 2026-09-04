@@ -16,8 +16,16 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run
-from hplcsim.retention import gradient_steepness, predict_retention
+from hplcsim.model import (
+    Gradient,
+    Method,
+    Peak,
+    Programme,
+    RetentionParams,
+    Run,
+    gradient_from_programme,
+)
+from hplcsim.retention import gradient_steepness, predict_retention, segment_steepness
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
 # A documented textbook basis for the default, not a fit to any one instrument —
@@ -177,6 +185,61 @@ def peak_width(
         k_e=retention.k_e,
         plate_count_source=plate_count_source,
     )
+
+
+def programme_band_compression_factor(
+    method: Method,
+    programme: Programme,
+    s_e: float,
+    *,
+    eluting_segment: int | None,
+    k_entry: float,
+) -> float:
+    """G for a band leaving a *programme* — the rule of SPEC §3, declared for #70.
+
+    "G is taken from the segment in which the band elutes — p formed from that segment's
+    b_e,seg and the k at the band's entry to it — and G = 1 for a band leaving in a hold
+    or after the last segment." This function *is* that sentence, so the walker (#70)
+    fills the rule in rather than inventing one, and so the approximation shipped can be
+    read in one place: the cumulative compression integral of Hao et al. Eq. 10 was
+    considered and deferred (SPEC §3), and no multi-segment width measurement validates
+    this yet (SPEC §10 item 4 makes no Rs claim for multi-segment).
+
+    ``eluting_segment`` is the index of the segment the band left in, or ``None`` when
+    it left outside every segment — during the dwell or initial hold (§4.1) or after the
+    last segment ends (§4.2). Both of those are v0.1's uncompressed cases already.
+    ``k_entry`` is the band's retention factor at the composition entering that segment.
+
+    For one segment this reduces exactly to v0.1's G: index 0, b_e,seg = b_e and
+    k_entry = k at φ0.
+
+    A *descending* segment is left open on purpose: the type allows one (SPEC §3) but
+    G(p) was derived for a band being compressed by a rising composition, so
+    :func:`band_compression_factor`'s non-negative guard still fires and the caller gets
+    a refusal rather than an invented number. Choosing what a descending segment does to
+    a width is #70's question, on the evidence #70 gathers.
+    """
+    if eluting_segment is None or programme.is_hold(eluting_segment):
+        return 1.0
+    return band_compression_factor(
+        segment_steepness(method, programme, eluting_segment, s_e), k_entry
+    )
+
+
+def peak_width_programme(
+    params: RetentionParams,
+    method: Method,
+    programme: Programme,
+    *,
+    plate_count: float | FittedPlateCount | None = None,
+) -> PeakWidth:
+    """Predict the width of one peak under a candidate ``programme`` (SPEC §3, v0.2).
+
+    One segment takes v0.1's path through the one conversion door and is bitwise
+    identical to :func:`peak_width` on the equivalent gradient; two or more segments
+    raise :class:`~hplcsim.model.MultiSegmentProgrammeError` (ticket #70).
+    """
+    return peak_width(params, method, gradient_from_programme(programme), plate_count=plate_count)
 
 
 def _resolve_plate_count(

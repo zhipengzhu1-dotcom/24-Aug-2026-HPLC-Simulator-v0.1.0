@@ -108,6 +108,112 @@ class Gradient:
         return self.phif - self.phi0
 
 
+class MultiSegmentProgrammeError(NotImplementedError):
+    """A programme of two or more segments, asked of an engine that has only v0.1's path.
+
+    Raised where a :class:`Programme` must become a :class:`Gradient` — the one door
+    into v0.1's closed form. It is a ``NotImplementedError`` and not a ``ValueError``
+    on purpose: the programme is a valid method, the engine is the incomplete party.
+    """
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One linear leg of a gradient programme: ``duration`` minutes ending at ``phi_end``.
+
+    The composition it *starts* from is not stored — it is the previous segment's end,
+    or the programme's φ0 for the first, which is what makes an ordered list of segments
+    a programme rather than a bag of ramps (:meth:`Programme.phi_at_entry`).
+
+    A segment whose ``phi_end`` repeats the composition it starts from is a **hold**
+    (SPEC §3); one whose ``phi_end`` is lower is a **descending** segment, which is
+    allowed. The sign of the resulting steepness is the walker's business (#70), not
+    the type's.
+    """
+
+    duration: float
+    phi_end: float
+
+
+@dataclass(frozen=True)
+class Programme:
+    """A candidate gradient programme: φ0, an initial hold, and ordered segments (SPEC §3).
+
+    The v0.2 shape of a candidate. It lands *beside* :class:`Gradient` rather than
+    replacing it: the scouting runs keep their single-segment gradient (SPEC §4,
+    "Unchanged in v0.2"), and a one-segment programme is exactly what a v0.1 candidate
+    always was — :func:`programme_from_gradient` and :func:`gradient_from_programme`
+    are the one place the two meet.
+
+    ``segments`` is ordered and non-empty, every duration positive (SPEC §4's validation
+    posture: an impossibility, so this one hard-fails); the segment count itself is open
+    (SPEC §3). φ is a fraction 0–1, as everywhere inside the engine.
+    """
+
+    phi0: float
+    segments: tuple[Segment, ...]
+    t_init: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.segments:
+            raise ValueError("a programme needs at least one segment")
+        if self.t_init < 0.0:
+            raise ValueError(f"the initial hold must not be negative, got {self.t_init}")
+        for index, segment in enumerate(self.segments):
+            if segment.duration <= 0.0:
+                raise ValueError(
+                    f"every segment duration must be positive; segment {index + 1} "
+                    f"has duration {segment.duration}"
+                )
+
+    def phi_at_entry(self, index: int) -> float:
+        """Composition the programme holds when segment ``index`` begins."""
+        return self.phi0 if index == 0 else self.segments[index - 1].phi_end
+
+    def delta_phi(self, index: int) -> float:
+        """Signed composition change across segment ``index`` — negative when descending."""
+        return self.segments[index].phi_end - self.phi_at_entry(index)
+
+    def is_hold(self, index: int) -> bool:
+        """Whether segment ``index`` repeats the composition it started from (SPEC §3)."""
+        return self.delta_phi(index) == 0.0
+
+
+def programme_from_gradient(gradient: Gradient) -> Programme:
+    """The one-segment programme a v0.1 gradient *is*."""
+    return Programme(
+        phi0=gradient.phi0,
+        segments=(Segment(duration=gradient.t_gradient, phi_end=gradient.phif),),
+        t_init=gradient.t_init,
+    )
+
+
+def gradient_from_programme(programme: Programme) -> Gradient:
+    """The v0.1 gradient a one-segment programme *is*; refuses two or more segments.
+
+    The single conversion point in both directions, and therefore the single door into
+    v0.1's closed-form path. Every field passes through untouched, so a prediction or a
+    width taken through this door is bitwise identical to the gradient's — SPEC §10
+    item 4(a) is then a property of this function rather than of a tolerance.
+
+    Two or more segments need the piecewise walker of SPEC §3, which is ticket #70;
+    until it lands they are refused here rather than silently linearised.
+    """
+    if len(programme.segments) != 1:
+        raise MultiSegmentProgrammeError(
+            f"this programme has {len(programme.segments)} segments; the piecewise walker "
+            f"that predicts two or more is ticket #70. Only a one-segment programme takes "
+            f"v0.1's closed-form path."
+        )
+    segment = programme.segments[0]
+    return Gradient(
+        phi0=programme.phi0,
+        phif=segment.phi_end,
+        t_gradient=segment.duration,
+        t_init=programme.t_init,
+    )
+
+
 @dataclass(frozen=True)
 class Run:
     """One scouting run: the gradient it was acquired with (SPEC §4).
