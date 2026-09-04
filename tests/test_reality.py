@@ -53,6 +53,7 @@ from validation2_data import (
     VALIDATION2_RUNS_BY_NAME,
     VALIDATION2_SOURCE_FILES,
     VALIDATION2_STAMPED,
+    VALIDATION2_STAMPED_IN_BRACKET,
     VALIDATION2_TR_GRANULARITY,
     VALIDATION2_UNSTAMPED,
     VALIDATION2_W_HALF_ULP,
@@ -1023,9 +1024,12 @@ _V2_PINNED_MEAN_OFFSET = {
     "run3_rep2": 0.0196,
     "run3_rep3": 0.0206,
 }
-# #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
-# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.14 %.
-_V2_UNSTAMPED_CEILING_PERCENT = 0.4
+# SPEC §10 item 3(b): no unstamped run exceeds this mean |ΔtR|, in percent, on either
+# sample. Re-pinned by #55 from the provisional 0.4 (breached by three-peak run 3 at
+# 0.42 % since the 0.525 re-baseline) to 0.5 — layer 3's median bar on the den Uijl sets.
+# Largest unstamped on this sample: E1 at 0.14 %; the per-run tripwires above are the
+# tighter guard.
+_V2_UNSTAMPED_CEILING_PERCENT = 0.5
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
@@ -1426,9 +1430,9 @@ def test_validation2_resolution_is_inside_the_measurement_band() -> None:
 # more. The coarse bar, Rs ± 0.3, the critical pair and the widths run on them above,
 # alongside runs 3 and 4. What is added here is the rest of #46's resolution, items 3, 5
 # and 10 — the pinned residual, the stamp's honesty, and the repeatability floor with the
-# Rs band it sets — each as a measurement. The *reading* of E1 (predominantly φ0) is
-# #55's, and which runs the app's diagnostics stamp is a fixture fact here, asserted
-# nowhere yet.
+# Rs band it sets — each as a measurement. E1's reading (φ0 at ~60/40, #55) is SPEC §6
+# item 7's; which runs the app's diagnostics stamp is a fixture fact here, and the
+# app-level fire/silent table (SPEC §10 item 2) is left to the build.
 
 
 @pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
@@ -1534,20 +1538,25 @@ def test_validation2_trap_run_elutes_every_peak_in_the_hold_and_says_so() -> Non
         assert VALIDATION2_MEASURED_TR["run5"][peak.name] > ramp_end, peak.name
 
 
-def test_validation2_stamped_runs_miss_by_more_than_every_unstamped_run() -> None:
-    """#46 item 5: the falsifiable content of *indicative, not decision-grade*.
+def test_validation2_in_bracket_stamped_runs_miss_by_more_than_every_unstamped_run() -> None:
+    """SPEC §10 item 3, as #55 re-pinned it: the falsifiable content of the stamp.
 
-    (a) Every run that draws the stamp has a mean |ΔtR| above every run that does not —
-    today 0.23 % (run4) against 0.14 % (E1) at the boundary — which is what makes the
-    stamp honest rather than decorative. (b) No unstamped run exceeds 0.4 % mean |ΔtR|,
-    provisional until #55 re-pins it with the two guard thresholds.
+    (a) Every run strong on diagnostic 7 whose s* is inside the scouting bracket has a
+    mean |ΔtR| above every run that draws no stamp — today 0.23 % (run4) against 0.14 %
+    (E1) at the boundary — which is what makes *indicative, not decision-grade* honest.
+    Scoped to in-bracket runs because a run carrying both guards is not ordered by
+    |ΔtR| (three-peak run 6's two biases cancel); run5 is stamped but its s* sits
+    outside the bracket, so it is not ordered (its residual is the hold's in any case).
+    (b) No unstamped run exceeds 0.5 % mean |ΔtR| — layer 3's bar borrowed (a median
+    there, a mean here), re-pinned from the provisional 0.4 by #55.
 
     Which runs are stamped is a fixture fact (`VALIDATION2_STAMPED`), by the two guards
-    #44 decided. That the app's diagnostics draw it on exactly those runs is asserted
-    nowhere yet; #55 owns that.
+    #44 decided. That the app's diagnostics draw it on exactly those runs is SPEC §10
+    item 2, left to the build; it is not asserted here.
     """
-    stamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_STAMPED}
+    assert set(VALIDATION2_STAMPED_IN_BRACKET) < set(VALIDATION2_STAMPED)
+    ordered = {run: _v2_mean_magnitude(run) for run in VALIDATION2_STAMPED_IN_BRACKET}
     unstamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_UNSTAMPED}
 
-    assert min(stamped.values()) > max(unstamped.values()), (stamped, unstamped)
+    assert min(ordered.values()) > max(unstamped.values()), (ordered, unstamped)
     assert max(unstamped.values()) <= _V2_UNSTAMPED_CEILING_PERCENT, unstamped
