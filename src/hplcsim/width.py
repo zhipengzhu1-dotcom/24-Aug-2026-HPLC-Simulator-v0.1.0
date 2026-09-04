@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run, Target, as_programme
-from hplcsim.retention import predict_retention, segment_steepness
+from hplcsim.model import Gradient, Method, Peak, RetentionParams, Run, Target
+from hplcsim.retention import predict_retention
 
 # Reduced plate height for a well-packed sub-2 µm column: N = L/(h·dp) with h = 2.
 # A documented textbook basis for the default, not a fit to any one instrument —
@@ -178,12 +178,18 @@ def peak_width(
     # A band leaving on a *descending* leg gets G = 1 as well: Poppe's G is derived for
     # a composition rising across the band, and no source here extends it to a falling
     # one, so nothing is claimed — the same posture as the hold.
+    # The eluting leg's steepness and entry k ride on the prediction (#89); the programme
+    # is not re-walked here. A hold arrives as b_e,seg = 0.0 and a descending leg as
+    # b_e,seg < 0.0, so both reach G = 1 through the one test below.
     g = 1.0
-    if retention.regime == "gradient" and retention.eluting_segment is not None:
-        leg = as_programme(target).legs()[retention.eluting_segment]
-        b_e = segment_steepness(method, leg, params.s_e)
-        if b_e > 0.0:
-            g = band_compression_factor(b_e, k0=params.k_at(leg.phi_start))
+    b_e_seg, k_seg_entry = retention.b_e_seg, retention.k_seg_entry
+    if (
+        retention.regime == "gradient"
+        and b_e_seg is not None
+        and k_seg_entry is not None
+        and b_e_seg > 0.0
+    ):
+        g = band_compression_factor(b_e_seg, k0=k_seg_entry)
 
     sigma = g * method.t0 * (1.0 + retention.k_e) / math.sqrt(n)
     return PeakWidth(

@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Method, Programme, RetentionParams, Segment
+from hplcsim.model import Gradient, Method, Programme, RetentionParams, Segment, as_programme
 from hplcsim.resolution import resolution_table
-from hplcsim.retention import predict_retention, walk_programme
+from hplcsim.retention import predict_retention, segment_steepness, walk_programme
 from hplcsim.width import band_compression_factor, peak_width
 from lab_data import (
     LAB_CAMPAIGN27_TR,
@@ -319,6 +319,44 @@ def test_no_compression_claimed_for_a_band_leaving_on_a_descending_leg() -> None
     width = peak_width(LAB_PEAKS[2], LAB_METHOD, _DESCENDING, plate_count=_PLATE_COUNT)
     assert predict_retention(LAB_PEAKS[2], LAB_METHOD, _DESCENDING).eluting_segment == 1
     assert width.g == 1.0
+
+
+def test_the_carried_leg_agrees_with_the_legs_list() -> None:
+    """The carried trio describes the leg the index names, exactly (#89).
+
+    ``b_e_seg`` and ``k_seg_entry`` are values the walker already held, carried out
+    rather than rebuilt, so equality here is exact and not ``approx``.
+    """
+    for _label, params, method, target in WALKER_INTEGRATION_CASES:
+        result = predict_retention(params, method, target)
+        if result.eluting_segment is None:
+            assert result.b_e_seg is None
+            assert result.k_seg_entry is None
+            continue
+        leg = as_programme(target).legs()[result.eluting_segment]
+        assert result.b_e_seg == segment_steepness(method, leg, params.s_e)
+        assert result.k_seg_entry == params.k_at(leg.phi_start)
+
+
+def test_the_closed_form_carries_the_same_trio_as_its_one_leg() -> None:
+    """SPEC §10 item 4a, for the carried trio: the v0.1 gradient path agrees with legs()[0].
+
+    The closed form passes ``b_e`` and ``k0`` rather than reading a leg, on the argument
+    that for one segment ``legs()[0].phi_start`` *is* ``phi0``. That argument is what
+    keeps the bitwise identity, so it is pinned here rather than left to inspection.
+    """
+    params = LAB_PEAKS[2]
+    ascending = Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.5)
+    descending = Gradient(phi0=0.95, phif=0.45, t_gradient=20.0, t_init=0.5)
+    for gradient in (ascending, descending):
+        result = predict_retention(params, LAB_METHOD, gradient)
+        if result.eluting_segment is None:
+            assert result.b_e_seg is None
+            assert result.k_seg_entry is None
+            continue
+        leg = as_programme(gradient).legs()[result.eluting_segment]
+        assert result.b_e_seg == segment_steepness(LAB_METHOD, leg, params.s_e)
+        assert result.k_seg_entry == params.k_at(leg.phi_start)
 
 
 def test_a_programme_resolves_through_the_same_table_as_a_gradient() -> None:
