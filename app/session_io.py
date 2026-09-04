@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 
 from app.pipeline import CockpitInputs, PeakRow, split_rows
-from hplcsim.model import Peak
+from hplcsim.model import Gradient, Peak, Programme, percent_b_from_phi
 from hplcsim.session import Session, UntrackedPeak
 
 _FILENAME_FALLBACK = "hplcsim-session"
@@ -46,10 +46,18 @@ class Restore:
     *reported*, never silent — CLAUDE.md's warnings-over-blocks, applied to a file that
     is valid but does not fit the screen. The caller paints :attr:`adjusted` beside the
     uploader, so the one number that changed is named while the file is still to hand.
+
+    The second way a file can outrun the screen is a control that does not exist yet.
+    Since v0.2 the file holds the candidate as programme rows — its own %B range and any
+    number of segments (SPEC §8) — while this screen still has v0.1's one segment over
+    the scouting range, until the programme table of #73 lands. :meth:`single_segment`
+    is that crossing: what the screen cannot hold is named in :attr:`not_shown`, and the
+    note says so in different words from a squeeze, because no limit was hit.
     """
 
     def __init__(self) -> None:
         self.adjusted: list[str] = []
+        self.not_shown: list[str] = []
 
     def within(self, label: str, value: float, low: float, high: float) -> float:
         """``value``, or the nearer end of [low, high] with ``label`` recorded."""
@@ -58,16 +66,50 @@ class Restore:
             self.adjusted.append(f"{label} {value:g} → {squeezed:g}")
         return squeezed
 
+    def single_segment(self, programme: Programme, scouting: Gradient) -> Gradient:
+        """The one-segment gradient this screen shows for ``programme``, over ``scouting``'s range.
+
+        Exact when the programme is one segment over the scouting range — the usual
+        file, and every file v0.1 wrote. Otherwise the screen shows the programme's total
+        ramp time and hold over the scouting range, and each thing it dropped is named:
+        the segment count, and the candidate's own %B range.
+        """
+        if len(programme.segments) > 1:
+            self.not_shown.append(
+                f"the candidate programme has {len(programme.segments)} segments and this "
+                f"screen has one segment, shown as the total ramp time {programme.t_gradient:g} min"
+            )
+        if (programme.phi0, programme.phif) != (scouting.phi0, scouting.phif):
+            self.not_shown.append(
+                f"the candidate's {_percent_range(programme.phi0, programme.phif)} range differs "
+                f"from the scouting runs' {_percent_range(scouting.phi0, scouting.phif)}, and this "
+                "screen predicts the candidate over the scouting range"
+            )
+        return Gradient(
+            phi0=scouting.phi0,
+            phif=scouting.phif,
+            t_gradient=programme.t_gradient,
+            t_init=programme.t_init,
+        )
+
     @property
     def note(self) -> str | None:
-        """What to tell the user about the squeeze, or ``None`` when nothing moved."""
-        if not self.adjusted:
+        """What to tell the user about the file, or ``None`` when all of it is on screen."""
+        parts = []
+        if self.adjusted:
+            parts.append(
+                "**Some values in that file are outside what this screen can show**, and "
+                "have been brought to the nearest limit: " + "; ".join(self.adjusted) + "."
+            )
+        if self.not_shown:
+            parts.append(
+                "**Some of that file's candidate programme has no control on this screen "
+                "yet**: " + "; ".join(self.not_shown) + "."
+            )
+        if not parts:
             return None
-        return (
-            "**Some values in that file are outside what this screen can show**, and "
-            "have been brought to the nearest limit: " + "; ".join(self.adjusted) + ". "
-            "The file itself is unchanged — saving from here would write these values."
-        )
+        parts.append("The file itself is unchanged — saving from here would write these values.")
+        return " ".join(parts)
 
 
 def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Session:
@@ -85,19 +127,25 @@ def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Ses
         runs=(inputs.run1, inputs.run2),
         peaks=entry.tracked,
         untracked=tuple(_as_untracked(row) for row in entry.untracked),
-        candidate=inputs.candidate,
+        candidate=Programme.from_gradient(inputs.candidate),
         session_name=session_name,
         plate_count=_whole(inputs.plate_count),
     )
 
 
-def inputs_from_session(session: Session) -> CockpitInputs:
-    """A restored session as the values the widgets hold."""
+def inputs_from_session(session: Session, restore: Restore) -> CockpitInputs:
+    """A restored session as the values the widgets hold.
+
+    The candidate crosses through :meth:`Restore.single_segment`, so ``restore`` is
+    required rather than optional: a programme this screen cannot hold is reported
+    beside the uploader with everything else, and there is no way to ask for the
+    inputs without also receiving what was not shown.
+    """
     return CockpitInputs(
         method=session.method,
         run1=session.runs[0],
         run2=session.runs[1],
-        candidate=session.candidate,
+        candidate=restore.single_segment(session.candidate, session.runs[0].gradient),
         rows=peak_rows_from_session(session),
         plate_count=None if session.plate_count is None else float(session.plate_count),
     )
@@ -150,6 +198,11 @@ def _as_row(peak: Peak | UntrackedPeak) -> PeakRow:
         w_half_run1=peak.w_half_run1,
         w_half_run2=peak.w_half_run2,
     )
+
+
+def _percent_range(phi0: float, phif: float) -> str:
+    """A composition range as the user reads it: ``5 → 95 %B``."""
+    return f"{percent_b_from_phi(phi0):g} → {percent_b_from_phi(phif):g} %B"
 
 
 def _whole(plate_count: float | None) -> int | None:

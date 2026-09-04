@@ -31,8 +31,13 @@ def phi_from_percent_b(percent_b: float) -> float:
 
 
 def percent_b_from_phi(phi: float) -> float:
-    """Display boundary: φ (0–1) -> %B (0–100)."""
-    return phi * 100.0
+    """Display boundary: φ (0–1) -> %B (0–100).
+
+    Rounded to nine decimals so a %B that was typed comes back as it was typed:
+    0.55 × 100 is 55.00000000000001 in binary, and a session file is a transcript of
+    what was entered (SPEC §8), not of the float that stood in for it.
+    """
+    return round(phi * 100.0, 9)
 
 
 def _to_base10(natural: float) -> float:

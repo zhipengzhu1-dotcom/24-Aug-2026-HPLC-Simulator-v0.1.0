@@ -36,9 +36,22 @@ from typing import Any, Final
 
 from hplcsim import __version__
 from hplcsim.dead_time import architecture_of
-from hplcsim.model import Gradient, Method, Peak, Run, percent_b_from_phi, phi_from_percent_b
+from hplcsim.model import (
+    Gradient,
+    Method,
+    Peak,
+    Programme,
+    Run,
+    Segment,
+    percent_b_from_phi,
+    phi_from_percent_b,
+)
 
-SCHEMA_VERSION: Final = 1
+# The version every file is written at. Version 1 (v0.1: a two-field candidate over the
+# scouting range) is still read — see ``_read_candidate`` — so the rule on load is
+# "a version this app knows", not an exact match (SPEC §8, #47).
+SCHEMA_VERSION: Final = 2
+KNOWN_SCHEMA_VERSIONS: Final = (1, 2)
 
 # t0_source in the file <-> Method.t0_is_measured, which stamps SPEC §6 diagnostic 6.
 _T0_SOURCES: Final = {"measured": True, "estimated": False}
@@ -88,8 +101,9 @@ class Session:
     """Everything the user entered: the unit that is saved and restored.
 
     The two scouting runs share every gradient setting but ``t_gradient`` (SPEC §4), and
-    ``candidate`` — the what-if gradient currently on screen — varies tG and the initial
-    hold within the same φ0→φf range. The file stores those shared settings once.
+    the file stores those shared settings once. ``candidate`` — the what-if programme on
+    screen — is free of them since v0.2 (SPEC §4, #44): its own start, hold and segment
+    rows, one segment being exactly v0.1's gradient (:meth:`Programme.as_gradient`).
 
     ``peaks`` and ``untracked`` are the peak table split in two: the pairs the engine
     may fit, and the rows still being typed. ``untracked`` defaults to empty, so every
@@ -99,7 +113,7 @@ class Session:
     method: Method
     runs: tuple[Run, Run]
     peaks: tuple[Peak, ...]
-    candidate: Gradient
+    candidate: Programme
     untracked: tuple[UntrackedPeak, ...] = ()
     session_name: str = ""
     plate_count: int | None = None
@@ -119,10 +133,7 @@ def save_session(session: Session) -> str:
         # Absent rather than empty when everything is paired, like every other unset
         # field — a finished session's file looks exactly as it did before ticket #21.
         **_drop_unset({"untracked_peaks": [_peak_row(row) for row in session.untracked] or None}),
-        "candidate": {
-            "tg_min": session.candidate.t_gradient,
-            "hold_min": session.candidate.t_init,
-        },
+        "candidate": _candidate_block(session.candidate),
     }
     return json.dumps(document, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
 
@@ -130,7 +141,7 @@ def save_session(session: Session) -> str:
 def load_session(text: str | bytes) -> Session:
     """Restore a session from file text, rejecting anything that cannot be read back."""
     document = _parse(text)
-    _check_versions(document)
+    version = _check_versions(document)
 
     method_block = document.block("method")
     candidate_block = document.block("candidate")
@@ -145,11 +156,7 @@ def load_session(text: str | bytes) -> Session:
         runs=_read_runs(document.rows("runs"), shared),
         peaks=tuple(_read_peak(row) for row in document.rows("peaks")),
         untracked=tuple(_read_untracked(row) for row in document.optional_rows("untracked_peaks")),
-        candidate=replace(
-            shared,
-            t_gradient=candidate_block.number("tg_min"),
-            t_init=candidate_block.number_or("hold_min", 0.0),
-        ),
+        candidate=_read_candidate(candidate_block, shared, version),
         session_name=document.text("session_name", ""),
         plate_count=method_block.whole_number("plate_count"),
     )
@@ -181,6 +188,18 @@ def _method_block(session: Session, shared: Gradient) -> dict[str, Any]:
             "plate_count": session.plate_count,
         }
     )
+
+
+def _candidate_block(candidate: Programme) -> dict[str, Any]:
+    """The candidate as the rows the rail's table shows (SPEC §7, §8): start, hold, segments."""
+    return {
+        "pct_b_start": percent_b_from_phi(candidate.phi0),
+        "hold_min": candidate.t_init,
+        "segments": [
+            {"tg_min": segment.duration, "pct_b_end": percent_b_from_phi(segment.phif)}
+            for segment in candidate.segments
+        ],
+    }
 
 
 def _run_row(run: Run) -> dict[str, Any]:
@@ -308,17 +327,20 @@ def _parse(text: str | bytes) -> _Fields:
     return _Fields(document)
 
 
-def _check_versions(document: _Fields) -> None:
-    """The stamps that make a file readable: an exact schema match, then provenance."""
+def _check_versions(document: _Fields) -> int:
+    """The stamps that make a file readable: a schema this app knows, then provenance."""
     version = document.raw("schema_version")
-    if version != SCHEMA_VERSION:
+    # bool is an int in Python, so `true` would otherwise read as version 1.
+    if isinstance(version, bool) or version not in KNOWN_SCHEMA_VERSIONS:
+        known = " or ".join(str(known) for known in KNOWN_SCHEMA_VERSIONS)
         raise SessionFileError(
             f"session file: schema_version {version!r} is not supported by this app, "
-            f"which reads schema_version {SCHEMA_VERSION}"
+            f"which reads schema_version {known}"
         )
     stamp = document.raw("app_version")
     if not isinstance(stamp, str):
         raise SessionFileError(f"session file: app_version must be text, got {stamp!r}")
+    return int(version)
 
 
 def _read_method(block: _Fields) -> Method:
@@ -370,6 +392,40 @@ def _read_runs(rows: list[_Fields], shared: Gradient) -> tuple[Run, Run]:
     return first, second
 
 
+def _read_candidate(block: _Fields, shared: Gradient, version: int) -> Programme:
+    """The candidate's own start, hold and segment rows (SPEC §8, schema version 2).
+
+    A version-1 file stored ``tg_min`` and ``hold_min`` only, because v0.1's candidate
+    always spanned the scouting range: that is one segment from the method's start to
+    its end — exactly what the file meant, so it is read as that and nothing is asked
+    of the user.
+    """
+    if version == 1:
+        return Programme(
+            phi0=shared.phi0,
+            t_init=block.number_or("hold_min", 0.0),
+            segments=(_read_segment(block, shared.phif),),
+        )
+    rows = block.rows("segments")
+    if not rows:
+        raise SessionFileError(f"session file: {block.at('segments')} needs at least one segment")
+    return Programme(
+        phi0=phi_from_percent_b(block.number("pct_b_start")),
+        t_init=block.number_or("hold_min", 0.0),
+        segments=tuple(
+            _read_segment(row, phi_from_percent_b(row.number("pct_b_end"))) for row in rows
+        ),
+    )
+
+
+def _read_segment(row: _Fields, phif: float) -> Segment:
+    """One row's duration, checked here because ``Segment`` itself refuses a non-positive
+    one — and that refusal would not name the row in the file to go and fix."""
+    duration = row.number("tg_min")
+    _check_positive(row.at("tg_min"), duration)
+    return Segment(duration=duration, phif=phif)
+
+
 def _read_peak(row: _Fields) -> Peak:
     return Peak(
         t_r_run1=row.number("tr_run1_min"),
@@ -416,7 +472,7 @@ def _check_inputs(session: Session) -> None:
     _check_method(session.method)
     _check_positive("method.plate_count", session.plate_count)
     _check_gradient(session.runs)
-    _check_candidate(session.candidate, session.runs[0].gradient)
+    _check_candidate(session.candidate)
     for index, peak in enumerate(session.peaks):
         _check_measurements(f"peaks[{index}]", peak)
     for index, row in enumerate(session.untracked):
@@ -448,15 +504,20 @@ def _check_gradient(runs: tuple[Run, Run]) -> None:
         _check_positive(f"runs[{index}].tg_min", run.gradient.t_gradient)
 
 
-def _check_candidate(candidate: Gradient, scouting: Gradient) -> None:
-    """SPEC §4 keeps the what-if inside the scouting range; the file stores only tG+hold."""
-    if (candidate.phi0, candidate.phif) != (scouting.phi0, scouting.phif):
-        raise SessionFileError(
-            "session file: the candidate gradient must span the same %B range as the "
-            "scouting runs — only its tg_min and hold_min are stored"
-        )
-    _check_positive("candidate.tg_min", candidate.t_gradient)
+def _check_candidate(candidate: Programme) -> None:
+    """Impossible values on the candidate's own rows — and nothing about its range.
+
+    Until v0.2 this refused a candidate whose %B range differed from the scouting
+    runs'. It no longer does (SPEC §4, #44): leaving the fitted composition window is
+    a warning the diagnostics deliver once the session is on screen, never a reason to
+    refuse the file.
+    """
+    _check_percent("candidate.pct_b_start", candidate.phi0)
     _check_non_negative("candidate.hold_min", candidate.t_init)
+    # A segment's duration is not checked here: ``Segment`` refuses a non-positive one
+    # on construction, and ``_read_segment`` names the row before that can happen.
+    for index, segment in enumerate(candidate.segments):
+        _check_percent(f"candidate.segments[{index}].pct_b_end", segment.phif)
 
 
 def _check_measurements(at: str, peak: Peak | UntrackedPeak) -> None:

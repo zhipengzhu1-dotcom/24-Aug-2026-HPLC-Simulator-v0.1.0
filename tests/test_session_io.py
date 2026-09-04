@@ -21,7 +21,7 @@ from app.session_io import (
     session_filename,
     session_from_inputs,
 )
-from hplcsim.model import Gradient, Method, Run
+from hplcsim.model import Gradient, Method, Programme, Run, Segment, phi_from_percent_b
 from hplcsim.session import load_session, save_session
 
 _SHARED = Gradient(phi0=0.05, phif=0.95, t_gradient=0.0, t_init=0.5)
@@ -112,7 +112,7 @@ def test_the_table_comes_back_tracked_first_which_reorders_a_half_paired_row() -
 
 
 def test_the_round_trip_keeps_everything_the_cockpit_computes_from() -> None:
-    restored = inputs_from_session(session_from_inputs(INPUTS))
+    restored = inputs_from_session(session_from_inputs(INPUTS), Restore())
     for field in ("method", "run1", "run2", "candidate", "plate_count"):
         assert getattr(restored, field) == getattr(INPUTS, field)
     # The rows are reordered and the blank one is gone, so the table is compared as the
@@ -123,8 +123,8 @@ def test_the_round_trip_keeps_everything_the_cockpit_computes_from() -> None:
 
 def test_a_second_round_trip_changes_nothing_further() -> None:
     """Reordering once is a documented consequence; reordering every time is a bug."""
-    once = inputs_from_session(session_from_inputs(INPUTS))
-    twice = inputs_from_session(session_from_inputs(once))
+    once = inputs_from_session(session_from_inputs(INPUTS), Restore())
+    twice = inputs_from_session(session_from_inputs(once), Restore())
     assert twice.rows == once.rows
 
 
@@ -196,3 +196,66 @@ def test_every_squeeze_is_named_not_just_the_first() -> None:
     assert len(restore.adjusted) == 2
     note = restore.note
     assert note is not None and "candidate tG" in note and "run 1 tG" in note
+
+
+# --- the candidate: one segment on this screen, programme rows in the file (#71) --------
+#
+# SPEC §8 stores the candidate as programme rows. This screen (until the programme table
+# of #73 lands) has one segment over the scouting range, so the crossing is exact one
+# way and reported the other: a file may hold a candidate this screen has no control
+# for, and what is not shown is named rather than dropped.
+
+
+def test_a_one_segment_candidate_is_saved_as_the_programme_it_is() -> None:
+    candidate = session_from_inputs(INPUTS).candidate
+    assert candidate.phi0 == pytest.approx(0.05)
+    assert candidate.t_init == pytest.approx(0.5)
+    assert candidate.segments == (Segment(duration=25.0, phif=0.95),)
+
+
+def test_a_one_segment_candidate_over_the_scouting_range_comes_back_unreported() -> None:
+    restore = Restore()
+    restored = inputs_from_session(session_from_inputs(INPUTS), restore)
+    assert restored.candidate == INPUTS.candidate
+    assert restore.note is None
+
+
+def test_a_two_segment_candidate_is_shown_as_its_total_ramp_time_and_reported() -> None:
+    two = Programme(
+        phi0=0.05,
+        segments=(Segment(duration=10.0, phif=0.40), Segment(duration=15.0, phif=0.95)),
+        t_init=0.5,
+    )
+    session = replace(session_from_inputs(INPUTS), candidate=two)
+    restore = Restore()
+    restored = inputs_from_session(session, restore)
+
+    assert restored.candidate == Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5)
+    note = restore.note
+    assert note is not None
+    assert "2 segments" in note and "one segment" in note and "25 min" in note
+    assert "file itself is unchanged" in note
+
+
+def test_a_candidate_off_the_scouting_range_is_shown_over_it_and_reported() -> None:
+    raised = Programme(
+        phi0=phi_from_percent_b(15), segments=(Segment(duration=25.0, phif=phi_from_percent_b(55)),)
+    )
+    session = replace(session_from_inputs(INPUTS), candidate=raised)
+    restore = Restore()
+    restored = inputs_from_session(session, restore)
+
+    assert restored.candidate == Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.0)
+    note = restore.note
+    assert note is not None
+    assert "15 → 55 %B" in note and "5 → 95 %B" in note
+
+
+def test_the_candidate_report_does_not_claim_a_limit_was_hit() -> None:
+    """Two different things happen to a file that does not fit: a number is squeezed to
+    a widget's range, or a control does not exist yet. The note must not blur them."""
+    raised = Programme(phi0=phi_from_percent_b(15), segments=(Segment(duration=25.0, phif=0.95),))
+    restore = Restore()
+    inputs_from_session(replace(session_from_inputs(INPUTS), candidate=raised), restore)
+    assert restore.adjusted == []
+    assert restore.note is not None and "nearest limit" not in restore.note
