@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Method, Programme, RetentionParams, Segment
+from hplcsim.model import Method, Programme, RetentionParams, Segment, as_programme
 from hplcsim.resolution import resolution_table
-from hplcsim.retention import predict_retention, walk_programme
+from hplcsim.retention import predict_retention, segment_steepness, walk_programme
 from hplcsim.width import band_compression_factor, peak_width
 from lab_data import (
     LAB_CAMPAIGN27_TR,
@@ -319,6 +319,23 @@ def test_no_compression_claimed_for_a_band_leaving_on_a_descending_leg() -> None
     width = peak_width(LAB_PEAKS[2], LAB_METHOD, _DESCENDING, plate_count=_PLATE_COUNT)
     assert predict_retention(LAB_PEAKS[2], LAB_METHOD, _DESCENDING).eluting_segment == 1
     assert width.g == 1.0
+
+
+def test_the_carried_leg_agrees_with_the_legs_list() -> None:
+    """The carried trio describes the leg the index names, exactly (#89).
+
+    ``b_e_seg`` and ``k_seg_entry`` are values the walker already held, carried out
+    rather than rebuilt, so equality here is exact and not ``approx``.
+    """
+    for _label, params, method, target in WALKER_INTEGRATION_CASES:
+        result = predict_retention(params, method, target)
+        if result.eluting_segment is None:
+            assert result.b_e_seg is None
+            assert result.k_seg_entry is None
+            continue
+        leg = as_programme(target).legs()[result.eluting_segment]
+        assert result.b_e_seg == segment_steepness(method, leg, params.s_e)
+        assert result.k_seg_entry == params.k_at(leg.phi_start)
 
 
 def test_a_programme_resolves_through_the_same_table_as_a_gradient() -> None:

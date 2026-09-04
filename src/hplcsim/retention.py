@@ -106,6 +106,18 @@ class RetentionResult:
     the width model can take G from the eluting segment without asking which shape it
     was handed (SPEC §3, "Band compression for a programme"). Diagnostic 1 brackets per
     eluting segment on it (#72).
+
+    ``b_e_seg`` is that segment's own signed steepness (SPEC §3's b_e,seg — not the
+    whole-gradient b_e) and ``k_seg_entry`` the retention factor where the band *entered*
+    it (not ``k_e``, which is k at elution). They are carried out of the walker, which
+    already holds both, so the width model need not re-walk the programme to rebuild
+    them. The three travel together: ``eluting_segment``, ``b_e_seg`` and ``k_seg_entry``
+    are ``None`` together, or all three describe the leg the band left in. In a hold
+    ``b_e_seg`` is ``0.0``, since a hold has Δφ = 0.
+
+    One case diverges knowingly: a flat one-segment candidate (Δφ = 0) takes the closed
+    form's isocratic branch and reports ``None`` for all three, where the walker over the
+    same programme would report segment 0. #94 tracks that; it is not fixed here.
     """
 
     t_r: float
@@ -113,6 +125,8 @@ class RetentionResult:
     regime: Regime
     low_confidence: bool = False
     eluting_segment: int | None = None
+    b_e_seg: float | None = None
+    k_seg_entry: float | None = None
 
 
 def predict_retention(params: RetentionParams, method: Method, target: Target) -> RetentionResult:
@@ -156,7 +170,14 @@ def predict_retention(params: RetentionParams, method: Method, target: Target) -
     log_arg = b_e * (k0 - tau / t0) + 1.0
     t_r = tau + t0 + (t0 / b_e) * math.log(log_arg)
     return _classify(
-        t_r=t_r, k_e=k0 / log_arg, regime="gradient", t0=t0, tau=tau, eluting_segment=0
+        t_r=t_r,
+        k_e=k0 / log_arg,
+        regime="gradient",
+        t0=t0,
+        tau=tau,
+        eluting_segment=0,
+        b_e_seg=b_e,
+        k_seg_entry=k0,
     )
 
 
@@ -208,7 +229,14 @@ def walk_programme(
                 t_r = _isocratic_exit(leg_start, x, t0, k_entry)
                 regime: Regime = "post_gradient" if ramped else "isocratic_hold"
                 return _classify(
-                    t_r=t_r, k_e=k_entry, regime=regime, t0=t0, tau=tau, eluting_segment=index
+                    t_r=t_r,
+                    k_e=k_entry,
+                    regime=regime,
+                    t0=t0,
+                    tau=tau,
+                    eluting_segment=index,
+                    b_e_seg=0.0,
+                    k_seg_entry=k_entry,
                 )
         else:
             # §2.2 inside one leg: x(s) = x + (e^{b·s/t0} − 1)/(k_entry·b) for s in [0, D],
@@ -227,6 +255,8 @@ def walk_programme(
                     t0=t0,
                     tau=tau,
                     eluting_segment=index,
+                    b_e_seg=b_e,
+                    k_seg_entry=k_entry,
                 )
             ramped = True
         x = x_end
@@ -258,6 +288,8 @@ def _classify(
     t0: float,
     tau: float,
     eluting_segment: int | None = None,
+    b_e_seg: float | None = None,
+    k_seg_entry: float | None = None,
 ) -> RetentionResult:
     """Attach the §4.3 / §4.1–4.2 low-confidence classification to a prediction."""
     t_r_prime = t_r - t0 - tau
@@ -268,4 +300,6 @@ def _classify(
         regime=regime,
         low_confidence=low_confidence,
         eluting_segment=eluting_segment,
+        b_e_seg=b_e_seg,
+        k_seg_entry=k_seg_entry,
     )
