@@ -1,0 +1,25 @@
+tG_min,20,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,17.922,,,
+Unknown-2,18.068,,,
+Unknown-3,18.363,,,
+Unknown-4,18.463,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,95,5
+2,0.5,0.4,95,5
+3,20.5,0.4,15,85
+4,20.6,0.4,5,95
+5,23.5,0.4,5,95
+6,23.6,0.4,95,5
+7,30,0.4,95,5
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on 4peaks_run1.csv + 4peaks_run2.csv (t0 0.6; dwell 0.375 mL = 0.9375 min),,,
+predicted_on,2026-09-03,,,
+experiment,E1 (issue #53; research phi0-dependent-retention-residual.md section 5.2) - shares phi0 with 4peaks_run3 and delta-phi / tG / s* with 4peaks_run4,,,
+confidence,MEDIUM - all four peaks in the gradient regime at 68.5-70.7 %B; s* 0.0240 inside the scouting bracket 0.0135-0.0360. The engine over-predicted run3 by 0.012 min and run4 by 0.028 min; expect one of those offsets here.,,,
+decision,mean(predicted - measured) near +0.012 min => the residual axis is phi0; near +0.028 min => it is delta-phi / s*. Boundary 0.020 min; E4's replicate spread says whether the two are distinguishable.,,,
+programme_note,steps 4-7 (wash to 95 %B and the 6.4 min re-equilibration = 10.7 column volumes at t0 0.6) are not modelled. Re-equilibration lengthened from run4's 3.4 min to meet PROTOCOL.md's 10 CV floor.,,,

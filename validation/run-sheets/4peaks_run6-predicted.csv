@@ -1,0 +1,25 @@
+﻿tG_min,25,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,16.485,,,
+Unknown-2,16.694,,,
+Unknown-3,17.106,,,
+Unknown-4,17.249,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,75,25
+2,0.5,0.4,75,25
+3,25.5,0.4,5,95
+4,28.5,0.4,5,95
+5,28.6,0.4,95,5
+6,32,0.4,95,5
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on 4peaks_run1.csv + 4peaks_run2.csv (t0 0.6; dwell 0.375 mL = 0.9375 min),,,
+predicted_on,2026-09-03,,,
+condition,Validation_2 sample; tG 25 with phi0 raised to 25 %B (25 -> 95 %B); s* = 0.0168,,,
+confidence,"MEDIUM-LOW - all four peaks in the gradient regime at 65.5-67.6 %B, inside the 63.5-74.3 %B the scouting pair covered, and s* 0.0168 is inside the scouting bracket 0.0135-0.0360. The hazard is phi0: 25 %B is a third step out from the scouting runs' 5 %B, further than any measured run.",,,
+expected_offset,"The engine over-predicted this sample by +0.012 min at phi0 5 %B (run3) and +0.028 min at phi0 15 %B (run4). phi0-dependent-retention-residual.md 6.3 finds the residual multiplicative in phi0 at x2.1-2.26 per 10 %B, so at phi0 25 %B expect roughly +0.06 min over-prediction. Per 7.1 that correction is NOT applied to the numbers above - the residual's size disagrees by 3x between the two samples, so it is reported as a hazard, not folded in.",,,
+resolution,"Predicted critical pair Unknown-3/Unknown-4 at Rs 1.85 (Unknown-1/2 Rs 2.69, Unknown-2/3 Rs 5.29), on per-peak N fitted from the scouting widths (29k-34k).",,,
+programme_note,"Steps 4-6 (the 95 %B wash and the return to 5 %B) are not modelled: the engine reads only phi0, phif, tG and the initial hold, so the tail does not enter the tR above. The 5 %B ending is the driver's deliberate choice (2026-09-03), an experiment in its own right; it conditions the NEXT injection, not this one. This prediction assumes the column is equilibrated at 25 %B when run6 is injected - i.e. treat the preceding re-equilibration as 75 %A / 25 %B - which is the driver's instruction. Note for the run that FOLLOWS run6: 3.4 min at 0.4 mL/min is 5.7 column volumes, under PROTOCOL.md's >= 10 CV floor (6.0 min at t0 0.6).",,,

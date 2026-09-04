@@ -1,0 +1,22 @@
+tG_min,22.2,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,11.090,,,
+Unknown-2,13.946,,,
+Unknown-3,21.589,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,85,15
+2,0.5,0.4,85,15
+3,22.7,0.4,5,95
+4,25.7,0.4,5,95
+5,25.8,0.4,85,15
+6,32,0.4,85,15
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on validation/run1.csv + run2.csv (t0 0.6; dwell 0.375 mL = 0.9375 min),,,
+predicted_on,2026-09-03,,,
+experiment,E5 (issue #53; research section 5.6) - repeat of validation/run5.csv (measured 2026-09-02: 10.980 / 13.843 / 21.495) back to back with run3 - the s*-matched pair (s* 0.0216 both),,,
+confidence,HIGH on the condition; the engine over-predicted the original by 0.110 / 0.103 / 0.094 min - roughly double run3's - and that doubling on one injection each is the strongest result in research #52 (section 3.5). This pair tests whether it holds.,,,
+programme_note,re-equilibration 6.2 min (10.3 CV at t0 0.6) per PROTOCOL.md; the original used 4.0 min.,,,

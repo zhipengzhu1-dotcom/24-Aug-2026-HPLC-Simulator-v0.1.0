@@ -1,0 +1,18 @@
+﻿tG_min,25,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,16.448,640394,0.046,
+Unknown-2,16.658,448902,0.044,
+Unknown-3,17.074,778697,0.047,
+Unknown-4,17.218,629720,0.043,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,75,25
+2,0.5,0.4,75,25
+3,25.5,0.4,5,95
+4,28.5,0.4,5,95
+5,28.6,0.4,95,5
+6,32,0.4,95,5
+,,,,
+"NOTE: Raised start, in-bracket on steepness, so it isolates the effect of lifting φ0 on its own. The engine's own low-confidence guard does not trip for Unknown-1 until about 50% B start, so 25%B should be clean - this run checks that.",,,,
+NOTE2: Equlibration ends with 5% organic delibrately.,,,,

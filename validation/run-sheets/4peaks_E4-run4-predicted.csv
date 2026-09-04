@@ -1,0 +1,23 @@
+tG_min,20,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,15.423,,,
+Unknown-2,15.569,,,
+Unknown-3,15.864,,,
+Unknown-4,15.964,,,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,85,15
+2,0.5,0.4,85,15
+3,20.5,0.4,5,95
+4,23.5,0.4,5,95
+5,23.6,0.4,85,15
+6,30,0.4,85,15
+
+PREDICTION,,,,
+note,tR_min above are PREDICTED not measured. Overwrite with instrument values.,,,
+predicted_by,hplcsim 0.1.0 fitted on 4peaks_run1.csv + 4peaks_run2.csv (t0 0.6; dwell 0.375 mL = 0.9375 min),,,
+predicted_on,2026-09-03,,,
+experiment,E4 (issue #53) - replicate of 4peaks_run4.csv (measured 2026-09-02: 15.393 / 15.541 / 15.837 / 15.938). Two more injections make a triplicate; they also bracket E1 in the sequence (research section 5.2).,,,
+confidence,HIGH on the condition (s* 0.0240 inside the bracket); the point of the run is the repeatability floor - record tR and W_half to three decimals.,,,
+programme_note,re-equilibration lengthened from the original's 3.4 min (5.7 CV) to 6.4 min (10.7 CV at t0 0.6) per PROTOCOL.md. A systematic shift against the original single injection is column-state evidence (research section 5.3 / E2) rather than a replicate failure - record it as such.,,,

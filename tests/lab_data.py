@@ -110,8 +110,9 @@ LAB_RUN7 = Run(Gradient(phi0=0.25, phif=0.95, t_gradient=25.0, t_init=0.5), name
 LAB_CAMPAIGN27_RUNS = {"run5": LAB_RUN5, "run6": LAB_RUN6, "run7": LAB_RUN7}
 
 # validation/run5.csv, run6.csv, run7.csv. Keyed by compound, so a fixture edit cannot
-# silently transpose peaks. Unknown-3 is absent from run6 by measurement, not omission —
-# see LAB_CAMPAIGN27_WASH_ELUTED. Consumers must not assume three peaks per run.
+# silently transpose peaks. Unknown-3 has no run6 entry here on purpose: it left in the
+# wash step, not the hold — see LAB_CAMPAIGN27_WASH_ELUTED. Consumers must not assume
+# three peaks per run.
 LAB_CAMPAIGN27_TR = {
     "run5": {"Unknown-1": 10.980, "Unknown-2": 13.843, "Unknown-3": 21.495},
     "run6": {"Unknown-1": 18.164, "Unknown-2": 24.471},
@@ -120,10 +121,10 @@ LAB_CAMPAIGN27_TR = {
 
 # Run 6 ends at 55 %B, where the engine puts Unknown-3 at ~110 min in the post-gradient
 # hold and flags it low-confidence. It was brought off by the 45.1 min wash step instead,
-# under a two-segment programme v0.1 cannot predict, and run6.csv records "wash eluted"
-# with no time. It is therefore not a retention data point and must never be scored as
-# one — but it is not a missing measurement either, and the engine did predict the
-# non-elution correctly, which is itself testable.
+# under a two-segment programme v0.1 cannot predict. run6.csv now records 46.8 min for
+# it (driver-read from the chromatogram 2026-09-03, #46) — a v0.2 multi-segment reality
+# point, not a v0.1 one — so it must never be scored against the single-segment engine.
+# The engine did predict the non-elution in the hold correctly, which is itself testable.
 LAB_CAMPAIGN27_WASH_ELUTED = {("run6", "Unknown-3")}
 
 LAB_CAMPAIGN27_AREA = {
