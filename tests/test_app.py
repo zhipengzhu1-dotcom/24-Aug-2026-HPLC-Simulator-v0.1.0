@@ -18,17 +18,14 @@ import pytest
 
 from app.chromatogram import AxisRequest, Chromatogram, axis_view, chromatogram
 from app.diagnostics import Diagnostics, diagnose
-from app.pipeline import (
-    Cockpit,
-    CockpitInputs,
+from app.entry import (
     MethodEntry,
     ScoutingEntry,
-    area_shares,
     dwell_from_volume,
-    run_cockpit,
     split_rows,
     t0_autofill,
 )
+from app.pipeline import Cockpit, CockpitInputs, area_shares, run_cockpit
 from app.tables import (
     COMPOUND,
     FIT_COLUMNS,
