@@ -15,8 +15,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from hplcsim.model import Gradient, Method, RetentionParams
-from hplcsim.retention import RetentionResult, predict_retention
+from hplcsim.model import Method, RetentionParams
+from hplcsim.retention import RetentionResult, Target, predict_retention
 from hplcsim.width import FittedPlateCount, PeakWidth, peak_width
 
 
@@ -54,13 +54,16 @@ class ResolutionTable:
 def resolution_table(
     params: Sequence[RetentionParams],
     method: Method,
-    gradient: Gradient,
+    target: Target,
     *,
     names: Sequence[str] | None = None,
     plate_count: float | None = None,
     plate_counts: Sequence[FittedPlateCount | None] | None = None,
 ) -> ResolutionTable:
-    """Predict every peak under ``gradient`` and resolve the adjacent pairs.
+    """Predict every peak under ``target`` and resolve the adjacent pairs.
+
+    ``target`` is a v0.1 :class:`~hplcsim.model.Gradient` or a v0.2
+    :class:`~hplcsim.model.Programme`.
 
     ``names`` defaults to P1…Pn (SPEC §5); when supplied it must carry one name per
     peak, and each name travels with its peak through the re-sort.
@@ -84,11 +87,11 @@ def resolution_table(
     predicted = [
         PredictedPeak(
             name=name,
-            retention=predict_retention(peak_params, method, gradient),
+            retention=predict_retention(peak_params, method, target),
             width=peak_width(
                 peak_params,
                 method,
-                gradient,
+                target,
                 plate_count=plate_count if fitted is None else fitted,
             ),
         )

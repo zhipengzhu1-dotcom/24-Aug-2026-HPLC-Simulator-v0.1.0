@@ -1,4 +1,11 @@
-"""Data model for methods, gradients, runs and peaks (SPEC §4).
+"""Data model for methods, gradients, programmes, runs and peaks (SPEC §4).
+
+Two shapes describe a composition profile. :class:`Gradient` is v0.1's two-field ramp
+and remains what the scouting runs are acquired with; :class:`Programme` is v0.2's
+candidate — φ0, an initial hold and an ordered list of :class:`Segment` — and is what
+the user is free to move (SPEC §3). They are not rivals: a one-segment programme *is* a
+gradient, and :meth:`Programme.as_gradient` / :meth:`Programme.from_gradient` are the
+only place that correspondence is written down.
 
 Unit conventions: minutes, mL, mm, µm, °C. The strong-solvent fraction φ is a
 0–1 fraction everywhere inside the engine; %B (0–100) exists only at the entry
@@ -106,6 +113,126 @@ class Gradient:
     @property
     def delta_phi(self) -> float:
         return self.phif - self.phi0
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One linear leg of a gradient programme: ramp to ``phif`` over ``duration`` minutes.
+
+    A segment says where the composition *ends* and how long it takes to get there;
+    where it starts is whatever the previous segment left behind (the programme's
+    ``phi0`` for the first). That is why a segment cannot tell you on its own whether
+    it is a hold or which way it runs — :meth:`Programme.legs` resolves it against its
+    entry composition, and :class:`Leg` is what carries the answer.
+
+    ``duration`` must be positive (SPEC §4, validation posture). ``phif`` is free:
+    repeating the entry composition is a hold, and a value below it is a descending
+    segment, which is allowed — the signed steepness is the walker's business
+    (`#70 <https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/70>`_).
+    """
+
+    duration: float
+    phif: float
+
+    def __post_init__(self) -> None:
+        if self.duration <= 0.0:
+            raise ValueError(f"a segment duration must be positive, got {self.duration}")
+
+
+@dataclass(frozen=True)
+class Leg:
+    """One :class:`Segment` resolved against the composition it starts from.
+
+    The shape the piecewise walker (#70) and the per-segment diagnostics
+    (`#72 <https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/72>`_)
+    both read, so neither has to re-derive entry compositions from the segment list.
+    """
+
+    phi_start: float
+    phi_end: float
+    duration: float
+
+    @property
+    def delta_phi(self) -> float:
+        """Signed composition change: negative for a descending segment."""
+        return self.phi_end - self.phi_start
+
+    @property
+    def is_hold(self) -> bool:
+        """A segment that repeats its entry composition is a hold (SPEC §3)."""
+        return self.phi_end == self.phi_start
+
+
+@dataclass(frozen=True)
+class Programme:
+    """A candidate gradient programme: φ0, an initial hold, and ordered segments (SPEC §3, §4).
+
+    v0.2's prediction target. It lands *beside* :class:`Gradient` rather than replacing
+    it: the scouting runs keep their two-field gradient — the two runs sharing φ0/φf/t_init
+    is what makes the two-run fit well-posed (SPEC §4, #46 decision 9) — and freedom is a
+    property of the candidate alone.
+
+    ``segments`` is non-empty and ordered; the segment count is open, with no cap and
+    nothing keyed to it (SPEC §3, #58). A one-segment programme *is* a v0.1 gradient —
+    :meth:`as_gradient` and :meth:`from_gradient` are the only place that correspondence
+    is written down, and it is exact, so a one-segment programme takes v0.1's closed-form
+    path and predicts bitwise identically to it.
+    """
+
+    phi0: float
+    segments: tuple[Segment, ...]
+    t_init: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.segments:
+            raise ValueError("a programme needs at least one segment")
+        if self.t_init < 0.0:
+            raise ValueError(f"t_init must be non-negative, got {self.t_init}")
+
+    @property
+    def phif(self) -> float:
+        """The composition the last segment ends at."""
+        return self.segments[-1].phif
+
+    @property
+    def t_gradient(self) -> float:
+        """Total programmed ramp time: the sum of every segment's duration."""
+        return math.fsum(segment.duration for segment in self.segments)
+
+    def legs(self) -> tuple[Leg, ...]:
+        """Every segment paired with the composition it starts from."""
+        legs = []
+        phi_start = self.phi0
+        for segment in self.segments:
+            legs.append(Leg(phi_start=phi_start, phi_end=segment.phif, duration=segment.duration))
+            phi_start = segment.phif
+        return tuple(legs)
+
+    @classmethod
+    def from_gradient(cls, gradient: Gradient) -> Programme:
+        """The one-segment programme that is exactly ``gradient`` (the entry side)."""
+        return cls(
+            phi0=gradient.phi0,
+            segments=(Segment(duration=gradient.t_gradient, phif=gradient.phif),),
+            t_init=gradient.t_init,
+        )
+
+    def as_gradient(self) -> Gradient | None:
+        """The :class:`Gradient` this programme *is*, or ``None`` if it has two or more segments.
+
+        The exit side of the same correspondence as :meth:`from_gradient`, and the
+        single gate every v0.1 closed form is entered through: returning ``None``
+        rather than an approximation is what keeps a multi-segment programme from
+        being silently predicted as its first segment.
+        """
+        if len(self.segments) != 1:
+            return None
+        return Gradient(
+            phi0=self.phi0,
+            phif=self.segments[0].phif,
+            t_gradient=self.segments[0].duration,
+            t_init=self.t_init,
+        )
 
 
 @dataclass(frozen=True)
