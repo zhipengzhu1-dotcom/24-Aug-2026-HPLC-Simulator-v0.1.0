@@ -8,8 +8,11 @@ shapes are right for where they live, so the disagreement is translated in one p
 rather than negotiated at each call site.
 
 No Streamlit here — this is the logic layer ticket #20 asked #21 to keep using. What
-the entry point still owns is *widget identity*: taking a restored session and writing
-it into ``st.session_state`` under the keys the widgets answer to.
+this module deliberately does not do is *widget identity*: taking a restored session and
+writing it into the screen under the keys the widgets answer to. That half belongs to
+:mod:`app.screen_state`, which is the one module in ``app/`` that reaches Streamlit's
+per-session store, and which calls :func:`inputs_from_session` here to cross the shapes
+before it writes (#93).
 
 **The peak table comes back re-ordered**, tracked rows first. The file stores the two
 halves as two tables (SPEC §5's split, which is what lets a half-paired row be saved at
