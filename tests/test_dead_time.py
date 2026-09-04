@@ -30,16 +30,15 @@ from hplcsim.retention import predict_retention
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
-    LAB_METHOD_AS_RECORDED,
     LAB_RUN1,
     LAB_RUN2,
     LAB_RUN3,
     LAB_RUN4,
 )
 
-# The driver's column as method.csv records it (t0 0.525, core–shell declared); the
-# fixture LAB_METHOD keeps 0.6 for the fits.
-LAB_COLUMN = LAB_METHOD_AS_RECORDED
+# The driver's column as method.csv records it (t0 0.525, core–shell declared) — the
+# fixture itself since the 2026-09-03 re-baseline.
+LAB_COLUMN = LAB_METHOD
 
 
 # --- the estimator (research doc §7.1–§7.2) --------------------------------------------
@@ -243,9 +242,9 @@ def test_marker_classification(marker: str | None, kind: str) -> None:
 
 # --- reality: what a t0 error costs (research doc §6) -----------------------------------
 #
-# Both computed on the lab dataset at the fixture t0 = 0.6 (LAB_METHOD), which is what
-# §6.2's tables were computed at — see the provenance note there. The regimes are the
-# point, not the baseline.
+# Both computed on the lab dataset at the fixture t0 (0.525 since the re-baseline;
+# §6.2's tables were computed at the former 0.6 — see the provenance note there). The
+# regimes are the point, not the baseline: the ratio between them is what is pinned.
 
 
 def _held_out(method: Method, fits: Sequence[FitResult] | None = None) -> dict[str, list[float]]:

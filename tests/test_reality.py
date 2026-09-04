@@ -101,8 +101,9 @@ def _lab_predictions(
     ("target", "measured", "tripwire", "is_extrapolation"),
     [
         # SPEC §10's trust bar is avg ≤ 2%, worst ≤ 5%, order correct. `tripwire` is the
-        # tighter regression guard: pre-build validation put these at 0.35% and 0.26%,
-        # so a drift to 1.9% would clear the contract without anyone noticing.
+        # tighter regression guard: at t0 = 0.525 these sit at 0.42% and 0.34% (0.35% and
+        # 0.26% at the former 0.6), so a drift to 1.9% would clear the contract without
+        # anyone noticing.
         (LAB_RUN3, LAB_MEASURED_TG25, 0.5, False),
         (LAB_RUN4, LAB_MEASURED_TG60, 0.4, True),
     ],
@@ -133,7 +134,7 @@ def test_lab_held_out_runs_are_predicted_within_the_trust_bar(
 
 
 def test_lab_residual_bias_flips_sign_between_the_two_held_out_conditions() -> None:
-    """SPEC §10's residual note: +0.35% at tG = 25, −0.26% at tG = 60.
+    """SPEC §10's residual note: +0.42% at tG = 25, −0.34% at tG = 60.
 
     Worth pinning because it constrains the *shape* of the residual, not just its size.
     A dropped τ term, a mishandled hold or a t0 slip biases every condition the same
@@ -400,12 +401,15 @@ _CLEAN_COMPOUND = "Unknown-1"
 # SPEC §5's area-share warning threshold, "~30% relative change", as a max/min ratio.
 _AREA_SHARE_THRESHOLD = 1.3
 
-# Under the shipped convention Unknown-1's implied N is constant to 0.92% across a
-# fourfold steepness range — at or below the ±1.5% quantisation floor of its own
-# widths, i.e. as tight as this data can resolve. 2% is that floor with a little room;
-# every rival convention scatters by more than 5%.
+# Under the shipped convention Unknown-1's implied N is constant to 1.2% across a
+# fourfold steepness range (0.92% at the former t0 = 0.6) — at the ±1.5% quantisation
+# floor of its own widths, i.e. as tight as this data can resolve. 2% is that floor with
+# a little room. The rivals scatter 3.8% (base-10 slip), 7.2% (over-compressed mirror)
+# and 9.4% (no compression) at 0.525, against 5–13% at 0.6: the re-baseline narrowed
+# the base-10 slip's margin from ~5× to ~3× the shipped scatter, which is why the floor
+# below sits at 3% and the test also asks for more than twice the shipped value.
 _PLATE_COUNT_CONSTANCY_BAR = 2.0
-_RIVAL_SCATTER_FLOOR = 4.0
+_RIVAL_SCATTER_FLOOR = 3.0
 
 Compression = Callable[[float, float], float]
 
@@ -553,7 +557,7 @@ def test_the_calibration_statistic_clears_the_measurement_quantisation() -> None
 
     W½ is recorded to three decimals in the runs the verdict rests on, giving a ±1.5%
     band on the clean compound's narrowest peak. The constancy bar sits just above it,
-    so the 0.92% the shipped convention achieves is at the floor of what these widths
+    so the 1.2% the shipped convention achieves is at the floor of what these widths
     can resolve — it cannot be beaten, only matched. If the recorded precision ever
     coarsened, this test says so before the verdict silently softens.
     """
@@ -599,13 +603,20 @@ def test_the_column_based_plate_count_underpredicts_real_widths() -> None:
 # every Rs — so this block re-asks the held-out questions with the fitted N and keeps
 # the defaulted-N answers alongside, because width-less sessions still get those.
 
-# Held-out W½ with a fitted N: 0.99–1.16× measured (research doc §0.2), against
-# 0.69–0.92× with the geometry default. The band has margin; the sharper claim is
-# per-peak: fitted is closer to measured than the default in every case.
+# Held-out W½ with a fitted N: 1.00–1.17× measured at t0 = 0.525 (0.99–1.16× at the
+# former 0.6; research doc §0.2), against 0.71–0.95× with the geometry default. The
+# band has margin; the sharper claim is per-peak: fitted is closer to measured than
+# the default in every case but one, pinned below.
 _FITTED_WIDTH_BAND = (0.9, 1.25)
+# The one exception the re-baseline produced: Unknown-3 at tG = 60, where the fitted N
+# reads 1.067× and the default 0.946× — the default is nearer by 0.013. At 0.6 the
+# fitted N won every case; a 12.5% change in t0 moves the fitted N ~2.5% and this pair
+# was the closest contest. Pinned by name so the claim above stays exactly as true as
+# it is.
+_DEFAULT_WIDTH_WINS = {("tG60", "Unknown-3")}
 
-# Held-out Rs with a fitted N: 0.90–0.96× measured — slightly pessimistic now, where
-# the default was 1.18–1.39× optimistic.
+# Held-out Rs with a fitted N: 0.89–0.95× measured — slightly pessimistic now, where
+# the default was 1.15–1.37× optimistic.
 _FITTED_RS_BAND = (0.85, 1.05)
 
 
@@ -663,7 +674,7 @@ def test_the_implied_plate_count_ratio_is_the_data_quality_signal_per_peak() -> 
     """How far a peak's two scouting widths disagree about N — characterised, not judged.
 
     Research doc §5.4 showed a correctly modelled peak holds implied N to ~1% across a
-    fourfold range of tG; Unknown-3's two scouting widths disagree by 16%. That is a
+    fourfold range of tG; Unknown-3's two scouting widths disagree by 12%. That is a
     different number from the one §2.4 of plate-count-from-widths.md discusses — its
     N being 1.6× the other compounds', read there as intrinsic because its peaks are
     the narrowest — but it is the same peak and the same question of whether its
@@ -672,7 +683,9 @@ def test_the_implied_plate_count_ratio_is_the_data_quality_signal_per_peak() -> 
     """
     ratios = [fit.plate_count.ratio for fit in _lab_fits() if fit.plate_count is not None]
 
-    assert ratios == pytest.approx([1.011, 1.074, 1.162], abs=0.002)
+    # At the former t0 = 0.6: 1.011 / 1.074 / 1.162. Unknown-1's ratio crossed 1 with
+    # the re-baseline — the two widths now disagree by 2% the other way.
+    assert ratios == pytest.approx([0.978, 1.038, 1.121], abs=0.002)
 
 
 @pytest.mark.parametrize(
@@ -685,7 +698,8 @@ def test_fitted_plate_counts_predict_the_held_out_widths(run_name: str, target: 
 
     The default N is a geometry estimate and reads as one (the test above this block
     pins it at 0.6–1.0× measured, every peak, every run). A fitted N lands the
-    held-out widths at 0.99–1.16× — and, peak by peak, always closer than the default.
+    held-out widths at 1.00–1.17× — and, peak by peak, closer than the default in every
+    case but the one `_DEFAULT_WIDTH_WINS` names, where the two are 0.067 and 0.054 out.
     """
     fitted = _width_ratios(target, run_name, fitted=True)
     default = _width_ratios(target, run_name, fitted=False)
@@ -693,7 +707,12 @@ def test_fitted_plate_counts_predict_the_held_out_widths(run_name: str, target: 
     low, high = _FITTED_WIDTH_BAND
     assert all(low <= ratio <= high for ratio in fitted.values()), fitted
     for name, ratio in fitted.items():
-        assert abs(ratio - 1.0) < abs(default[name] - 1.0), (name, ratio, default[name])
+        fitted_wins = abs(ratio - 1.0) < abs(default[name] - 1.0)
+        assert fitted_wins == ((run_name, name) not in _DEFAULT_WIDTH_WINS), (
+            name,
+            ratio,
+            default[name],
+        )
 
 
 # --- resolution against the held-out runs (SPEC §10's Rs bar, tickets #17 and #23) ---
@@ -853,9 +872,9 @@ def test_resolution_with_fitted_plate_counts_lands_within_a_tenth_of_measured(
 ) -> None:
     """Criterion 1's Rs half — the tightened assertion that replaces the optimism band.
 
-    Fit N from runs 1–2, resolve at a run never seen: Rs comes out at 0.90–0.96× measured
-    on both held-out conditions, 1.5–11.6 Rs units low at Rs 30–116, where the default
-    was 13–26 units high. The residual is slightly pessimistic and no longer a common
+    Fit N from runs 1–2, resolve at a run never seen: Rs comes out at 0.89–0.95× measured
+    on both held-out conditions, 1.6–12.7 Rs units low at Rs 30–116, where the default
+    was 12–24 units high. The residual is slightly pessimistic and no longer a common
     factor — see the two tests below for what each condition can actually resolve.
     """
     table = _lab_table(target, fitted=True)
@@ -882,7 +901,7 @@ def test_at_tg25_the_fitted_resolution_is_inside_the_measurement_band() -> None:
 
 
 def test_at_tg60_the_fitted_resolution_residual_is_real() -> None:
-    """The extrapolation run does resolve it: −6.5% and −10%, outside a ±0.5% band.
+    """The extrapolation run does resolve it: −7.5% and −11%, outside a ±0.5% band.
 
     run4.csv carries three decimals, so this residual is a genuine statement about the
     model — one N per compound across a fourfold range of tG, and a G that is itself
@@ -952,28 +971,31 @@ _V2_2026_09_03_IDS = [
 ]
 _V2_ALL_IDS = _V2_IDS + _V2_2026_09_03_IDS
 
-# Regression tripwires on mean |ΔtR| in percent, set just above where each run sits
-# (0.07 / 0.18 / 1.33 / 0.20 / 0.10 / 0.08 / 0.08 today), not at the 2 % contract.
+# Regression tripwires on mean |ΔtR| in percent, set just above where each run sits at
+# t0 = 0.525 (0.11 / 0.23 / 1.51 / 0.26 / 0.14 / 0.12 / 0.12; at the former 0.6 they were
+# 0.07 / 0.18 / 1.33 / 0.20 / 0.10 / 0.08 / 0.08), not at the 2 % contract.
 _V2_TR_TRIPWIRE = {
     "run3": 0.15,
     "run4": 0.25,
-    "run5": 1.5,
-    "run6": 0.25,
+    "run5": 1.6,
+    "run6": 0.30,
     "E1": 0.15,
     "run3_rep2": 0.15,
     "run3_rep3": 0.15,
 }
 # #46 item 7: the worst Rs miss per run, pinned within half a hundredth of where it was
-# measured (0.050 / 0.046 / 0.011 / 0.088 / 0.028 / 0.050 / 0.035). run5 is the case where
-# the stamp is conservative: every pair within 0.011 while retention misses by 1.3 %.
+# measured at t0 = 0.525 (0.040 / 0.047 / 0.054 / 0.116 / 0.029 / 0.040 / 0.045). run5's
+# miss grew fivefold from the 0.011 it had at 0.6: in the post-gradient hold t0 enters
+# the retention time directly instead of being absorbed by the fit, and the widths there
+# are already 6–9 % under. Still 2.6–5.6× inside ±0.3 (run6 / run5).
 _V2_RS_TRIPWIRE = {
-    "run3": 0.055,
+    "run3": 0.045,
     "run4": 0.05,
-    "run5": 0.015,
-    "run6": 0.09,
+    "run5": 0.06,
+    "run6": 0.12,
     "E1": 0.03,
-    "run3_rep2": 0.055,
-    "run3_rep3": 0.04,
+    "run3_rep2": 0.045,
+    "run3_rep3": 0.05,
 }
 # Fitted-N widths against measured. On a ramp the fit lands within 1–3 % of every width;
 # in run5's hold it under-predicts every width by 6–9 % — the first measurement of the
@@ -988,22 +1010,29 @@ _V2_FITTED_WIDTH_BAND = {
     "run3_rep3": (0.97, 1.02),
 }
 # #46 item 3, layer two: each run's mean signed residual, predicted − measured in
-# minutes, pinned where it was measured. run3 and run4 are research #52 §3's values.
+# minutes, pinned where it was measured at t0 = 0.525 (#24's re-baseline, 2026-09-03).
+# Research #52 §3's values at the former 0.6 were 0.0122 / 0.0277 / −0.4501 / 0.0339 /
+# 0.0174 / 0.0130 / 0.0140: every on-ramp run moved late by 0.007–0.010 min, more than
+# the 0.002 min floor, which is exactly why these are pinned rather than bounded.
 _V2_PINNED_MEAN_OFFSET = {
-    "run3": 0.0122,
-    "run4": 0.0277,
-    "run5": -0.4501,
-    "run6": 0.0339,
-    "E1": 0.0174,
-    "run3_rep2": 0.0130,
-    "run3_rep3": 0.0140,
+    "run3": 0.0189,
+    "run4": 0.0364,
+    "run5": -0.5112,
+    "run6": 0.0441,
+    "E1": 0.0258,
+    "run3_rep2": 0.0196,
+    "run3_rep3": 0.0206,
 }
 # #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
-# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.096 %.
+# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.14 %.
 _V2_UNSTAMPED_CEILING_PERCENT = 0.4
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
+# The runs whose predicted Rs falls *outside* the repeatability band, with how far below
+# its lower edge each pair sits (min, max). Only run5, since the re-baseline to 0.525:
+# 0.009 / 0.018 / 0.020. Every run absent from this table is asserted inside the band.
+_V2_REPEATABILITY_SHORTFALL = {"run5": (0.005, 0.025)}
 
 
 def _v2_fits() -> list[FitResult]:
@@ -1170,12 +1199,12 @@ def test_validation2_scouting_pair_fits_without_a_low_confidence_flag() -> None:
 def test_validation2_held_out_runs_are_predicted_within_the_trust_bar(run_name: str) -> None:
     """Fit tG = 15/40 at 5 → 95 %B, predict seven runs the fit never saw.
 
-    run3 varies only tG and lands at 0.07% mean — the tightest held-out retention
+    run3 varies only tG and lands at 0.11% mean — the tightest held-out retention
     result in the project, against a 2% bar. run4 also moves φ0 to 15 %B, an axis the
-    scouting pair holds fixed, and costs a factor of 2.4 (0.18%). The 2026-09-03 runs
-    (#46 item 3, layer one) follow: run6 at 25 %B (0.20%), E1 (0.10%), run3's two
-    replicates (0.08%), and run5, whose peaks the engine puts in the post-gradient hold
-    and flags low-confidence, still inside the bar at 1.33%. Every tripwire sits just
+    scouting pair holds fixed, and costs a factor of 2 (0.23%). The 2026-09-03 runs
+    (#46 item 3, layer one) follow: run6 at 25 %B (0.26%), E1 (0.14%), run3's two
+    replicates (0.12%), and run5, whose peaks the engine puts in the post-gradient hold
+    and flags low-confidence, still inside the bar at 1.51%. Every tripwire sits just
     above its run for the usual reason: a drift to 1.9% would clear the contract with
     nobody noticing.
     """
@@ -1234,7 +1263,7 @@ def test_validation2_offset_growth_is_not_explained_by_any_dwell_error() -> None
 
     Campaign #27 carries an over-prediction that grows as the programme changes, and
     `lab_data.py` records it as a known dwell-shaped offset. This sample reproduces the
-    growth on independent data — +0.012 min at run3, +0.028 min at run4 — and rules out
+    growth on independent data — +0.019 min at run3, +0.036 min at run4 — and rules out
     that explanation, which the parent dataset could not do on its own.
 
     **What this does not say.** run4 differs from run3 in φ0, Δφ *and* s* together (see
@@ -1243,16 +1272,17 @@ def test_validation2_offset_growth_is_not_explained_by_any_dwell_error() -> None
     value spans them.
 
     The argument is one derivative. For these strongly-retained peaks ∂tR/∂τ = 1 − k_e/k0
-    is within 0.25% of 1 at both conditions (worst 0.223%, run4), so *any* dwell error
+    is within 0.3% of 1 at both conditions (worst 0.261%, run4), so *any* dwell error
     shifts both runs by the same number of minutes. Two offsets differing by a factor
-    of 2.3 therefore cannot both come from one wrong dwell — closing the 0.0155 min gap
-    between them by dwell alone would take δτ ≈ 9.7 min, about 3.9 mL of V_D (research
-    #52 §2.1).
+    of 1.9 therefore cannot both come from one wrong dwell — closing the 0.0175 min gap
+    between them by dwell alone would take δτ ≈ 9.5 min, about 3.8 mL of V_D (research
+    #52 §2.1 worked it at the former t0 = 0.6: 0.0155 min, 9.7 min, 3.9 mL).
 
-    The derivative is asserted to the 0.25% the sentence above claims, not looser: a
+    The derivative is asserted to the 0.3% the sentence above claims, not looser: a
     tolerance wider than the claim would let the claim rot while the test still passed.
     (The bound was written as 0.2% before it was ever asserted; tightening the test to
-    match found run4 at 0.223% and the prose was corrected, not the tolerance.)
+    match found run4 at 0.223%, and the re-baseline to 0.525 moved it to 0.261% — each
+    time the prose was corrected, not the tolerance widened past the claim.)
 
     **Insensitivity is this sample's argument, not the general one** (research #52 §2.2,
     restated under #54). It holds *here* because every peak is strongly retained at both
@@ -1277,7 +1307,7 @@ def test_validation2_offset_growth_is_not_explained_by_any_dwell_error() -> None
             / 0.01
             for fit in _v2_fits()
         ]
-        assert all(s == pytest.approx(1.0, abs=0.0025) for s in sensitivities), (
+        assert all(s == pytest.approx(1.0, abs=0.003) for s in sensitivities), (
             run_name,
             sensitivities,
         )
@@ -1337,16 +1367,16 @@ def test_the_rs_bar_of_spec_10_is_met_on_the_near_critical_pair(run_name: str) -
 
     The counterpart of `test_the_rs_bar_of_spec_10_is_still_unmet_with_fitted_plate_counts`:
     that one pins why the Rs 30–116 sample cannot answer this question, this one answers
-    it. run3 gives 2.56 / 5.13 / 1.75 against measured 2.57 / 5.18 / 1.75; run4, with φ0
+    it. run3 gives 2.56 / 5.14 / 1.75 against measured 2.57 / 5.18 / 1.75; run4, with φ0
     moved to 15 %B, gives 2.59 / 5.18 / 1.78 against 2.64 / 5.20 / 1.77. Every pair at
     both conditions is inside ±0.3 by more than an order of magnitude — worst miss 0.05 —
     and the critical pair itself sits at Rs 1.75–1.78, in the 1–2 band where ±0.3 is the
     tolerance a method decision actually turns on.
 
-    #46 item 7 extends it to a raised start (run6, 0.088 worst), a hold (run5, 0.011 —
-    peaks leaving in a hold move together, so a 1.3 % retention miss costs the Rs
-    nothing), the axis test (E1, 0.028) and run3's replicates; the worst miss per run is
-    pinned as a tripwire.
+    #46 item 7 extends it to a raised start (run6, 0.116 worst), a hold (run5, 0.054 —
+    peaks leaving in a hold move together, so a 1.5 % retention miss costs the Rs a
+    fifth of the bar), the axis test (E1, 0.029) and run3's replicates; the worst
+    miss per run is pinned as a tripwire.
 
     Scope, so the SPEC sentence this backs is not read wider than the evidence: one
     sample, one gradient axis and one composition axis, one post-gradient hold.
@@ -1444,11 +1474,17 @@ def test_validation2_resolution_is_inside_the_repeatability_band(run_name: str) 
 
     `test_validation2_resolution_is_inside_the_measurement_band` asks whether the
     prediction is inside what the *export's rounding* allows, and runs 5 and 6 are not
-    (run6 by 0.06–0.09 on every pair). This asks the question the instrument can
+    (run6 by 0.013–0.045 below the band on every pair). This asks the question the
+    instrument can
     actually answer: inside what the *instrument's repeatability* allows — E4's 0.002 min
-    on tR and one export step on W½. Every predicted Rs at all seven held-out conditions
-    is, run6 included. So no Rs residual on this sample is resolvable above the noise the
-    replicates measured, which is the sharper form of "Rs ± 0.3 is met".
+    on tR and one export step on W½. Every predicted Rs on the six on-ramp conditions
+    is, run6 included. run5 is not, since the re-baseline to t0 = 0.525: all three of its
+    pairs sit 0.009–0.020 below the band's lower edge (0.033–0.054 below the measured
+    point estimate), where at 0.6 every one was inside. In the
+    post-gradient hold t0 is not absorbed by the fit, so the trap run is the one
+    condition whose Rs residual the replicates *can* resolve — pinned in
+    `_V2_REPEATABILITY_SHORTFALL` with its size, so the sharper form of "Rs ± 0.3 is
+    met" reads exactly as wide as the evidence: every on-ramp condition, not every one.
     """
     bands = _resolution_bands(
         VALIDATION2_MEASURED_TR[run_name],
@@ -1456,7 +1492,13 @@ def test_validation2_resolution_is_inside_the_repeatability_band(run_name: str) 
         width_ulp=VALIDATION2_REPEATABILITY_W_HALF,
         t_r_ulp=VALIDATION2_REPEATABILITY_TR / 2.0,
     )
-    for pair, (low, high) in zip(_v2_table(run_name).pairs, bands, strict=True):
+    pairs = list(zip(_v2_table(run_name).pairs, bands, strict=True))
+    if run_name in _V2_REPEATABILITY_SHORTFALL:
+        least, most = _V2_REPEATABILITY_SHORTFALL[run_name]
+        shortfalls = [low - pair.rs for pair, (low, _) in pairs]
+        assert all(least <= shortfall <= most for shortfall in shortfalls), shortfalls
+        return
+    for pair, (low, high) in pairs:
         assert low <= pair.rs <= high, (pair.earlier.name, pair.later.name, pair.rs, low, high)
 
 
@@ -1465,7 +1507,7 @@ def test_validation2_residual_at_a_raised_phi0_is_not_below_the_scouting_phi0() 
 
     Starting above the scouting pair's 5 %B has not, on this sample, made the residual
     smaller: run4 (15 %B) and run6 (25 %B) both sit above run3 (5 %B). The doubling rule
-    (×2.1 per 10 %B) is *not* asserted — it fails here (+0.07 / +0.18 / +0.20 %: one step
+    (×2.1 per 10 %B) is *not* asserted — it fails here (+0.11 / +0.23 / +0.26 %: one step
     up, then flat) while holding on the three-peak sample, and the bar records only the
     ordering both samples share.
     """
@@ -1496,7 +1538,7 @@ def test_validation2_stamped_runs_miss_by_more_than_every_unstamped_run() -> Non
     """#46 item 5: the falsifiable content of *indicative, not decision-grade*.
 
     (a) Every run that draws the stamp has a mean |ΔtR| above every run that does not —
-    today 0.18 % (run4) against 0.096 % (E1) at the boundary — which is what makes the
+    today 0.23 % (run4) against 0.14 % (E1) at the boundary — which is what makes the
     stamp honest rather than decorative. (b) No unstamped run exceeds 0.4 % mean |ΔtR|,
     provisional until #55 re-pins it with the two guard thresholds.
 

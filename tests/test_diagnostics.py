@@ -39,7 +39,6 @@ from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
-    LAB_METHOD_AS_RECORDED,
     LAB_PEAKS,
     LAB_RUN1,
     LAB_RUN2,
@@ -98,7 +97,7 @@ def test_a_candidate_inside_the_scouting_bracket_says_nothing() -> None:
 
 
 def test_a_candidate_just_outside_the_bracket_is_an_info_flag_not_a_warning() -> None:
-    """SPEC §6: "the near-bracket flag stays gentle" — the tG = 60 evidence, 0.26%."""
+    """SPEC §6: "the near-bracket flag stays gentle" — the tG = 60 evidence, 0.34%."""
     inputs = _lab_inputs(candidate=Gradient(0.05, 0.95, t_gradient=60.0, t_init=0.5))
     (flag,) = _at(inputs).candidate
     assert flag.code == "tg_extrapolation"
@@ -211,7 +210,7 @@ def _params(log10_k0: float, s: float) -> RetentionParams:
 _SHALLOW_S = ("Shallow S", _params(3.0, 4.0))
 _STEEP_S = ("Steep S", _params(3.4, 5.0))
 
-# log10 k0 = 0.5 leaves the column 0.44 min after t0 + τ, inside t0 = 0.6 min of it —
+# log10 k0 = 0.5 leaves the column 0.18 min after t0 + τ, inside t0 = 0.525 min of it —
 # research doc §4.3's "t'R < t0" early-eluter test, still in the gradient regime.
 _EARLY = ("Early", _params(0.5, 3.0))
 
@@ -520,9 +519,9 @@ def test_nothing_entered_at_all_leaves_every_result_surface_quiet() -> None:
 
 # --- SPEC §4's checks on a measured t0 (ticket #24) -----------------------------------------
 
-# The driver's column as method.csv records it: re-read t0, architecture declared,
-# solvent-front marker. The fixture LAB_METHOD stays at 0.6 for the fits.
-_LAB_COLUMN = LAB_METHOD_AS_RECORDED
+# The driver's column as method.csv records it: t0 0.525, architecture declared,
+# solvent-front marker — the fixture itself since the 2026-09-03 re-baseline.
+_LAB_COLUMN = LAB_METHOD
 
 
 def _dead_time(method: Method) -> list[Diagnostic]:
@@ -613,14 +612,14 @@ def test_a_compound_marker_is_quiet() -> None:
 def test_a_peak_that_leaves_at_k_below_one_is_early_however_late_it_looks() -> None:
     """Research doc §4.3's other early-eluter test, beside t'R < t0: "k_e ... below ~1".
 
-    The fixture isolates that clause rather than riding on the other two. Under a 3 min
-    gradient "Mid" leaves at k = 0.96 but 1.13 min after the ramp arrives — comfortably
-    past t0 = 0.6 min and squarely in the gradient regime, so neither of the other two
+    The fixture isolates that clause rather than riding on the other two. Under a 2.5 min
+    gradient "Mid" leaves at k = 0.95 but 0.95 min after the ramp arrives — comfortably
+    past t0 = 0.525 min and squarely in the gradient regime, so neither of the other two
     tests fires. The engine already sets `RetentionResult.low_confidence` on it and
     nothing in the app read that, which is how a barely-retained peak stayed silent.
     """
     rows = _rows_predicted_at(LAB_RUN1, LAB_RUN2, [_MID, _SHALLOW_S])
-    inputs = _lab_inputs(rows=rows, candidate=Gradient(0.05, 0.95, 3.0, 0.5))
+    inputs = _lab_inputs(rows=rows, candidate=Gradient(0.05, 0.95, 2.5, 0.5))
     predicted = run_cockpit(inputs).predicted_by_name["Mid"].retention
 
     assert predicted.regime == "gradient"
@@ -628,4 +627,4 @@ def test_a_peak_that_leaves_at_k_below_one_is_early_however_late_it_looks() -> N
     assert predicted.t_r - LAB_METHOD.t0 - (LAB_METHOD.t_dwell + 0.5) > LAB_METHOD.t0
 
     (badge,) = [b for b in _at(inputs).badges["Mid"] if b.code == "early_eluter"]
-    assert "k = 0.96" in badge.message
+    assert "k = 0.95" in badge.message

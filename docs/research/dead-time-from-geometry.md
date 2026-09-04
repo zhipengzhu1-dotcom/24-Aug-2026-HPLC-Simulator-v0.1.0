@@ -12,8 +12,9 @@ fallback. This document establishes what it should be.
 > time point on the chromatogram) and re-read on 2026-08-31 as **0.525 min** (solvent front,
 > `validation/run1-chromatogram.png`; recorded in `validation/method.csv`). §4, §5.1, §7.2,
 > §7.5, §7.9 and §8 are rewritten against 0.525 and the decisions of map tickets #33 and
-> #34. §6's numbers were computed at 0.6 and are left as computed, because 0.6 is still the
-> fixture value in `tests/lab_data.py` (provenance note in §6.2). The constants recommended
+> #34. §6's numbers were computed at 0.6 and are left as computed, because they document the
+> two regimes, not a baseline; the fixtures were re-baselined to 0.525 on 2026-09-03 (#24;
+> provenance note in §6.2). The constants recommended
 > in §7.2 now follow `porosity-for-t0-geometry.md` §5.1 (0.62 / 0.52), not Waters' 0.66 /
 > 0.49, so the two documents agree.
 
@@ -312,8 +313,8 @@ extra-column volume, not an estimate that a hidden bias could flip to the imposs
 
 **Verdict.** The measured 0.525 min is a solvent-front time on a solid-core column that
 sits a plausible plumbing volume above the core–shell geometry estimate. It is what the
-retention fit should be calibrated on; the fixtures still carry the retracted 0.6, and
-re-baselining them is #24's decision (§6.2). The one statement the UI owes the user is the
+retention fit should be calibrated on; the fixtures were re-baselined to it on 2026-09-03
+(#24). The one statement the UI owes the user is the
 readout of §7 item 5: the implied $\varepsilon_T$ and $V_{ec}$, as facts.
 
 ---
@@ -740,8 +741,8 @@ different flow rate or column."* That is a more useful and more honest warning t
 9. **Whether 0.6 min was a measurement or a rounded value** — resolved by retraction. The
    driver established on 2026-08-30 that 0.6 had been read from the wrong time point, and
    re-read 0.525 min on 2026-08-31. The precision of that read is not recorded (§4.3(b)).
-   The 0.6 survives only as the fixture value in `tests/lab_data.py`, which is #24's to
-   re-baseline.
+   The 0.6 survives only in §6's tables, as computed; the fixtures moved to 0.525 on
+   2026-09-03 (#24).
 10. **Ph. Eur. 2.2.46 and JP 2.00 hold-up definitions.** Only USP–NF ⟨621⟩ was read (ref. 1).
     PCW §3.4 established that the three are harmonized on the plate-count constant, so they
     are very likely harmonized here too, but that is inference.

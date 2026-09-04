@@ -308,11 +308,12 @@ def test_implausibly_steep_solute_is_refused_rather_than_searched_forever() -> N
 
 LAB_EXPECTED = [
     # (label, S base-10, log10 k0, predicted tR at tG = 25, measured tR at tG = 25)
-    # S / log10 k0 are the values fitted pre-build from run1.csv + run2.csv (handoff,
-    # 2026-08-27); the tG = 25 column is run3.csv, held out of the fit.
-    ("Unknown-1", 5.08, 2.76, 13.861, 13.787),
-    ("Unknown-2", 4.99, 3.24, 16.729, 16.658),
-    ("Unknown-3", 5.18, 4.76, 24.383, 24.358),
+    # S / log10 k0 are fitted from run1.csv + run2.csv at t0 = 0.525 (re-baselined
+    # 2026-09-03, #24; the 2026-08-27 pre-build handoff had 5.08 / 2.76, 4.99 / 3.24,
+    # 5.18 / 4.76 at the superseded 0.6). The tG = 25 column is run3.csv, held out.
+    ("Unknown-1", 4.919, 2.777, 13.871, 13.787),
+    ("Unknown-2", 4.836, 3.249, 16.740, 16.658),
+    ("Unknown-3", 5.016, 4.711, 24.395, 24.358),
 ]
 
 
@@ -346,24 +347,25 @@ def test_fitting_the_lab_scouting_pair_reproduces_the_pre_build_parameters(
 def test_lab_peaks_get_a_plate_count_fitted_from_their_scouting_widths() -> None:
     """The fit is everything the two runs say about a peak — retention *and* N.
 
-    Characterisation against the numbers in docs/handoffs/2026-08-27-tdd-ticket-23.md.
-    Unknown-1's per-run values are the ones research doc §5.4 tabulated by hand (15299
-    at tG = 15, 15126 at tG = 45) before the inverse existed as a function, so they are
-    an independent check of it; the fitted value is their geometric mean. Against the
-    h = 2 geometry default of 31250, every peak lands at 14–24 k plates.
+    Characterisation at t0 = 0.525 (re-baselined 2026-09-03, #24). At the superseded
+    0.6 these were 15212 / 14327 / 23968, with Unknown-1's per-run values 15299 and
+    15126 — the numbers research doc §5.4 tabulated by hand before the inverse existed
+    as a function, and still quotes as computed at 0.6. N moves ~2.5% for a 12.5%
+    t0 change, the ~0.2× elasticity dead-time-from-geometry.md §6.2 records. Against the
+    h = 2 geometry default of 31250, every peak lands at 15–25 k plates.
     """
     fits = fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
 
     fitted = [fit.plate_count for fit in fits]
     assert all(value is not None for value in fitted)
     assert [value.plate_count for value in fitted if value is not None] == pytest.approx(
-        [15212.0, 14327.0, 23968.0], rel=1e-3
+        [15605.0, 14684.0, 24577.0], rel=1e-3
     )
 
     unknown_1 = fitted[0]
     assert unknown_1 is not None
-    assert unknown_1.implied_run1 == pytest.approx(15299.0, abs=1.0)
-    assert unknown_1.implied_run2 == pytest.approx(15126.0, abs=1.0)
+    assert unknown_1.implied_run1 == pytest.approx(15432.0, abs=1.0)
+    assert unknown_1.implied_run2 == pytest.approx(15779.0, abs=1.0)
     assert not unknown_1.low_confidence
 
 
@@ -373,7 +375,7 @@ def test_a_peak_without_widths_is_fitted_for_retention_only() -> None:
     fit = fit_peak(bare, LAB_METHOD, LAB_RUN1, LAB_RUN2)
 
     assert fit.plate_count is None
-    assert log10_k0_from_ln_k0(fit.params.ln_k0) == pytest.approx(2.76, abs=0.01)
+    assert log10_k0_from_ln_k0(fit.params.ln_k0) == pytest.approx(2.777, abs=0.01)
 
 
 def test_a_steeper_run_that_elutes_later_is_refused_rather_than_searched_forever() -> None:

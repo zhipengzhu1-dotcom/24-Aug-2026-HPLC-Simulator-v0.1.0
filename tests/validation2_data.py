@@ -26,13 +26,15 @@ from hplcsim.model import Gradient, Method, Peak, Run
 # imported from `lab_data` so the two datasets stay independently editable; the
 # restatement is pinned against LAB_METHOD by a test, so it cannot drift unnoticed.
 VALIDATION2_METHOD = Method(
-    t0=0.6,
+    t0=0.525,
     t_dwell=0.9375,
     flow=0.4,
     column_length_mm=100.0,
     column_id_mm=2.1,
     particle_um=1.6,
     temperature_c=45.0,
+    particle_is_solid_core=True,
+    t0_marker="solvent front, first disturbance",
 )
 
 # 4peaks_run1.csv / 4peaks_run2.csv: the scouting pair, 5 → 95 %B. β = 40/15 = 2.67 —
@@ -80,8 +82,9 @@ VALIDATION2_RUN6 = Run(Gradient(phi0=0.25, phif=0.95, t_gradient=25.0, t_init=0.
 
 # E1.csv — the axis test (research #52 §5.2): 5 → 85 %B at tG 20 shares φ0 with run3 and
 # Δφ, tG and s* (0.0240) with run4. Its residual therefore says which of the two moved
-# run4's residual off run3's: it landed at +0.017 min, one third of the way from run3's
-# +0.012 to run4's +0.028 — predominantly φ0 (#46 resolution, item 10). Asserted below
+# run4's residual off run3's: it landed at +0.026 min, two fifths of the way from run3's
+# +0.019 to run4's +0.036 at t0 = 0.525 (one third at the former 0.6: +0.017 between
+# +0.012 and +0.028) — predominantly φ0 (#46 resolution, item 10). Asserted below
 # as a measurement, never as that reading.
 VALIDATION2_E1 = Run(Gradient(phi0=0.05, phif=0.85, t_gradient=20.0, t_init=0.5), name="E1")
 

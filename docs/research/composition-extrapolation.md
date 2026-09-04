@@ -204,7 +204,8 @@ Reference table [derived from the boxed law]:
 
 ### 2.2 On this project's own lab dataset [derived]
 
-Computed from `validation/` — `method.csv` (t_0 = 0.6 min as the fits use,
+Computed from `validation/` — `method.csv` (t_0 = 0.6 min, the fixture value when this was
+computed; re-baselined to 0.525 on 2026-09-03, #24 — the numbers below are left as computed,
 t_D = 0.9375, t_init = 0.5, so τ = 1.4375; φ_0 = 0.05, φ_f = 0.95) and the
 retention times in `run1.csv` / `run2.csv`, using the exact elution-composition
 identity φ_e = φ_0 + Δφ·(t_R − t_0 − τ)/t_G (`gradient-elution-math.md` §2.3):
