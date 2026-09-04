@@ -662,7 +662,7 @@ def resolution_map_placeholder(
 ) -> Any:
     """The frame of the v0.2 resolution map, with nothing drawn inside it.
 
-    SPEC §11 puts the map — "max-of-minimum Rs over swept tG/hold" — in v0.2. The
+    SPEC §11 puts the map — "max-of-minimum Rs over swept tG/hold" — in v0.7. The
     engine could already sweep it, which is exactly why this stays empty: a filled
     contour would be indistinguishable from the real thing on screen, and a plot that
     looks like data a chromatographer could pick a method from must be data. The axes
@@ -683,9 +683,9 @@ def resolution_map_placeholder(
         x=(t_gradient_range[0] + t_gradient_range[1]) / 2.0,
         y=(hold_range[0] + hold_range[1]) / 2.0,
         text=(
-            "<b>Resolution map — not in v0.1</b><br>"
+            "<b>Resolution map — not built yet</b><br>"
             "<span style='font-size:12px'>Minimum Rs swept over gradient time and "
-            "initial hold.<br>Deferred to v0.2 with the optimiser (SPEC §11).<br>"
+            "initial hold.<br>Planned for v0.7 with the optimiser (SPEC §11).<br>"
             "Left blank rather than mocked: a filled contour here would be<br>"
             "indistinguishable from a method you could choose from.</span>"
         ),

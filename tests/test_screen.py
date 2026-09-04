@@ -847,7 +847,8 @@ def test_the_indicative_stamp_reaches_every_surface_spec_6_names_it_on() -> None
     assert "Min. Rs (indicative)" in summary
     assert "Critical pair (indicative)" in summary
     # Retention stays shown as numbers at the same condition (SPEC §6).
-    assert "Run time (indicative)" not in summary
+    assert "Last peak (indicative)" not in summary
+    assert "Programme length (indicative)" not in summary
 
     assert any("indicative, not decision-grade" in text for text in _messages(app)["error"])
     assert any("indicative, not decision-grade" in caption for caption in _captions(app))
@@ -908,3 +909,78 @@ def test_a_badged_critical_pair_downgrades_min_rs_with_no_method_level_stamp() -
     assert "Critical pair (indicative)" in summary
     assert "Rs indicative — not decision-grade" in _status_bar(app)
     assert any("one of its peaks carries a badge" in caption for caption in _captions(app))
+
+
+# --- #25: what the screen says, where it says less than it could -----------------------
+
+
+def test_a_new_session_opens_on_a_tab_with_data_in_it() -> None:
+    """The resolution map is an empty frame until v0.7 draws it; it is not the first view."""
+    app = _running_app()
+    labels = [tab.label for tab in app.tabs]  # type: ignore[attr-defined]
+    assert labels[0] == "Table of peaks"
+    assert labels[-1] == "Resolution map"
+
+
+def _rs_frame(app: object) -> object:
+    """The resolution table — the one data grid carrying an Rs column."""
+    (frame,) = [
+        frame
+        for frame in app.dataframe  # type: ignore[attr-defined]
+        if "Rs" in list(frame.value.columns)
+    ]
+    return frame
+
+
+def test_every_rs_on_the_screen_is_coloured_on_the_one_threshold_function() -> None:
+    """SPEC §7: Rs is colour-coded on the conventional reading — everywhere it is shown."""
+    from app.panels import resolution_cell_style, resolution_colour
+
+    app = _loaded(_QUIET_CANDIDATE)
+    frame = _rs_frame(app)
+    rs_values = frame.value["Rs"].tolist()  # type: ignore[attr-defined]
+    assert rs_values, "the lab session resolves at least one pair"
+
+    # The table: the Rs column's cells — and only that column's — carry the colour the
+    # shared function gives each value. (pandas re-spaces the declaration, so the
+    # colour is what is looked for, not the string.)
+    styles = frame.proto.arrow_data.styler.styles  # type: ignore[attr-defined]
+    rs_column = list(frame.value.columns).index("Rs")  # type: ignore[attr-defined]
+    for rs in rs_values:
+        assert resolution_colour(rs) in styles
+    assert f"_col{rs_column}" in styles
+    assert not any(f"_col{i}" in styles for i in range(len(frame.value.columns)) if i != rs_column)  # type: ignore[attr-defined]
+    # The rail's Min. Rs and the status bar's Rs, on the same colour.
+    coloured_min = f'style="{resolution_cell_style(min(rs_values))}">{min(rs_values):.2f}<'
+    assert coloured_min in _panel(app, "Method summary")
+    assert f"Rs <span {coloured_min}" in _status_bar(app)
+    # The selected peak's two neighbours, each on its own row rather than "a / b".
+    detail = _panel(app, "Selected peak")
+    assert "Rs to previous" in detail
+    assert "Rs to next" in detail
+    assert "Rs before/after" not in detail
+
+
+def test_the_method_summary_tells_the_programme_length_from_the_last_peak() -> None:
+    """A row beside tG and the hold called "Run time" read as the method length; it was
+    the last peak's tR. Both are shown now, each under its own name."""
+    app = _loaded(_QUIET_CANDIDATE)
+    summary = _panel(app, "Method summary")
+
+    # t_init 0.5 + tG 25 for the quiet candidate.
+    assert "Programme length" in summary
+    assert "25.50 min" in summary
+    assert "Last peak" in summary
+    assert "Run time" not in summary
+
+
+def test_empty_peak_table_cells_are_empty_rather_than_the_word_none() -> None:
+    """Streamlit paints a missing value as "None" unless the grid is told otherwise; the
+    frame's dtypes were never the cause. Both dynamic-row editors say so."""
+    app = _loaded(_QUIET_CANDIDATE)
+    dynamic = 2  # the proto's editing mode for `num_rows="dynamic"`
+    editors = [f for f in app.dataframe if f.proto.editing_mode == dynamic]  # type: ignore[attr-defined]
+    assert {list(f.value.columns)[0] for f in editors} == {COMPOUND, T_CANDIDATE}
+    for editor in editors:
+        assert editor.proto.HasField("placeholder")
+        assert editor.proto.placeholder == ""

@@ -10,7 +10,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.panels import STYLE, Row, panel, resolution_colour, status_bar, worksheet
+from app.panels import (
+    STYLE,
+    Row,
+    panel,
+    resolution_cell_style,
+    resolution_colour,
+    status_bar,
+    worksheet,
+)
 
 
 def test_every_row_reaches_the_panel() -> None:
@@ -88,6 +96,30 @@ def test_the_resolution_traffic_light_turns_at_baseline_and_at_the_robustness_ta
 def test_the_three_traffic_light_colours_are_distinct() -> None:
     """A threshold nobody can see is not a threshold."""
     assert len({resolution_colour(2.5), resolution_colour(1.7), resolution_colour(1.0)}) == 3
+
+
+def test_a_table_cell_and_a_panel_row_colour_an_rs_with_the_same_declaration() -> None:
+    """#25: one threshold function behind every Rs — the Styler's CSS is the panel's."""
+    for rs in (2.5, 1.7, 1.0):
+        cell = resolution_cell_style(rs)
+        assert resolution_colour(rs) in cell
+        assert cell in panel("Method summary", [Row("Min. Rs", f"{rs:.2f}", resolution_colour(rs))])
+
+
+def test_a_status_bar_row_is_colour_coded_and_escaped() -> None:
+    """#25: the bar's Rs reads on the rail's traffic light, and its text is still escaped."""
+    html = status_bar(["tG 25 min", Row("Rs <x>", "1.75", resolution_colour(1.75))])
+
+    assert "tG 25 min" in html
+    assert "Rs &lt;x&gt;" in html
+    assert f'<span style="{resolution_cell_style(1.75)}">1.75</span>' in html
+
+
+def test_a_status_bar_row_without_a_colour_is_a_plain_label_and_value() -> None:
+    html = status_bar([Row("Peaks", "4")])
+
+    assert "Peaks <span>4</span>" in html
+    assert "style=" not in html
 
 
 def test_a_value_column_that_cannot_wrap_would_clip_its_own_numbers() -> None:
