@@ -9,6 +9,12 @@ from hplcsim.retention import predict_retention
 from lab_data import LAB_METHOD, LAB_PEAKS
 from numerics import integrate_fundamental_equation
 
+# The method the research doc's §4 edge cases were worked by hand against: the lab
+# instrument at the t0 = 0.6 the fixtures carried when they were worked. Kept as its own
+# constant so the re-baseline of LAB_METHOD to 0.525 (#24) does not re-derive arithmetic
+# whose only point is being checkable by hand.
+_HAND_WORKED_METHOD = Method(t0=0.6, t_dwell=0.9375, flow=0.4)
+
 
 @pytest.mark.parametrize(
     ("t_gradient", "measured"),
@@ -80,7 +86,7 @@ def test_closed_form_matches_numerical_integration(
 def test_peak_that_leaves_during_hold_is_isocratic() -> None:
     # tau/t0 = (0.9375 + 0.5)/0.6 = 2.396; k0 = 2 < that, so tR = t0(1 + k0) = 1.8 min
     params = RetentionParams(ln_k0=math.log(2.0), s_e=10.0, phi_ref=0.05)
-    result = predict_retention(params, LAB_METHOD, Gradient(0.05, 0.95, 15.0, t_init=0.5))
+    result = predict_retention(params, _HAND_WORKED_METHOD, Gradient(0.05, 0.95, 15.0, t_init=0.5))
     assert result.t_r == pytest.approx(1.8)
     assert result.k_e == pytest.approx(2.0)
     assert result.regime == "isocratic_hold"
@@ -91,7 +97,7 @@ def test_peak_still_on_column_at_gradient_end_finishes_isocratically() -> None:
     # b_e = 0.6·0.9·1/5 = 0.108; x_G = 1.4375/12 + (20/8.131 − 1)/(20·0.108) = 0.7955;
     # tR = 1.4375 + 5 + 0.6 + (1 − 0.7955)·0.6·8.131 = 8.035 min.
     params = RetentionParams(ln_k0=math.log(20.0), s_e=1.0, phi_ref=0.05)
-    result = predict_retention(params, LAB_METHOD, Gradient(0.05, 0.95, 5.0, t_init=0.5))
+    result = predict_retention(params, _HAND_WORKED_METHOD, Gradient(0.05, 0.95, 5.0, t_init=0.5))
     assert result.t_r == pytest.approx(8.035, abs=0.005)
     assert result.k_e == pytest.approx(8.131, abs=0.005)
     assert result.regime == "post_gradient"
@@ -102,7 +108,7 @@ def test_gradient_and_post_gradient_branches_join_continuously() -> None:
     """At x_G = 1 both branches give tR = tau + tG + t0 (research doc §4.2)."""
     from scipy.optimize import brentq
 
-    method = LAB_METHOD
+    method = _HAND_WORKED_METHOD
     gradient = Gradient(0.05, 0.95, 5.0, t_init=0.5)
     tau = method.t_dwell + gradient.t_init
     t_boundary = tau + gradient.t_gradient + method.t0
@@ -129,7 +135,7 @@ def test_gradient_and_post_gradient_branches_join_continuously() -> None:
 def test_flat_gradient_is_isocratic_for_every_peak() -> None:
     # Δφ = 0 makes b_e = 0; the whole run is isocratic at φ0, so tR = t0(1 + k0).
     params = RetentionParams(ln_k0=math.log(6.0), s_e=10.0, phi_ref=0.30)
-    result = predict_retention(params, LAB_METHOD, Gradient(0.30, 0.30, 10.0))
+    result = predict_retention(params, _HAND_WORKED_METHOD, Gradient(0.30, 0.30, 10.0))
     assert result.t_r == pytest.approx(0.6 * 7.0)
     assert result.regime == "isocratic_hold"
 

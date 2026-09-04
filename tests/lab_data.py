@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 from hplcsim.model import (
     Gradient,
     Method,
@@ -14,30 +12,22 @@ from hplcsim.model import (
     s_e_from_s_base10,
 )
 
-# validation/method.csv: dwell 0.375 mL @ 0.4 mL/min, 0.5 min hold. The t0 here is the
-# 0.6 min first entered; method.csv now records the driver's re-read of 0.525 min
-# (2026-08-31, solvent-front first disturbance — the 0.6 was the wrong time point).
-# The fixtures deliberately stay at 0.6 until the re-baseline is taken (#24): every
-# pinned fit, width and Rs number in tests/test_reality.py was computed at it.
+# validation/method.csv: t0 0.525 min (the driver's 2026-08-31 re-read of the solvent
+# front's first disturbance; the 0.6 first entered was the wrong time point), dwell
+# 0.375 mL @ 0.4 mL/min, 0.5 min hold. Re-baselined to 0.525 on 2026-09-03 (#24): every
+# pinned fit, width, Rs and residual number in tests/test_reality.py was re-derived at it.
 # Column geometry (100 mm × 2.1 mm, 1.6 µm) is metadata for retention but is the
-# basis of the plate-count default the width model needs (SPEC §4).
+# basis of the plate-count default the width model needs (SPEC §4) and, with the
+# declared solid-core architecture (CORTECS), of the geometry t0 (0.450 min) the
+# measured value is checked against — 29.9 µL of extra-column volume.
 LAB_METHOD = Method(
-    t0=0.6,
+    t0=0.525,
     t_dwell=0.9375,
     flow=0.4,
     column_length_mm=100.0,
     column_id_mm=2.1,
     particle_um=1.6,
     temperature_c=45.0,
-)
-
-# validation/method.csv as it reads today, for the tests that are about the *method*
-# rather than the fits: the re-read t0, the architecture CORTECS is (solid-core,
-# declared — never inferred from the name), and the marker as recorded. The fits and
-# every pinned number stay on LAB_METHOD above until the re-baseline is taken (#24).
-LAB_METHOD_AS_RECORDED = replace(
-    LAB_METHOD,
-    t0=0.525,
     particle_is_solid_core=True,
     t0_marker="solvent front, first disturbance",
 )
@@ -83,12 +73,16 @@ LAB_MEASURED_AREA = {
     "tG60": {"Unknown-1": 14412.0, "Unknown-2": 4872.0, "Unknown-3": 4573.0},
 }
 
-# Parameters fitted pre-build from that pair (handoff, 2026-08-27), quoted in the
-# base-10 display convention and converted at the boundary.
+# Parameters fitted from that pair at t0 = 0.525 (re-baseline, 2026-09-03), quoted in
+# the base-10 display convention and converted at the boundary. The pre-build handoff
+# of 2026-08-27 fitted 2.76 / 5.08, 3.24 / 4.99, 4.76 / 5.18 at the superseded 0.6 —
+# S ~3% higher, log10 k0 within 0.05 — which is what a t0 error does to the *fitted*
+# parameters while barely moving the predictions (dead-time-from-geometry.md §6.2).
+# These must never be used with a different Method.t0 (that doc's §6.3).
 LAB_PEAKS = [
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(2.76), s_e=s_e_from_s_base10(5.08), phi_ref=0.05),
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(3.24), s_e=s_e_from_s_base10(4.99), phi_ref=0.05),
-    RetentionParams(ln_k0=ln_k0_from_log10_k0(4.76), s_e=s_e_from_s_base10(5.18), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(2.777), s_e=s_e_from_s_base10(4.919), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(3.249), s_e=s_e_from_s_base10(4.836), phi_ref=0.05),
+    RetentionParams(ln_k0=ln_k0_from_log10_k0(4.711), s_e=s_e_from_s_base10(5.016), phi_ref=0.05),
 ]
 
 # validation/run3.csv: the tG = 25 confirmation run, held out of the fit. Keyed by
@@ -170,9 +164,10 @@ LAB_CAMPAIGN27_W_HALF_ULP = {"run5": 0.0005, "run6": 0.0005, "run7": 0.0005}
 # A property of these three runs worth knowing before a bar is pinned to them. The dwell
 # is the instrument's own 0.375 mL (t_D = V_D / F = 0.9375 min) and stays that way by the
 # driver's decision — see validation/method.csv. Against it, these runs carry a systematic
-# over-prediction that grows with φ0: +0.35 / +0.73 / +1.52% mean at φ0 = 5 / 15 / 25 %B,
-# worst peak 2.50%. Re-scoring at a larger dwell shrinks that (V_D ≈ 0.60 mL would put
-# every run inside ±0.6% and the worst peak at 0.64%), which is why the residual is
+# over-prediction that grows with φ0: +0.42 / +0.82 / +1.67% mean at φ0 = 5 / 15 / 25 %B,
+# worst peak 2.76% (at t0 = 0.525; +0.35 / +0.73 / +1.52%, worst 2.50%, at the former
+# 0.6). Re-scoring at a larger dwell shrinks that (at 0.6, V_D ≈ 0.60 mL put every run
+# inside ±0.6% and the worst peak at 0.64%), which is why the residual is
 # recorded here as a known offset rather than read as curvature in log k vs φ — the
 # φ0 ordering above is what a dwell term does, not what LSS error looks like. Substituting
 # a data-tuned dwell to make it go away is not on the table; a tripwire on these runs

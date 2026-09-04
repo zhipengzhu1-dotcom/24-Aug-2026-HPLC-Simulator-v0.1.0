@@ -64,7 +64,7 @@ from lab_data import (
 # The pre-build blind prediction of validation/run3.csv from runs 1–2, quoted in the
 # #14–#17 handoff and re-asserted in test_reality.py — the "engine fixture values" the
 # ticket's third acceptance criterion says the app must match.
-_TG25_PREDICTED = {"Unknown-1": 13.861, "Unknown-2": 16.729, "Unknown-3": 24.383}
+_TG25_PREDICTED = {"Unknown-1": 13.871, "Unknown-2": 16.740, "Unknown-3": 24.395}
 
 
 def _row(peak: Peak) -> PeakRow:
@@ -675,9 +675,9 @@ def test_the_fit_table_quotes_the_base10_parameters_a_chromatographer_reads() ->
     for peak, fit in cockpit.fitted:
         assert frame.loc[peak.name, "log10 k0"] == log10_k0_from_ln_k0(fit.params.ln_k0)
         assert frame.loc[peak.name, "S"] == s_base10_from_s_e(fit.params.s_e)
-    # The pre-build fitted values, in the convention the screen shows them in.
-    assert list(frame["S"]) == pytest.approx([5.08, 4.99, 5.18], abs=0.01)
-    assert list(frame["log10 k0"]) == pytest.approx([2.76, 3.24, 4.76], abs=0.01)
+    # The fitted values at t0 = 0.525, in the convention the screen shows them in.
+    assert list(frame["S"]) == pytest.approx([4.919, 4.836, 5.016], abs=0.01)
+    assert list(frame["log10 k0"]) == pytest.approx([2.777, 3.249, 4.711], abs=0.01)
 
 
 def test_the_fit_table_carries_the_plate_count_its_widths_rest_on() -> None:
@@ -686,7 +686,7 @@ def test_the_fit_table_carries_the_plate_count_its_widths_rest_on() -> None:
 
     assert list(frame["N from"]) == ["fitted from W½"] * 3
     # The consistency diagnostic of `plate-count-from-widths.md` §6, per peak.
-    assert list(frame[N_RATIO]) == pytest.approx([1.011, 1.074, 1.162], abs=0.002)
+    assert list(frame[N_RATIO]) == pytest.approx([0.978, 1.038, 1.121], abs=0.002)
 
 
 def test_the_fit_table_says_which_of_the_three_plate_counts_each_peak_got() -> None:

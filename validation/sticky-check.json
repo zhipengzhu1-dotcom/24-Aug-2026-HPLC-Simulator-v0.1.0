@@ -8,7 +8,7 @@
     "particle_um": 1.6,
     "flow_ml_min": 0.4,
     "temperature_c": 45.0,
-    "t0_min": 0.6,
+    "t0_min": 0.525,
     "t0_source": "measured",
     "dwell_min": 0.9375,
     "pct_b_start": 5.0,
