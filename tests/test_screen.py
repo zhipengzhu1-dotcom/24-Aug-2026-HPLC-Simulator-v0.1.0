@@ -59,6 +59,8 @@ RESTORED = Session(
         column_id_mm=4.6,
         particle_um=3.5,
         temperature_c=30.0,
+        particle_is_solid_core=True,
+        t0_marker="thiourea, apex",
     ),
     runs=(
         Run(replace(_RESTORED_GRADIENT, t_gradient=20.0), name="tG20"),
@@ -97,6 +99,12 @@ def _radio(app: object, label: str) -> object:
 def _text_input(app: object, label: str) -> object:
     widgets = [w for w in app.text_input if w.label == label]  # type: ignore[attr-defined]
     assert len(widgets) == 1, f"{label!r} matched {len(widgets)} text inputs"
+    return widgets[0]
+
+
+def _selectbox(app: object, label: str) -> object:
+    widgets = [w for w in app.selectbox if w.label == label]  # type: ignore[attr-defined]
+    assert len(widgets) == 1, f"{label!r} matched {len(widgets)} selectboxes"
     return widgets[0]
 
 
@@ -154,6 +162,95 @@ def test_an_estimated_t0_stamps_the_status_bar_whatever_tab_is_open() -> None:
     # SPEC §6.6 says *all* outputs, and the rail's panels are outputs too.
     captions = [c.value for c in app.caption]  # type: ignore[attr-defined]
     assert any("Estimated t0" in caption for caption in captions)
+
+
+# --- SPEC §4's geometry fallback for t0 (ticket #24) -------------------------------------
+
+
+def _t0_sidebar_texts(app: object) -> list[str]:
+    messages = _messages(app)
+    captions = [c.value for c in app.caption]  # type: ignore[attr-defined]
+    return messages["info"] + messages["warning"] + messages["error"] + captions
+
+
+def test_choosing_the_estimate_autofills_the_field_with_the_geometry_number() -> None:
+    """#34, decision 1: autofill, not helper text — the field holds the estimate, so
+    `t0_is_measured = False` is truthful. The lab column at core–shell is 0.450 min."""
+    app = _running_app()
+    _selectbox(app, "Packing architecture").set_value("Core–shell (solid core)").run()
+    _radio(app, "t0 source").set_value("Geometry estimate").run()
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert _number(app, "t0 (min)").value == pytest.approx(0.4503, abs=5e-5)
+    assert any(
+        "0.450 min" in text and "band 0.390–0.520" in text for text in _t0_sidebar_texts(app)
+    )
+    status = [m.value for m in app.markdown if "hs-status" in m.value]  # type: ignore[attr-defined]
+    assert any("t0 estimated" in bar for bar in status)
+
+
+def test_the_estimate_tracks_an_edit_to_the_column_geometry() -> None:
+    app = _running_app()
+    _selectbox(app, "Packing architecture").set_value("Core–shell (solid core)").run()
+    _radio(app, "t0 source").set_value("Geometry estimate").run()
+    _number(app, "Column length (mm)").set_value(50.0).run()
+    assert _number(app, "t0 (min)").value == pytest.approx(0.4503 / 2.0, abs=5e-5)
+    _selectbox(app, "Packing architecture").set_value("Fully porous").run()
+    assert _number(app, "t0 (min)").value == pytest.approx(0.5369 / 2.0, abs=5e-5)
+
+
+def test_typing_over_the_estimate_flips_the_source_back_to_measured() -> None:
+    """Overwriting the field is a measurement — the source follows the field (#34)."""
+    app = _running_app()
+    _selectbox(app, "Packing architecture").set_value("Core–shell (solid core)").run()
+    _radio(app, "t0 source").set_value("Geometry estimate").run()
+    _number(app, "t0 (min)").set_value(0.525).run()
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert _radio(app, "t0 source").value == "Measured marker"
+    assert _number(app, "t0 (min)").value == pytest.approx(0.525)
+    status = [m.value for m in app.markdown if "hs-status" in m.value]  # type: ignore[attr-defined]
+    assert not any("t0 estimated" in bar for bar in status)
+
+
+def test_without_an_architecture_the_estimate_is_refused_and_the_field_is_kept() -> None:
+    """#34, decision 2: no fully-porous default. The typed value stays, stamped."""
+    app = _running_app()
+    _radio(app, "t0 source").set_value("Geometry estimate").run()
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert _number(app, "t0 (min)").value == pytest.approx(0.525)
+    assert any("Choose the packing architecture" in text for text in _messages(app)["warning"])
+    status = [m.value for m in app.markdown if "hs-status" in m.value]  # type: ignore[attr-defined]
+    assert any("t0 estimated" in bar for bar in status)
+
+
+def test_the_reverse_check_reads_the_system_volume_off_the_opening_screen() -> None:
+    """The driver's column: 0.525 min measured against 0.450 min geometry is 30 µL."""
+    app = _running_app()
+    assert any("ε_total = 0.606" in text for text in _messages(app)["info"])
+    assert not any("extra-column volume**" in text for text in _messages(app)["info"])
+
+    _selectbox(app, "Packing architecture").set_value("Core–shell (solid core)").run()
+    assert any("30 µL of extra-column volume" in text for text in _messages(app)["info"])
+
+    _selectbox(app, "Packing architecture").set_value("Fully porous").run()
+    assert any("below the geometry estimate" in text for text in _messages(app)["warning"])
+
+
+def test_the_marker_field_is_asked_for_and_warned_about() -> None:
+    app = _running_app()
+    assert any("No t0 marker recorded" in text for text in _messages(app)["warning"])
+    _text_input(app, "t0 marker").set_value("solvent front, first disturbance").run()
+    assert any("solvent disturbance" in text for text in _messages(app)["warning"])
+    _text_input(app, "t0 marker").set_value("uracil, apex").run()
+    assert not any("marker" in text.lower() for text in _messages(app)["warning"])
+
+
+def test_the_marker_field_is_absent_while_t0_is_an_estimate() -> None:
+    app = _running_app()
+    _radio(app, "t0 source").set_value("Geometry estimate").run()
+    assert not [w for w in app.text_input if w.label == "t0 marker"]  # type: ignore[attr-defined]
 
 
 def test_a_narrow_scouting_pair_paints_the_spacing_notice_before_any_peak_is_typed() -> None:
@@ -302,6 +399,8 @@ def test_uploading_a_session_restores_every_widget_it_names() -> None:
     assert _number(app, "Run 1 tG").value == pytest.approx(20.0)
     assert _number(app, "Run 2 tG").value == pytest.approx(60.0)
     assert _text_input(app, "Session name").value == "Reopened"
+    assert _selectbox(app, "Packing architecture").value == "Core–shell (solid core)"
+    assert _text_input(app, "t0 marker").value == "thiourea, apex"
 
 
 def test_uploading_a_session_restores_the_dwell_as_the_time_the_file_stores() -> None:
@@ -366,7 +465,7 @@ def test_a_corrupt_file_is_refused_by_name_and_leaves_the_screen_alone() -> None
     assert not app.exception, app.exception  # type: ignore[attr-defined]
 
     assert any("schema_version 99" in text for text in _messages(app)["error"])
-    assert _number(app, "t0 (min)").value == pytest.approx(0.6)  # still the default
+    assert _number(app, "t0 (min)").value == pytest.approx(0.525)  # still the default
 
 
 def test_unparseable_json_is_refused_without_crashing_the_page() -> None:

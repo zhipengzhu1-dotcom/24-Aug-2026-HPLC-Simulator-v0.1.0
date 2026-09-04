@@ -12,7 +12,11 @@ from hplcsim.model import (
     s_e_from_s_base10,
 )
 
-# validation/method.csv: t0 measured 0.6 min, dwell 0.375 mL @ 0.4 mL/min, 0.5 min hold.
+# validation/method.csv: dwell 0.375 mL @ 0.4 mL/min, 0.5 min hold. The t0 here is the
+# 0.6 min first entered; method.csv now records the driver's re-read of 0.525 min
+# (2026-08-31, solvent-front first disturbance — the 0.6 was the wrong time point).
+# The fixtures deliberately stay at 0.6 until the re-baseline is taken (#24): every
+# pinned fit, width and Rs number in tests/test_reality.py was computed at it.
 # Column geometry (100 mm × 2.1 mm, 1.6 µm) is metadata for retention but is the
 # basis of the plate-count default the width model needs (SPEC §4).
 LAB_METHOD = Method(

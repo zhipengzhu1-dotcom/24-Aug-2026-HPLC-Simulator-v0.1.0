@@ -43,7 +43,7 @@ from collections.abc import Sequence
 import streamlit as st
 
 from app import chromatogram, panels, tables, worksheet
-from app.diagnostics import Diagnostic, Diagnostics, diagnose
+from app.diagnostics import Diagnostic, Diagnostics, dead_time_notices, diagnose
 from app.panels import Row
 from app.pipeline import (
     Cockpit,
@@ -52,6 +52,7 @@ from app.pipeline import (
     PeakRow,
     dwell_from_volume,
     run_cockpit,
+    t0_autofill,
 )
 from app.session_io import (
     Restore,
@@ -60,6 +61,7 @@ from app.session_io import (
     session_from_inputs,
 )
 from app.worksheet import Step, needs_guidance, worksheet_steps
+from hplcsim.dead_time import DeadTimeEstimate, estimate_t0
 from hplcsim.model import (
     Gradient,
     Method,
@@ -80,7 +82,9 @@ _COLUMN_ID_MM = 2.1
 _PARTICLE_UM = 1.6
 _FLOW = 0.4
 _TEMPERATURE_C = 45.0
-_T0 = 0.6
+# The driver's re-read of the solvent-front time (2026-08-31, method.csv), which
+# supersedes the 0.6 first entered. The engine fixtures are a separate question (#24).
+_T0 = 0.525
 _PERCENT_B_START = 5.0
 _PERCENT_B_END = 95.0
 _HOLD = 0.5
@@ -113,13 +117,21 @@ _CANDIDATE_HOLD_RANGE = (0.0, _MAX_CANDIDATE_HOLD)
 
 _MEASURED = "Measured marker"
 _ESTIMATED = "Geometry estimate"
+_FULLY_POROUS = "Fully porous"
+_CORE_SHELL = "Core–shell (solid core)"
 _BY_VOLUME = "Volume (mL)"
 _BY_TIME = "Time (min)"
 
 _UNTITLED = "Untitled session"
 
-# SPEC §6 diagnostic 6's short form. One wording, wherever an output surface carries it.
-_STAMP_SHORT = "⚠️ Estimated t0 — every value here is lower-confidence (SPEC §6)."
+# SPEC §6 diagnostic 6's short form. One wording, wherever an output surface carries it,
+# and the same two regimes as the long form: the predictions barely move, the fitted
+# parameters do (`dead-time-from-geometry.md` §6).
+_STAMP_SHORT = (
+    "⚠️ Estimated t0 — retention here barely moves with it; the fitted S, k0 and N carry "
+    "about a quarter of its error and must not be transferred to another flow or column "
+    "(SPEC §6)."
+)
 
 
 class Keys:
@@ -148,8 +160,13 @@ class Keys:
     PARTICLE = "particle_um"
     FLOW = "flow"
     TEMPERATURE = "temperature_c"
+    ARCHITECTURE = "particle_architecture"
     T0_SOURCE = "t0_source"
     T0 = "t0"
+    T0_MARKER = "t0_marker"
+    # The last value the geometry estimate wrote into the t0 field. Not a widget: it is
+    # how a typed overwrite is told apart from the autofill it replaced.
+    T0_AUTOFILL = "t0_autofill"
     DWELL_AS = "dwell_entered_as"
     DWELL_TIME = "dwell_time"
     DWELL_VOLUME = "dwell_volume"
@@ -385,6 +402,7 @@ def _restore(session: Session) -> None:
             ),
             Keys.T0_SOURCE: _MEASURED if method.t0_is_measured else _ESTIMATED,
             Keys.T0: restore.within("t0", method.t0, *_T0_RANGE),
+            Keys.T0_MARKER: method.t0_marker or "",
             # The file stores the dwell as a time (SPEC §8), so the time is what comes
             # back. Dividing a volume out of it would be inventing the V_D that was
             # typed, at whatever the flow happens to be now — the conversion is an
@@ -420,6 +438,18 @@ def _restore(session: Session) -> None:
         st.session_state[Keys.PLATE_COUNT] = restore.within(
             "plate count N", float(session.plate_count), *_PLATE_COUNT_RANGE
         )
+    # An undeclared architecture is an *absent* choice, and the selectbox shows that as
+    # its placeholder only when its key holds nothing at all.
+    st.session_state.pop(Keys.ARCHITECTURE, None)
+    if method.particle_is_solid_core is not None:
+        st.session_state[Keys.ARCHITECTURE] = (
+            _CORE_SHELL if method.particle_is_solid_core else _FULLY_POROUS
+        )
+    # A restored estimate is the file's number: treat it as the autofill in place, so
+    # the field is refilled only if the geometry it came from is edited.
+    st.session_state.pop(Keys.T0_AUTOFILL, None)
+    if not method.t0_is_measured:
+        st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
     _preset_slider_with_box(
         Keys.CANDIDATE_TG,
         seed=_TG_CANDIDATE,
@@ -489,16 +519,49 @@ def _sidebar() -> MethodEntry | None:
         st.caption("Temperature is metadata in v0.1 — the model is fixed-temperature.")
 
         st.subheader("Dead time")
-        t0_source = st.radio(
-            "t0 source", [_MEASURED, _ESTIMATED], horizontal=True, key=Keys.T0_SOURCE
+        architecture = st.selectbox(
+            "Packing architecture",
+            [_FULLY_POROUS, _CORE_SHELL],
+            index=None,
+            placeholder="Choose — never inferred from the column name",
+            key=Keys.ARCHITECTURE,
         )
-        t0 = st.number_input("t0 (min)", *_T0_RANGE, _T0, step=0.05, format="%.4f", key=Keys.T0)
-        if t0_source != _MEASURED:
-            st.caption(
-                "Enter the t0 you estimated from the column geometry — the app does not "
-                "compute one. Predictions from an estimated t0 are stamped "
-                "lower-confidence (SPEC §6 diagnostic 6)."
+        solid_core = None if architecture is None else architecture == _CORE_SHELL
+        t0_source = st.radio(
+            "t0 source",
+            [_MEASURED, _ESTIMATED],
+            horizontal=True,
+            key=Keys.T0_SOURCE,
+            on_change=_t0_source_chosen,
+        )
+        estimate = None
+        if t0_source == _ESTIMATED:
+            estimate = _autofill_t0(length, column_id, particle, flow, solid_core)
+        t0 = st.number_input(
+            "t0 (min)",
+            *_T0_RANGE,
+            _T0,
+            step=0.05,
+            format="%.4f",
+            key=Keys.T0,
+            on_change=_t0_typed,
+        )
+        marker: str | None = None
+        if t0_source == _MEASURED:
+            marker = st.text_input(
+                "t0 marker",
+                key=Keys.T0_MARKER,
+                placeholder="uracil, apex — or: solvent front, first disturbance",
+                help=(
+                    "What was injected to measure t0, and which point of its trace was "
+                    "read. A dead time without its marker has no provenance."
+                ),
             )
+        # SPEC §4's checks on the typed t0 are painted here, beside the field, once the
+        # method exists — which is after the dwell below. Reserved now, filled then.
+        t0_notices = st.container()
+        if t0_source == _ESTIMATED:
+            _estimate_caption(estimate)
 
         st.subheader("Dwell")
         t_dwell = _dwell(flow)
@@ -523,7 +586,11 @@ def _sidebar() -> MethodEntry | None:
             particle_um=particle,
             temperature_c=temperature,
             t0_is_measured=t0_source == _MEASURED,
+            particle_is_solid_core=solid_core,
+            t0_marker=(marker or "").strip() or None,
         )
+        with t0_notices:
+            _notices(dead_time_notices(method))
 
         st.subheader("Plate count N")
         plate_count = _plate_count_knob(method)
@@ -534,6 +601,76 @@ def _sidebar() -> MethodEntry | None:
         percent_b_end=percent_b_end,
         hold=hold,
         plate_count=plate_count,
+    )
+
+
+def _autofill_t0(
+    length: float, column_id: float, particle: float, flow: float, solid_core: bool | None
+) -> DeadTimeEstimate | None:
+    """Write the geometry estimate into the t0 field, when there is one to write.
+
+    Runs before the field is drawn, which is the only moment a keyed widget's value can
+    be set from this side. :func:`app.pipeline.t0_autofill` decides whether to; this
+    only knows which keys hold what. No architecture, no estimate — the field keeps
+    what it holds, and the caption says why (the estimator refuses to guess, #34).
+    """
+    if solid_core is None:
+        return None
+    geometry = Method(
+        t0=_T0,
+        t_dwell=0.0,
+        flow=flow,
+        column_length_mm=length,
+        column_id_mm=column_id,
+        particle_um=particle,
+        particle_is_solid_core=solid_core,
+    )
+    estimate = estimate_t0(geometry)
+    filled = t0_autofill(
+        st.session_state.get(Keys.T0), st.session_state.get(Keys.T0_AUTOFILL), estimate.t0
+    )
+    if filled is not None:
+        st.session_state[Keys.T0] = filled
+        st.session_state[Keys.T0_AUTOFILL] = filled
+    return estimate
+
+
+def _t0_source_chosen() -> None:
+    """Choosing the estimate starts a fresh autofill; choosing the marker keeps the field."""
+    if st.session_state.get(Keys.T0_SOURCE) == _ESTIMATED:
+        st.session_state.pop(Keys.T0_AUTOFILL, None)
+
+
+def _t0_typed() -> None:
+    """A value typed over the autofill is a measured one — the source follows the field.
+
+    Runs as the widget's callback, before the rerun, which is the one place a widget
+    that has already been drawn (the source radio) may have its state written.
+    """
+    if st.session_state.get(Keys.T0_SOURCE) != _ESTIMATED:
+        return
+    if st.session_state.get(Keys.T0) != st.session_state.get(Keys.T0_AUTOFILL):
+        st.session_state[Keys.T0_SOURCE] = _MEASURED
+
+
+def _estimate_caption(estimate: DeadTimeEstimate | None) -> None:
+    """The band as a caption, and only a caption (#34, decision 3)."""
+    if estimate is None:
+        st.warning(
+            "**Choose the packing architecture to get an estimate.** Total porosity "
+            "differs by 16% between fully porous and core–shell packings, and the app "
+            "will not guess which this column is. Until then the field keeps the value "
+            "you typed, stamped as an estimate.",
+            icon="⚠️",
+        )
+        return
+    lo, hi = estimate.t0_band
+    st.caption(
+        f"t0 = ε_total · V_col / F = {estimate.porosity.value:.2f} × "
+        f"{estimate.column_volume_ml:.3f} mL / F = **{estimate.t0:.3f} min** "
+        f"({estimate.porosity.label}; band {lo:.3f}–{hi:.3f} min). Geometry leaves the "
+        "plumbing out, so a marker would read a little above this. Type a measured value "
+        "to replace it — the source follows the field."
     )
 
 
@@ -934,7 +1071,7 @@ def _status_bar(cockpit: Cockpit, candidate: Gradient, diagnostics: Diagnostics)
     # SPEC §6 diagnostic 6 stamps *all* outputs, so it reaches the one strip of the
     # screen that is on show whichever tab is open.
     if any(stamp.code == "estimated_t0" for stamp in diagnostics.stamps):
-        fields.append("t0 estimated — predictions lower-confidence")
+        fields.append("t0 estimated — fitted S, k0, N not transferable")
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
 

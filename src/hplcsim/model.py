@@ -63,8 +63,20 @@ class Method:
     """Method constants shared by every run (SPEC §4).
 
     ``t0`` is the column dead time in minutes, ``t_dwell`` the instrument dwell
-    time in minutes (V_D / F, converted by the caller). Column geometry and
-    temperature are metadata in v0.1.
+    time in minutes (V_D / F, converted by the caller). Temperature is metadata.
+    Column geometry is the basis of two estimates — the plate-count default
+    (:mod:`hplcsim.width`) and the dead-time fallback (:mod:`hplcsim.dead_time`).
+
+    ``particle_is_solid_core`` is the packing architecture: ``True`` for
+    superficially porous (core–shell, solid-core) particles, ``False`` for fully
+    porous ones, ``None`` when the user has not said. It selects the porosity the
+    geometry estimate uses, and there is deliberately no default — the estimator
+    refuses rather than guesses (ticket #24, decided on #34).
+
+    ``t0_marker`` is what was injected to measure ``t0`` and which point of its
+    trace was read ("uracil, apex"; "solvent front, first disturbance"). A measured
+    dead time without its marker has no provenance; the field is free text so the
+    time-point convention travels with the compound.
     """
 
     t0: float
@@ -75,6 +87,8 @@ class Method:
     particle_um: float | None = None
     temperature_c: float | None = None
     t0_is_measured: bool = True
+    particle_is_solid_core: bool | None = None
+    t0_marker: str | None = None
 
 
 @dataclass(frozen=True)

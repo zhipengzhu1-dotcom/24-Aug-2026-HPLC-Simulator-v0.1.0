@@ -36,6 +36,8 @@ FULL_SESSION = Session(
         particle_um=1.6,
         temperature_c=45.0,
         t0_is_measured=True,
+        particle_is_solid_core=True,
+        t0_marker="uracil, apex",
     ),
     runs=(
         Run(Gradient(phi0=0.05, phif=0.95, t_gradient=15.0, t_init=0.5), name="tG15"),
@@ -168,8 +170,53 @@ def test_unset_optional_fields_are_omitted_not_null() -> None:
     assert "session_name" not in parsed
     assert "column_length_mm" not in parsed["method"]
     assert "plate_count" not in parsed["method"]
+    assert "particle_architecture" not in parsed["method"]
+    assert "t0_marker" not in parsed["method"]
     assert "area_run1" not in parsed["peaks"][0]
     assert "name" not in parsed["peaks"][0]
+
+
+# --- the dead time's provenance (SPEC §4, ticket #24) -------------------------------
+
+
+def test_the_architecture_and_marker_are_inputs_and_travel_with_the_file() -> None:
+    method = _file_of(FULL_SESSION)["method"]
+    assert method["particle_architecture"] == "core_shell"
+    assert method["t0_marker"] == "uracil, apex"
+
+
+@pytest.mark.parametrize(
+    ("solid_core", "name"), [(True, "core_shell"), (False, "fully_porous"), (None, None)]
+)
+def test_every_architecture_round_trips(solid_core: bool | None, name: str | None) -> None:
+    session = replace(
+        FULL_SESSION, method=replace(FULL_SESSION.method, particle_is_solid_core=solid_core)
+    )
+    assert _file_of(session)["method"].get("particle_architecture") == name
+    assert load_session(save_session(session)) == session
+
+
+def test_an_unknown_architecture_is_rejected_with_the_allowed_values() -> None:
+    text = _mutated(
+        FULL_SESSION, lambda f: f["method"].__setitem__("particle_architecture", "monolith")
+    )
+    with pytest.raises(SessionFileError, match="fully_porous, core_shell.*'monolith'"):
+        load_session(text)
+
+
+def test_a_blank_marker_reads_as_no_marker() -> None:
+    text = _mutated(FULL_SESSION, lambda f: f["method"].__setitem__("t0_marker", "   "))
+    assert load_session(text).method.t0_marker is None
+
+
+def test_a_file_from_before_the_fields_existed_still_loads() -> None:
+    def drop(f: dict[str, Any]) -> None:
+        del f["method"]["particle_architecture"]
+        del f["method"]["t0_marker"]
+
+    method = load_session(_mutated(FULL_SESSION, drop)).method
+    assert method.particle_is_solid_core is None
+    assert method.t0_marker is None
 
 
 # --- half-paired rows (SPEC §5, ticket #21) -----------------------------------------

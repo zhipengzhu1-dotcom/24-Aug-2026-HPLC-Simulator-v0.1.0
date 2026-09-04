@@ -9,7 +9,8 @@ numbers live here as named constants, `tests/test_diagnostics.py` pins them, and
 Placement is SPEC §6's own sentence, which is why :class:`Diagnostics` has the fields
 it has rather than one flat list: "per-peak badges (2, 4), fit-page notices (3),
 result banners (5), output stamps (6), candidate-control inline warnings (1)". The
-entry checks of SPEC §5 get a sixth field of their own.
+entry checks of SPEC §5 get a sixth field of their own, and the dead-time checks a
+seventh, painted beside the t0 field they are about.
 
 Nothing here blocks. CLAUDE.md's warnings-over-blocks posture is the whole shape of
 the module: :func:`diagnose` returns annotations, and the one impossibility the
@@ -24,6 +25,13 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.pipeline import Cockpit, CockpitInputs, Entry, PeakRow, run_cockpit
+from hplcsim.dead_time import (
+    EXTRA_COLUMN_VOLUME_TYPICAL_UL,
+    POROSITY_PLAUSIBLE,
+    DeadTimeCheck,
+    check_measured_t0,
+    classify_marker,
+)
 from hplcsim.fit import BETA_STRONG, BETA_WARNING, classify_spacing
 from hplcsim.model import Gradient, Method, Peak, Run
 from hplcsim.resolution import PredictedPeak
@@ -33,7 +41,8 @@ Severity = Literal["info", "warning", "strong"]
 # Every diagnostic this module can emit. A Literal rather than a bare str because three
 # places downstream switch on it — the table's badge labels, the status bar's stamp, the
 # chromatogram's crossing caption — and a typo in any of them would silently match
-# nothing. SPEC §6's six, then SPEC §5's two entry checks.
+# nothing. SPEC §6's six, then SPEC §5's two entry checks, then SPEC §4's two checks on
+# a measured dead time (ticket #24).
 Code = Literal[
     "tg_extrapolation",
     "early_eluter",
@@ -43,6 +52,8 @@ Code = Literal[
     "estimated_t0",
     "area_share",
     "entry_crossing",
+    "dead_time_check",
+    "t0_marker",
 ]
 
 # SPEC §6 diagnostic 1: "info flag when candidate tG leaves [tG1, tG2]; strong warning
@@ -88,6 +99,9 @@ class Diagnostics:
     stamps: tuple[Diagnostic, ...] = ()
     entry: tuple[Diagnostic, ...] = ()
     badges: Mapping[str, tuple[Diagnostic, ...]] = field(default_factory=dict)
+    # SPEC §4's checks on the *measured* t0 — beside the field that holds it, in the
+    # sidebar, since they are about the number typed rather than about any result.
+    method: tuple[Diagnostic, ...] = ()
 
     @property
     def all(self) -> tuple[Diagnostic, ...]:
@@ -98,6 +112,7 @@ class Diagnostics:
             + self.banners
             + self.stamps
             + self.entry
+            + self.method
             + tuple(d for badges in self.badges.values() for d in badges)
         )
 
@@ -128,7 +143,11 @@ def diagnose(
     # entry checks read only the rows the user typed, and the peak table is still there
     # and still worth checking while they go and fix the gradient time.
     if cockpit.blocked is not None:
-        return Diagnostics(stamps=_zero_or_one(_estimated_t0(inputs.method)), entry=entry)
+        return Diagnostics(
+            stamps=_zero_or_one(_estimated_t0(inputs.method)),
+            entry=entry,
+            method=dead_time_notices(inputs.method),
+        )
 
     return Diagnostics(
         candidate=_zero_or_one(_tg_extrapolation(inputs.candidate, inputs.run1, inputs.run2)),
@@ -137,6 +156,7 @@ def diagnose(
         banners=_zero_or_one(_defaulted_widths(cockpit.defaulted_width_names)),
         entry=entry,
         badges=_badges(cockpit, inputs.method, inputs.candidate),
+        method=dead_time_notices(inputs.method),
     )
 
 
@@ -280,20 +300,171 @@ def _beta_spacing(run1: Run, run2: Run) -> Diagnostic | None:
 
 
 def _estimated_t0(method: Method) -> Diagnostic | None:
-    """SPEC §6 diagnostic 6, stamped on every output rather than shown once."""
+    """SPEC §6 diagnostic 6, stamped on every output rather than shown once.
+
+    Worded to the two regimes of `dead-time-from-geometry.md` §6, which differ by a
+    factor of forty, rather than as a bare "lower confidence". The two-run fit absorbs
+    t0 into k0 (§6.1's cancellation), so predictions of these gradients barely move;
+    what a wrong t0 corrupts is the fitted S, k0 and N — and any use of them at a
+    different flow or on a different column, where the cancellation is broken (§6.3).
+    """
     if method.t0_is_measured:
         return None
     return Diagnostic(
         code="estimated_t0",
         severity="warning",
         message=(
-            f"**t0 = {method.t0:g} min is an estimate, not a measured marker.** Every "
-            "retention time, width and resolution below inherits it: t0 sets the "
-            "gradient steepness b_e and the τ/t0 the band migrates through before the "
-            "gradient arrives, so an error in it biases the whole chromatogram one way. "
-            "Inject an unretained marker and enter the measured value when you can."
+            f"**t0 = {method.t0:.4g} min is a geometry estimate, not a measured marker.** "
+            "Two things follow, and they differ by a factor of forty. The retention times "
+            "predicted for *these* gradients barely move — about 0.005% per 1% of t0 "
+            "error, because the two-run fit absorbs t0 into k0. The fitted S, k0 and N "
+            "do not: they carry roughly a quarter of the t0 error as a systematic shift, "
+            "so read them as indicative and never transfer them to another flow rate or "
+            "column. Inject an unretained marker and enter the measured time when you can."
         ),
     )
+
+
+# --- SPEC §4's two checks on a measured dead time (ticket #24) ---------------------------
+
+
+def dead_time_notices(method: Method) -> tuple[Diagnostic, ...]:
+    """The reverse check and the marker check, for the sidebar beside the t0 field.
+
+    Both are about a *measured* t0 — an estimated one carries diagnostic 6 instead, and
+    has no marker. The reverse check needs the column geometry, and says nothing
+    rather than failing when it is absent: the geometry is optional metadata everywhere
+    else in SPEC §4.
+    """
+    if not method.t0_is_measured:
+        return ()
+    try:
+        check = check_measured_t0(method)
+    except ValueError:
+        readout = None
+    else:
+        readout = _dead_time_readout(check)
+    return (*_zero_or_one(readout), *_zero_or_one(_marker_check(method.t0_marker)))
+
+
+def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
+    """What the typed t0 implies — a statement of fact, and a warning only past the edge.
+
+    Geometry excludes the plumbing, so a measured t0 *above* the estimate is the
+    expected ordering; the gap is the instrument's extra-column volume, measured from
+    numbers already on screen. The tiers are `hplcsim.dead_time`'s; this is the wording.
+    """
+    porosity = f"ε_total = {check.implied_porosity:.3f}"
+    lo, hi = POROSITY_PLAUSIBLE
+    typical_lo, typical_hi = EXTRA_COLUMN_VOLUME_TYPICAL_UL
+
+    if check.finding == "impossible_porosity":
+        return Diagnostic(
+            code="dead_time_check",
+            severity="strong",
+            message=(
+                f"**Your measured t0 implies {porosity} — more mobile phase than an empty "
+                f"tube of this column's size ({check.column_volume_ml:.3f} mL) would "
+                "hold.** That is not a property any packed column can have. Check the flow "
+                "rate, the column dimensions and their units, and whether the time entered "
+                "is the marker's and in minutes."
+            ),
+        )
+    if check.finding == "implausible_porosity":
+        return Diagnostic(
+            code="dead_time_check",
+            severity="warning",
+            message=(
+                f"**Your measured t0 implies {porosity}, outside the {lo:.2f}–{hi:.2f} a "
+                "packed column can have.** Check the flow rate, the column dimensions and "
+                "their units — and whether the marker is retained, or excluded from the "
+                "pores."
+            ),
+        )
+
+    geometry = check.geometry
+    if geometry is None or check.extra_column_volume_ul is None:
+        return Diagnostic(
+            code="dead_time_check",
+            severity="info",
+            message=(
+                f"**Your measured t0 implies {porosity}** for a "
+                f"{check.column_volume_ml:.3f} mL column. Declare the packing architecture "
+                "above to see how much of that is extra-column volume — without it there "
+                "is no geometry estimate to compare against."
+            ),
+        )
+
+    v_ec = check.extra_column_volume_ul
+    band_lo, band_hi = geometry.t0_band
+    against = (
+        f"against the {geometry.porosity.label} geometry estimate of {geometry.t0:.3f} min "
+        f"(ε_total {geometry.porosity.value:.2f}, band {band_lo:.3f}–{band_hi:.3f} min)"
+    )
+    if check.finding == "below_geometry":
+        return Diagnostic(
+            code="dead_time_check",
+            severity="warning",
+            message=(
+                f"**Your measured t0 is below the geometry estimate** — {v_ec:.0f} µL of "
+                f"extra-column volume {against}, which is impossible: geometry leaves the "
+                "plumbing out, so the marker cannot leave before the mobile phase does. "
+                "Usually the packing architecture is mis-declared (a core–shell column "
+                "entered as fully porous); otherwise check the column dimensions, the flow "
+                "rate, or whether the marker is excluded from the pores."
+            ),
+        )
+    if check.finding == "marker_retained":
+        return Diagnostic(
+            code="dead_time_check",
+            severity="warning",
+            message=(
+                f"**Your measured t0 implies {v_ec:.0f} µL of extra-column volume** "
+                f"({porosity}, {against}) — above the {typical_lo:.0f}–{typical_hi:.0f} µL "
+                "a UHPLC system measures injector to detector. The marker is probably "
+                "retained, or the time includes something that is not plumbing: the wrong "
+                "point of the disturbance, or a delayed injection."
+            ),
+        )
+    return Diagnostic(
+        code="dead_time_check",
+        severity="info",
+        message=(
+            f"**Your measured t0 implies {porosity} and {v_ec:.0f} µL of extra-column "
+            f"volume** (typical {typical_lo:.0f}–{typical_hi:.0f} µL), {against}. Geometry "
+            "leaves the plumbing out, so a marker time above the estimate is the expected "
+            "order — this is your system volume, measured."
+        ),
+    )
+
+
+def _marker_check(marker: str | None) -> Diagnostic | None:
+    """A measured t0 without its marker has no provenance (research doc §5.2, §7.6)."""
+    kind = classify_marker(marker)
+    if kind == "compound":
+        return None
+    if kind == "absent":
+        message = (
+            "**No t0 marker recorded.** A measured dead time without its marker has no "
+            "provenance — note what was injected and which point of its trace was read "
+            "(apex, or first baseline disturbance), so the number can be checked later."
+        )
+    elif kind == "solvent_disturbance":
+        message = (
+            f"**t0 was read from a solvent disturbance** ({marker}), not from a compound. "
+            "Solvent peaks are complex to interpret and depend on the eluent's ionic "
+            "strength, and injecting them as hold-up markers is strongly discouraged. "
+            "Confirm with uracil or another unretained compound when you can, and record "
+            "which point of the disturbance was read."
+        )
+    else:
+        message = (
+            f"**The t0 marker is an inorganic salt** ({marker}). At the dilute "
+            "concentrations injected, its ions are excluded from the pores and the time "
+            "measures the interstitial volume only — about 40% low on a fully porous "
+            "column. Use uracil or another permeating, unretained compound."
+        )
+    return Diagnostic(code="t0_marker", severity="warning", message=message)
 
 
 # --- SPEC §5's entry checks --------------------------------------------------------------

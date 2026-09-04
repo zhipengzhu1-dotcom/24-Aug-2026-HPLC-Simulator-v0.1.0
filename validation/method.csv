@@ -2,6 +2,7 @@ field,value,units,notes
 column_length,100,mm,
 column_id,2.1,mm,
 particle_size,1.6,um,
+particle_architecture,core-shell,,"CORTECS is a solid-core (superficially porous) packing — declared, not inferred from the name; selects epsilon_total 0.52 for the geometry t0 (#24)"
 flow,0.4,mL/min,
 temperature,45,C,metadata only in v0.1
 sample_manager_temp,20,C,provenance only

@@ -27,6 +27,7 @@ from app.pipeline import (
     dwell_from_volume,
     run_cockpit,
     split_rows,
+    t0_autofill,
 )
 from app.tables import (
     COMPOUND,
@@ -835,3 +836,22 @@ def test_a_badged_peak_is_labelled_in_the_flags_column() -> None:
     flags = dict(zip(frame[COMPOUND], frame[FLAGS], strict=True))
     assert flags["Early"] == "early eluter"
     assert flags["Unknown-1"] == ""
+
+
+# --- the t0 autofill decision (SPEC §4's geometry fallback, ticket #24) -------------------
+
+
+class TestT0Autofill:
+    """Which of the three cases the field is in, from the two numbers it can be compared to."""
+
+    def test_a_fresh_choice_fills_over_whatever_was_typed(self) -> None:
+        assert t0_autofill(0.525, None, 0.4503) == pytest.approx(0.4503)
+
+    def test_a_field_still_holding_the_last_autofill_tracks_the_geometry(self) -> None:
+        assert t0_autofill(0.4503, 0.4503, 0.2251) == pytest.approx(0.2251)
+
+    def test_a_field_the_user_overwrote_is_left_alone(self) -> None:
+        assert t0_autofill(0.525, 0.4503, 0.4503) is None
+
+    def test_an_empty_field_is_filled(self) -> None:
+        assert t0_autofill(None, 0.4503, 0.4503) == pytest.approx(0.4503)
