@@ -22,8 +22,11 @@ Two places diverge from the schema sketch in SPEC §8, which the spec now record
 * **Half-paired rows have their own list** (``untracked_peaks``), added by ticket #21.
   SPEC §5 keeps rows missing a tR visible as "untracked — not fitted" while insisting
   the engine sees only complete pairs, so :class:`~hplcsim.model.Peak` stays strict and
-  :class:`UntrackedPeak` carries the unfinished ones. Mid-entry is exactly the moment
-  someone saves; before this the unpaired row was dropped from the file in silence.
+  :class:`~hplcsim.model.PeakRow` carries the unfinished ones. Mid-entry is exactly the
+  moment someone saves; before this the unpaired row was dropped from the file in
+  silence. What keeps the two lists meaning what they say is ``_check_untracked``, not
+  the row type: a ``PeakRow`` with both retention times is refused from
+  ``untracked_peaks`` on save and on load.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from hplcsim.model import (
     Gradient,
     Method,
     Peak,
+    PeakRow,
     Programme,
     Run,
     Segment,
@@ -77,27 +81,6 @@ class SessionFileError(ValueError):
 
 
 @dataclass(frozen=True)
-class UntrackedPeak:
-    """A peak table row the user has started but not finished pairing (SPEC §5).
-
-    The same seven fields as :class:`~hplcsim.model.Peak` with every measurement
-    optional — including the retention times, which is the whole difference. A row
-    here is one the engine must never see: it has at most one of the two tRs, so
-    there is no pair to fit. Both present is refused on save and on load, because
-    such a row is a ``Peak`` filed in the wrong list, and the two lists have to keep
-    meaning what they say.
-    """
-
-    name: str = ""
-    t_r_run1: float | None = None
-    t_r_run2: float | None = None
-    area_run1: float | None = None
-    area_run2: float | None = None
-    w_half_run1: float | None = None
-    w_half_run2: float | None = None
-
-
-@dataclass(frozen=True)
 class Session:
     """Everything the user entered: the unit that is saved and restored.
 
@@ -115,7 +98,7 @@ class Session:
     runs: tuple[Run, Run]
     peaks: tuple[Peak, ...]
     candidate: Programme
-    untracked: tuple[UntrackedPeak, ...] = ()
+    untracked: tuple[PeakRow, ...] = ()
     session_name: str = ""
     plate_count: int | None = None
 
@@ -207,12 +190,12 @@ def _run_row(run: Run) -> dict[str, Any]:
     return _drop_unset({"tg_min": run.gradient.t_gradient, "name": run.name or None})
 
 
-def _peak_row(peak: Peak | UntrackedPeak) -> dict[str, Any]:
+def _peak_row(peak: Peak | PeakRow) -> dict[str, Any]:
     """One compound, both runs side by side — the row the peak table shows (SPEC §5).
 
-    One writer for both lists. A ``Peak`` always fills in both retention times and an
-    :class:`UntrackedPeak` never fills in more than one, so ``_drop_unset`` is what
-    makes the two rows differ — the shape of the row itself is the same either way.
+    One writer for both lists. A ``Peak`` always fills in both retention times and a
+    ``PeakRow`` in ``untracked`` never fills in more than one, so ``_drop_unset`` is
+    what makes the two rows differ — the shape of the row itself is the same either way.
     """
     return _drop_unset(
         {
@@ -439,9 +422,9 @@ def _read_peak(row: _Fields) -> Peak:
     )
 
 
-def _read_untracked(row: _Fields) -> UntrackedPeak:
+def _read_untracked(row: _Fields) -> PeakRow:
     """The same row with both retention times optional — the half-paired one of SPEC §5."""
-    return UntrackedPeak(
+    return PeakRow(
         t_r_run1=row.optional_number("tr_run1_min"),
         t_r_run2=row.optional_number("tr_run2_min"),
         name=row.text("name", ""),
@@ -521,11 +504,11 @@ def _check_candidate(candidate: Programme) -> None:
         _check_percent(f"candidate.segments[{index}].pct_b_end", segment.phif)
 
 
-def _check_measurements(at: str, peak: Peak | UntrackedPeak) -> None:
+def _check_measurements(at: str, peak: Peak | PeakRow) -> None:
     """Every measurement on a row, whichever list the row is in.
 
     The checks are per-field and skip what is unset, so the same six lines serve a
-    ``Peak`` (both tRs present, always checked) and an :class:`UntrackedPeak` (at most
+    ``Peak`` (both tRs present, always checked) and an untracked ``PeakRow`` (at most
     one, the other skipped).
     """
     _check_positive(f"{at}.tr_run1_min", peak.t_r_run1)
@@ -536,14 +519,16 @@ def _check_measurements(at: str, peak: Peak | UntrackedPeak) -> None:
     _check_positive(f"{at}.w_half_run2_min", peak.w_half_run2)
 
 
-def _check_untracked(at: str, row: UntrackedPeak) -> None:
+def _check_untracked(at: str, row: PeakRow) -> None:
     """A half-paired row, and the one thing that makes it not a ``Peak``.
 
+    ``PeakRow`` permits both retention times — it is the shape of any row a user can
+    type — so this function, not the type, is what "untracked" means in the file.
     Checked on save as well as on load: a fully paired row written here would load back
     as untracked, so the count SPEC §5 shows would be wrong and the peak would never
     reach the fit — a silent loss of exactly the kind ``untracked_peaks`` exists to end.
     """
-    if row.t_r_run1 is not None and row.t_r_run2 is not None:
+    if row.is_tracked:
         raise SessionFileError(
             f"session file: {at} has a retention time in both runs, so it is a tracked "
             "peak — it belongs in peaks, not in untracked_peaks"

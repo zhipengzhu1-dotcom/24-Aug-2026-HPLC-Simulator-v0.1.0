@@ -1,4 +1,4 @@
-"""Data model for methods, gradients, programmes, runs and peaks (SPEC §4).
+"""Data model for methods, gradients, programmes, runs and peaks (SPEC §4, §5).
 
 Two shapes describe a composition profile. :class:`Gradient` is v0.1's two-field ramp
 and remains what the scouting runs are acquired with; :class:`Programme` is v0.2's
@@ -6,6 +6,13 @@ candidate — φ0, an initial hold and an ordered list of :class:`Segment` — a
 the user is free to move (SPEC §3). They are not rivals: a one-segment programme *is* a
 gradient, and :meth:`Programme.as_gradient` / :meth:`Programme.from_gradient` are the
 only place that correspondence is written down.
+
+Two shapes likewise describe a peak table row, and for the same reason: SPEC §5 asks
+for two things at once — rows missing a tR "stay visible as untracked — not fitted ...
+with a visible count", and "the engine receives only confirmed, complete pairs".
+:class:`PeakRow` is the first line and :class:`Peak` is the second; a row becomes a
+``Peak`` only when both retention times are there, which is what :meth:`PeakRow.as_peak`
+says and the only place it is said.
 
 Unit conventions: minutes, mL, mm, µm, °C. The strong-solvent fraction φ is a
 0–1 fraction everywhere inside the engine; %B (0–100) exists only at the entry
@@ -285,6 +292,59 @@ class Peak:
     area_run2: float | None = None
     w_half_run1: float | None = None
     w_half_run2: float | None = None
+
+
+@dataclass(frozen=True)
+class PeakRow:
+    """One row of the peak table exactly as typed — every measurement optional.
+
+    :class:`Peak` requires both retention times; a row being filled in does not have
+    them yet. ``name`` is blank until the entry layer fills in SPEC §5's automatic
+    P1…Pn.
+    """
+
+    name: str = ""
+    t_r_run1: float | None = None
+    t_r_run2: float | None = None
+    area_run1: float | None = None
+    area_run2: float | None = None
+    w_half_run1: float | None = None
+    w_half_run2: float | None = None
+
+    @property
+    def measurements(self) -> tuple[float | None, ...]:
+        return (
+            self.t_r_run1,
+            self.t_r_run2,
+            self.area_run1,
+            self.area_run2,
+            self.w_half_run1,
+            self.w_half_run2,
+        )
+
+    @property
+    def is_blank(self) -> bool:
+        """A row with nothing in it at all — the editor's spare, not a peak."""
+        return not self.name.strip() and all(value is None for value in self.measurements)
+
+    @property
+    def is_tracked(self) -> bool:
+        """Both scouting runs pinned: the pairing SPEC §5 says the engine may have."""
+        return self.t_r_run1 is not None and self.t_r_run2 is not None
+
+    def as_peak(self) -> Peak | None:
+        """The engine's ``Peak``, or ``None`` while the row is still half-paired."""
+        if self.t_r_run1 is None or self.t_r_run2 is None:
+            return None
+        return Peak(
+            t_r_run1=self.t_r_run1,
+            t_r_run2=self.t_r_run2,
+            name=self.name,
+            area_run1=self.area_run1,
+            area_run2=self.area_run2,
+            w_half_run1=self.w_half_run1,
+            w_half_run2=self.w_half_run2,
+        )
 
 
 @dataclass(frozen=True)

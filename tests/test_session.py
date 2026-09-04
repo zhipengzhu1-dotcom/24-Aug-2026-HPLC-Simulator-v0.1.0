@@ -15,12 +15,20 @@ from typing import Any
 import pytest
 
 import hplcsim
-from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment, phi_from_percent_b
+from hplcsim.model import (
+    Gradient,
+    Method,
+    Peak,
+    PeakRow,
+    Programme,
+    Run,
+    Segment,
+    phi_from_percent_b,
+)
 from hplcsim.session import (
     SCHEMA_VERSION,
     Session,
     SessionFileError,
-    UntrackedPeak,
     load_session,
     save_session,
 )
@@ -77,9 +85,9 @@ HALF_TRACKED_SESSION = Session(
     runs=MINIMAL_SESSION.runs,
     peaks=FULL_SESSION.peaks,
     untracked=(
-        UntrackedPeak(name="P3", t_r_run1=13.204, area_run1=8801.0),
-        UntrackedPeak(name="P4", t_r_run2=31.006),
-        UntrackedPeak(name="P5"),
+        PeakRow(name="P3", t_r_run1=13.204, area_run1=8801.0),
+        PeakRow(name="P4", t_r_run2=31.006),
+        PeakRow(name="P5"),
     ),
     candidate=MINIMAL_SESSION.candidate,
 )
@@ -269,7 +277,7 @@ def test_an_untracked_row_with_both_retention_times_is_refused_on_save_too() -> 
     """Saving must not write a file this app would then refuse to open."""
     both = replace(
         HALF_TRACKED_SESSION,
-        untracked=(UntrackedPeak(name="P3", t_r_run1=13.204, t_r_run2=28.4),),
+        untracked=(PeakRow(name="P3", t_r_run1=13.204, t_r_run2=28.4),),
     )
     with pytest.raises(SessionFileError, match="belongs in peaks"):
         save_session(both)

@@ -23,12 +23,13 @@ from app.diagnostics import (
     diagnose,
     scouting_beta,
 )
-from app.pipeline import CockpitInputs, PeakRow, run_cockpit
+from app.pipeline import CockpitInputs, run_cockpit
 from hplcsim.fit import BETA_STRONG, BETA_WARNING
 from hplcsim.model import (
     Gradient,
     Method,
     Peak,
+    PeakRow,
     RetentionParams,
     Run,
     ln_k0_from_log10_k0,

@@ -23,8 +23,8 @@ from app.diagnostics import (
     steepness_bracket,
     window_widths_outside,
 )
-from app.pipeline import CockpitInputs, PeakRow
-from hplcsim.model import Gradient, Programme, Run, Segment, Target
+from app.pipeline import CockpitInputs
+from hplcsim.model import Gradient, PeakRow, Programme, Run, Segment, Target
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,

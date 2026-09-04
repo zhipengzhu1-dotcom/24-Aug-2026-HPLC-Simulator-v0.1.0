@@ -22,7 +22,6 @@ from app.pipeline import (
     Cockpit,
     CockpitInputs,
     MethodEntry,
-    PeakRow,
     ScoutingEntry,
     area_shares,
     dwell_from_volume,
@@ -48,7 +47,7 @@ from app.tables import (
     resolution_frame,
 )
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Peak, Programme, log10_k0_from_ln_k0, s_base10_from_s_e
+from hplcsim.model import Peak, PeakRow, Programme, log10_k0_from_ln_k0, s_base10_from_s_e
 from hplcsim.resolution import PredictedPeak, ResolutionTable
 from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.session import Session, save_session

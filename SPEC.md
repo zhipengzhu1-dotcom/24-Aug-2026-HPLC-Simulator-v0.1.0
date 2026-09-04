@@ -209,7 +209,8 @@ Python ≥ 3.12 · uv · ruff · mypy (strict on the engine and on the app's log
 
 ```
 src/hplcsim/      # the engine: a pure library, importing no UI code
-  model.py        # Method, Gradient, Run, Peak, RetentionParams; v0.2: Programme, Segment;
+  model.py        # Method, Gradient, Run, Peak, PeakRow, RetentionParams; v0.2: Programme,
+                  # Segment;
                   # the φ and log-convention boundaries
   retention.py    # predict_retention(params, method, gradient) -> RetentionResult (regime branches);
                   # v0.2: the piecewise programme walker, entered only for ≥ 2 segments

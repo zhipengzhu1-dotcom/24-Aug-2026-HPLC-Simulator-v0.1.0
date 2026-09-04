@@ -6,14 +6,14 @@ is what makes the ticket's third acceptance criterion — the app's run-3 predic
 against the engine fixtures — an assertion in `tests/test_app.py` instead of a
 screenshot someone has to repeat.
 
-**Untracked rows live here, not in the engine.** SPEC §5 asks for two things at once:
-rows missing a tR "stay visible as untracked — not fitted ... with a visible count",
-and "the engine receives only confirmed, complete pairs". :class:`PeakRow` is the
-first line and :class:`~hplcsim.model.Peak` stays the second: a row becomes a ``Peak``
-only when both retention times are there. That was #19's call to make (the ticket
-comment carried it forward from #18). Ticket #21 took the same split into the session
-file, where :class:`~hplcsim.session.UntrackedPeak` carries the incomplete rows and
-:mod:`app.session_io` translates between the two shapes.
+**Sorting the rows lives here; the row shape does not.** SPEC §5 asks for two things at
+once: rows missing a tR "stay visible as untracked — not fitted ... with a visible
+count", and "the engine receives only confirmed, complete pairs".
+:class:`~hplcsim.model.PeakRow` is the first line and :class:`~hplcsim.model.Peak` is
+the second, and both are the engine's own shapes (#91). What this module owns is
+:func:`split_rows`: dropping the editor's spares, filling in the automatic names, and
+deciding which list each row lands in. Ticket #21 took the same split into the session
+file, where :class:`~hplcsim.session.Session` keeps the two lists apart.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from hplcsim.model import (
     Gradient,
     Method,
     Peak,
+    PeakRow,
     Programme,
     Run,
     Segment,
@@ -37,59 +38,6 @@ from hplcsim.model import (
     phi_from_percent_b,
 )
 from hplcsim.resolution import PredictedPeak, ResolutionTable, resolution_table
-
-
-@dataclass(frozen=True)
-class PeakRow:
-    """One row of the peak table exactly as typed — every measurement optional.
-
-    The engine's :class:`~hplcsim.model.Peak` requires both retention times; a row
-    being filled in does not have them yet. ``name`` is blank until :func:`split_rows`
-    fills in SPEC §5's automatic P1…Pn.
-    """
-
-    name: str = ""
-    t_r_run1: float | None = None
-    t_r_run2: float | None = None
-    area_run1: float | None = None
-    area_run2: float | None = None
-    w_half_run1: float | None = None
-    w_half_run2: float | None = None
-
-    @property
-    def measurements(self) -> tuple[float | None, ...]:
-        return (
-            self.t_r_run1,
-            self.t_r_run2,
-            self.area_run1,
-            self.area_run2,
-            self.w_half_run1,
-            self.w_half_run2,
-        )
-
-    @property
-    def is_blank(self) -> bool:
-        """A row with nothing in it at all — the editor's spare, not a peak."""
-        return not self.name.strip() and all(value is None for value in self.measurements)
-
-    @property
-    def is_tracked(self) -> bool:
-        """Both scouting runs pinned: the pairing SPEC §5 says the engine may have."""
-        return self.t_r_run1 is not None and self.t_r_run2 is not None
-
-    def as_peak(self) -> Peak | None:
-        """The engine's ``Peak``, or ``None`` while the row is still half-paired."""
-        if self.t_r_run1 is None or self.t_r_run2 is None:
-            return None
-        return Peak(
-            t_r_run1=self.t_r_run1,
-            t_r_run2=self.t_r_run2,
-            name=self.name,
-            area_run1=self.area_run1,
-            area_run2=self.area_run2,
-            w_half_run1=self.w_half_run1,
-            w_half_run2=self.w_half_run2,
-        )
 
 
 @dataclass(frozen=True)

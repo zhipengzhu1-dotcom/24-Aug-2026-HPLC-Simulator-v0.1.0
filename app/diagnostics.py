@@ -26,7 +26,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.pipeline import Cockpit, CockpitInputs, Entry, PeakRow, run_cockpit
+from app.pipeline import Cockpit, CockpitInputs, Entry, run_cockpit
 from hplcsim.dead_time import (
     EXTRA_COLUMN_VOLUME_TYPICAL_ML,
     POROSITY_PLAUSIBLE,
@@ -40,6 +40,7 @@ from hplcsim.model import (
     Leg,
     Method,
     Peak,
+    PeakRow,
     Programme,
     RetentionParams,
     Run,
