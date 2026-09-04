@@ -469,10 +469,14 @@ def _restore(session: Session) -> None:
     st.session_state.pop(Keys.T0_AUTOFILL, None)
     if not method.t0_is_measured:
         st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
+    # The file holds the candidate as programme rows (SPEC §8, v0.2); this screen has
+    # one segment over the scouting range until #73, and `single_segment` names what
+    # it cannot show in the same note as the squeezes below.
+    candidate = restore.single_segment(session.candidate, shared)
     _preset_slider_with_box(
         Keys.CANDIDATE_TG,
         seed=_TG_CANDIDATE,
-        value=restore.within("candidate tG", session.candidate.t_gradient, *_CANDIDATE_TG_RANGE),
+        value=restore.within("candidate tG", candidate.t_gradient, *_CANDIDATE_TG_RANGE),
     )
     _preset_slider_with_box(
         # The candidate hold's default is fed by the method hold, so the seed has to be
@@ -480,9 +484,7 @@ def _restore(session: Session) -> None:
         # `_slider_with_box` sees a changed default and overwrites the value just loaded.
         Keys.CANDIDATE_HOLD,
         seed=min(st.session_state[Keys.HOLD], _MAX_CANDIDATE_HOLD),
-        value=restore.within(
-            "candidate initial hold", session.candidate.t_init, *_CANDIDATE_HOLD_RANGE
-        ),
+        value=restore.within("candidate initial hold", candidate.t_init, *_CANDIDATE_HOLD_RANGE),
     )
     st.session_state[Keys.LOAD_NOTE] = restore.note
 

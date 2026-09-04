@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from app.diagnostics import STRONG_EXTRAPOLATION
-from hplcsim.model import Gradient, Method, Peak, Run
+from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
 from hplcsim.session import (
     Session,
     UntrackedPeak,
@@ -71,8 +71,11 @@ RESTORED = Session(
         Peak(t_r_run1=11.592, t_r_run2=25.932, name="Ketoprofen"),
     ),
     untracked=(UntrackedPeak(name="Impurity B", t_r_run1=13.204),),
-    candidate=replace(_RESTORED_GRADIENT, t_gradient=37.5, t_init=2.5),
+    candidate=Programme.from_gradient(replace(_RESTORED_GRADIENT, t_gradient=37.5, t_init=2.5)),
 )
+
+# The same candidate with a tG no slider on the screen reaches.
+_WILD_CANDIDATE = Programme.from_gradient(replace(_RESTORED_GRADIENT, t_gradient=500.0, t_init=2.5))
 
 
 def _running_app() -> object:
@@ -575,7 +578,7 @@ def test_a_candidate_beyond_the_sliders_end_is_clamped_rather_than_crashing_the_
     """Found by `/code-review`. A 500-minute tG is a real method and `load_session` has
     no reason to refuse it — but the slider stops at 180, and Streamlit raises on a
     state value above its max, replacing the whole page with a traceback."""
-    wild = replace(RESTORED, candidate=replace(RESTORED.candidate, t_gradient=500.0))
+    wild = replace(RESTORED, candidate=_WILD_CANDIDATE)
     app = _running_app()
     _uploader(app).upload("s.json", save_session(wild).encode("utf-8"))
     app.run()  # type: ignore[attr-defined]
@@ -605,6 +608,25 @@ def test_an_out_of_range_scouting_time_is_clamped_and_named_too() -> None:
     assert any("run 1 tG 900 → 600" in text for text in _messages(app)["warning"])
 
 
+def test_a_two_segment_candidate_is_shown_as_one_and_the_file_is_reported_not_refused() -> None:
+    """SPEC §8 (v0.2) stores the candidate as programme rows; this screen still has one
+    segment over the scouting range until #73. The file loads, the candidate shows as
+    its total ramp time, and what is not shown is named beside the uploader."""
+    two = Programme(
+        phi0=0.10,
+        segments=(Segment(duration=12.5, phif=0.50), Segment(duration=25.0, phif=0.90)),
+        t_init=2.5,
+    )
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(replace(RESTORED, candidate=two)).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    assert _candidate_tg(app).value == pytest.approx(37.5)
+    (note,) = [text for text in _messages(app)["warning"] if "no control on this screen" in text]
+    assert "2 segments" in note and "37.5 min" in note
+
+
 def test_a_file_that_fits_the_screen_says_nothing_about_limits() -> None:
     app = _running_app()
     _uploader(app).upload("s.json", save_session(RESTORED).encode("utf-8"))
@@ -620,7 +642,7 @@ def test_a_refused_file_does_not_leave_the_last_files_warning_standing_beside_it
     corrupt one. The error is the new file's; the warning would be the old file's, and
     it names a number no longer anywhere on screen.
     """
-    wild = replace(RESTORED, candidate=replace(RESTORED.candidate, t_gradient=500.0))
+    wild = replace(RESTORED, candidate=_WILD_CANDIDATE)
     app = _running_app()
     _uploader(app).upload("wild.json", save_session(wild).encode("utf-8"))
     app.run()  # type: ignore[attr-defined]

@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 import hplcsim
-from hplcsim.model import Gradient, Method, Peak, Run, phi_from_percent_b
+from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment, phi_from_percent_b
 from hplcsim.session import (
     SCHEMA_VERSION,
     Session,
@@ -55,7 +55,7 @@ FULL_SESSION = Session(
         ),
         Peak(t_r_run1=11.592, t_r_run2=25.932, name="Unknown-2"),
     ),
-    candidate=Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5),
+    candidate=Programme.from_gradient(Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5)),
     plate_count=12000,
 )
 
@@ -67,7 +67,7 @@ MINIMAL_SESSION = Session(
         Run(Gradient(phi0=0.05, phif=0.95, t_gradient=45.0)),
     ),
     peaks=(Peak(t_r_run1=9.855, t_r_run2=20.831),),
-    candidate=Gradient(phi0=0.05, phif=0.95, t_gradient=25.0),
+    candidate=Programme.from_gradient(Gradient(phi0=0.05, phif=0.95, t_gradient=25.0)),
 )
 
 # Mid-entry: four peaks paired, one still half-tracked. This is the shape the file
@@ -293,9 +293,9 @@ def test_an_untracked_table_that_is_not_a_list_is_rejected() -> None:
 # --- schema rejection --------------------------------------------------------------
 
 
-def test_unknown_schema_version_is_rejected_by_number() -> None:
-    text = _mutated(FULL_SESSION, lambda f: f.__setitem__("schema_version", 2))
-    with pytest.raises(SessionFileError, match="schema_version 2"):
+def test_unknown_schema_version_is_rejected_naming_the_versions_this_app_reads() -> None:
+    text = _mutated(FULL_SESSION, lambda f: f.__setitem__("schema_version", 3))
+    with pytest.raises(SessionFileError, match=r"schema_version 3 .*reads schema_version 1 or 2"):
         load_session(text)
 
 
@@ -414,15 +414,14 @@ def test_saving_runs_that_differ_beyond_gradient_time_is_refused() -> None:
         save_session(diverged)
 
 
-def test_saving_a_candidate_outside_the_scouting_range_is_refused() -> None:
-    diverged = Session(
-        method=MINIMAL_SESSION.method,
-        runs=MINIMAL_SESSION.runs,
-        peaks=MINIMAL_SESSION.peaks,
-        candidate=Gradient(phi0=0.20, phif=0.80, t_gradient=25.0),
+def test_a_candidate_outside_the_scouting_range_saves_and_loads_without_complaint() -> None:
+    """SPEC §4 (#44): leaving the scouting %B range is a warning on screen, never a refusal
+    of the file — the v0.1 check that raised here is gone, both on save and on load."""
+    diverged = replace(
+        MINIMAL_SESSION,
+        candidate=Programme.from_gradient(Gradient(phi0=0.20, phif=0.80, t_gradient=25.0)),
     )
-    with pytest.raises(SessionFileError, match="candidate"):
-        save_session(diverged)
+    assert load_session(save_session(diverged)) == diverged
 
 
 def test_saving_out_of_range_input_is_refused_the_same_way_as_loading() -> None:
@@ -448,6 +447,154 @@ def test_percent_b_survives_the_round_trip_across_the_whole_range() -> None:
                 Run(Gradient(phi_from_percent_b(pct_b_start), 0.95, 45.0)),
             ),
             peaks=(),
-            candidate=Gradient(phi_from_percent_b(pct_b_start), 0.95, 25.0),
+            candidate=Programme.from_gradient(
+                Gradient(phi_from_percent_b(pct_b_start), 0.95, 25.0)
+            ),
         )
         assert load_session(save_session(session)) == session
+
+
+# --- the candidate as a programme (SPEC §8, schema version 2; ticket #71) --------------
+
+# SPEC §8's own sketch: a raised start, a hold, and two segments — the trap case's
+# 15 → 55 %B over 25 min, then a 5 min wash to 95 %B.
+SKETCH_CANDIDATE = Programme(
+    phi0=phi_from_percent_b(15.0),
+    segments=(
+        Segment(duration=25.0, phif=phi_from_percent_b(55.0)),
+        Segment(duration=5.0, phif=phi_from_percent_b(95.0)),
+    ),
+    t_init=0.5,
+)
+
+
+def test_the_spec_sketch_candidate_is_written_as_programme_rows() -> None:
+    """SPEC §8's sketch, key for key: start, hold, and one row per segment in user units."""
+    block = _file_of(replace(FULL_SESSION, candidate=SKETCH_CANDIDATE))["candidate"]
+    assert set(block) == {"pct_b_start", "hold_min", "segments"}
+    assert block["pct_b_start"] == pytest.approx(15)
+    assert block["hold_min"] == pytest.approx(0.5)
+    assert [set(row) for row in block["segments"]] == [{"tg_min", "pct_b_end"}] * 2
+    assert [row["tg_min"] for row in block["segments"]] == pytest.approx([25, 5])
+    assert [row["pct_b_end"] for row in block["segments"]] == pytest.approx([55, 95])
+
+
+def test_a_two_segment_candidate_round_trips_exactly() -> None:
+    session = replace(FULL_SESSION, candidate=SKETCH_CANDIDATE)
+    assert load_session(save_session(session)) == session
+
+
+# A file exactly as v0.1 wrote it (schema 1): the candidate was tG and hold only, over the
+# scouting range. Written out by hand rather than generated, so the reader is held to the
+# old format itself and not to whatever this app happens to write today.
+V1_FILE = json.dumps(
+    {
+        "schema_version": 1,
+        "app_version": "0.1.0",
+        "method": {
+            "flow_ml_min": 0.4,
+            "t0_min": 0.6,
+            "dwell_min": 0.9375,
+            "pct_b_start": 5,
+            "pct_b_end": 95,
+            "hold_min": 0.5,
+        },
+        "runs": [{"tg_min": 15}, {"tg_min": 45}],
+        "peaks": [{"tr_run1_min": 9.855, "tr_run2_min": 20.831}],
+        "candidate": {"tg_min": 25, "hold_min": 0.5},
+    }
+)
+
+
+def test_a_version_1_file_loads_as_one_segment_over_the_scouting_range() -> None:
+    session = load_session(V1_FILE)
+    assert session.candidate == Programme(
+        phi0=phi_from_percent_b(5),
+        segments=(Segment(duration=25.0, phif=phi_from_percent_b(95)),),
+        t_init=0.5,
+    )
+
+
+def test_a_version_1_file_reads_the_same_as_the_version_2_file_it_means() -> None:
+    session = load_session(V1_FILE)
+    assert load_session(save_session(session)) == session
+
+
+def test_every_file_written_is_version_2() -> None:
+    reopened = json.loads(save_session(load_session(V1_FILE)))
+    assert reopened["schema_version"] == 2
+    assert set(reopened["candidate"]) == {"pct_b_start", "hold_min", "segments"}
+
+
+def test_a_version_1_file_without_a_candidate_hold_has_none() -> None:
+    parsed = json.loads(V1_FILE)
+    del parsed["candidate"]["hold_min"]
+    assert load_session(json.dumps(parsed)).candidate.t_init == 0.0
+
+
+def _sketch_file() -> dict[str, Any]:
+    return _file_of(replace(FULL_SESSION, candidate=SKETCH_CANDIDATE))
+
+
+def test_a_candidate_without_its_start_is_rejected_naming_the_field() -> None:
+    parsed = _sketch_file()
+    del parsed["candidate"]["pct_b_start"]
+    with pytest.raises(SessionFileError, match="candidate.pct_b_start"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_candidate_without_segments_is_rejected_naming_the_field() -> None:
+    parsed = _sketch_file()
+    del parsed["candidate"]["segments"]
+    with pytest.raises(SessionFileError, match="candidate.segments"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_candidate_with_an_empty_segment_list_is_rejected_naming_the_field() -> None:
+    parsed = _sketch_file()
+    parsed["candidate"]["segments"] = []
+    with pytest.raises(SessionFileError, match="candidate.segments"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_segment_row_missing_its_end_names_the_row() -> None:
+    parsed = _sketch_file()
+    del parsed["candidate"]["segments"][1]["pct_b_end"]
+    with pytest.raises(SessionFileError, match=r"candidate.segments\[1\].pct_b_end"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_segment_of_zero_duration_is_rejected_naming_the_row() -> None:
+    parsed = _sketch_file()
+    parsed["candidate"]["segments"][0]["tg_min"] = 0
+    with pytest.raises(SessionFileError, match=r"candidate.segments\[0\].tg_min"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_segment_end_outside_zero_to_hundred_is_rejected_naming_the_row() -> None:
+    parsed = _sketch_file()
+    parsed["candidate"]["segments"][1]["pct_b_end"] = 120
+    with pytest.raises(SessionFileError, match=r"candidate.segments\[1\].pct_b_end"):
+        load_session(json.dumps(parsed))
+
+
+def test_a_candidate_start_outside_zero_to_hundred_is_rejected_on_save_too() -> None:
+    bad = replace(MINIMAL_SESSION, candidate=replace(SKETCH_CANDIDATE, phi0=1.5))
+    with pytest.raises(SessionFileError, match="candidate.pct_b_start"):
+        save_session(bad)
+
+
+def test_a_hold_segment_repeats_the_composition_and_round_trips() -> None:
+    """A hold is a row whose end repeats the composition before it (SPEC §8) — nothing
+    special in the file, and nothing lost on the way back."""
+    with_hold = Programme(
+        phi0=phi_from_percent_b(5),
+        segments=(
+            Segment(duration=10.0, phif=phi_from_percent_b(40)),
+            Segment(duration=3.0, phif=phi_from_percent_b(40)),
+            Segment(duration=10.0, phif=phi_from_percent_b(95)),
+        ),
+    )
+    session = replace(MINIMAL_SESSION, candidate=with_hold)
+    assert load_session(save_session(session)) == session
+    assert load_session(save_session(session)).candidate.legs()[1].is_hold

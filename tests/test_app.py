@@ -47,7 +47,7 @@ from app.tables import (
     resolution_frame,
 )
 from hplcsim.fit import fit_peaks
-from hplcsim.model import Peak, log10_k0_from_ln_k0, s_base10_from_s_e
+from hplcsim.model import Peak, Programme, log10_k0_from_ln_k0, s_base10_from_s_e
 from hplcsim.resolution import PredictedPeak, ResolutionTable
 from hplcsim.retention import gradient_end_time, predict_retention
 from hplcsim.session import Session, save_session
@@ -578,7 +578,7 @@ def test_the_view_never_reaches_the_session_file() -> None:
         method=LAB_METHOD,
         runs=(LAB_RUN1, LAB_RUN2),
         peaks=tuple(LAB_MEASURED_PEAKS),
-        candidate=LAB_RUN3.gradient,
+        candidate=Programme.from_gradient(LAB_RUN3.gradient),
     )
 
     assert not any("axis" in f.name or "view" in f.name for f in fields(Session))
