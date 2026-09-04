@@ -35,12 +35,20 @@ from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from hplcsim import __version__
+from hplcsim.dead_time import architecture_of
 from hplcsim.model import Gradient, Method, Peak, Run, percent_b_from_phi, phi_from_percent_b
 
 SCHEMA_VERSION: Final = 1
 
 # t0_source in the file <-> Method.t0_is_measured, which stamps SPEC §6 diagnostic 6.
 _T0_SOURCES: Final = {"measured": True, "estimated": False}
+
+# particle_architecture in the file <-> Method.particle_is_solid_core, the input the
+# geometry estimate of t0 selects its porosity by (#24). The file's names are the
+# engine's own ``Architecture`` literal (``dead_time.architecture_of`` writes them);
+# absent when undeclared, like every other unset field — the estimator refuses on
+# ``None`` rather than guessing.
+_ARCHITECTURES: Final = {"fully_porous": False, "core_shell": True}
 
 _TWO_RUNS: Final = "session file: runs must hold exactly two scouting runs"
 
@@ -164,6 +172,8 @@ def _method_block(session: Session, shared: Gradient) -> dict[str, Any]:
             "temperature_c": method.temperature_c,
             "t0_min": method.t0,
             "t0_source": "measured" if method.t0_is_measured else "estimated",
+            "t0_marker": method.t0_marker or None,
+            "particle_architecture": architecture_of(method),
             "dwell_min": method.t_dwell,
             "pct_b_start": percent_b_from_phi(shared.phi0),
             "pct_b_end": percent_b_from_phi(shared.phif),
@@ -269,6 +279,15 @@ class _Fields:
             raise SessionFileError(f"session file: {self.at(key)} must be text, got {value!r}")
         return value
 
+    def optional_text(self, key: str) -> str | None:
+        """Free text the user may not have entered — absent and blank both read as unset."""
+        value = self.data.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise SessionFileError(f"session file: {self.at(key)} must be text, got {value!r}")
+        return value.strip() or None
+
     def _number(self, key: str, value: Any) -> float:
         # bool is an int in Python, but `true` is never a measurement.
         if isinstance(value, bool) or not isinstance(value, int | float):
@@ -312,6 +331,8 @@ def _read_method(block: _Fields) -> Method:
         particle_um=block.optional_number("particle_um"),
         temperature_c=block.optional_number("temperature_c"),
         t0_is_measured=_read_t0_source(block),
+        particle_is_solid_core=_read_architecture(block),
+        t0_marker=block.optional_text("t0_marker"),
     )
 
 
@@ -323,6 +344,19 @@ def _read_t0_source(block: _Fields) -> bool:
             f"session file: {block.at('t0_source')} must be one of {allowed}; got {source!r}"
         )
     return _T0_SOURCES[source]
+
+
+def _read_architecture(block: _Fields) -> bool | None:
+    name = block.optional_text("particle_architecture")
+    if name is None:
+        return None
+    if name not in _ARCHITECTURES:
+        allowed = ", ".join(_ARCHITECTURES)
+        raise SessionFileError(
+            f"session file: {block.at('particle_architecture')} must be one of {allowed}; "
+            f"got {name!r}"
+        )
+    return _ARCHITECTURES[name]
 
 
 def _read_runs(rows: list[_Fields], shared: Gradient) -> tuple[Run, Run]:

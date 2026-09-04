@@ -18,6 +18,7 @@ from dataclasses import replace
 from app.diagnostics import (
     AREA_SHARE_THRESHOLD,
     STRONG_EXTRAPOLATION,
+    Diagnostic,
     Diagnostics,
     diagnose,
     scouting_beta,
@@ -26,6 +27,7 @@ from app.pipeline import CockpitInputs, PeakRow, run_cockpit
 from hplcsim.fit import BETA_STRONG, BETA_WARNING
 from hplcsim.model import (
     Gradient,
+    Method,
     Peak,
     RetentionParams,
     Run,
@@ -37,6 +39,7 @@ from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
+    LAB_METHOD_AS_RECORDED,
     LAB_PEAKS,
     LAB_RUN1,
     LAB_RUN2,
@@ -237,6 +240,16 @@ def test_a_geometry_t0_stamps_every_output_lower_confidence() -> None:
     (stamp,) = _at(_lab_inputs(method=method)).stamps
     assert stamp.code == "estimated_t0"
     assert stamp.severity == "warning"
+
+
+def test_the_stamp_is_worded_to_the_two_regimes_not_a_bare_lower_confidence() -> None:
+    """Research doc §6.4: the predictions barely move; the fitted S, k0 and N do, and
+    must not be transferred. The two numbers differ by a factor of forty."""
+    (stamp,) = _at(_lab_inputs(method=replace(LAB_METHOD, t0_is_measured=False))).stamps
+    assert "0.005% per 1%" in stamp.message
+    assert "a quarter of the t0 error" in stamp.message
+    assert "never transfer them to another flow rate or column" in stamp.message
+    assert "lower-confidence" not in stamp.message
 
 
 # --- the entry checks of SPEC §5 ----------------------------------------------------------
@@ -493,8 +506,108 @@ def test_a_blocked_cockpit_still_checks_the_rows_the_user_typed() -> None:
     assert [d.code for d in _at(inputs).entry] == ["area_share"]
 
 
-def test_nothing_entered_at_all_is_a_quiet_screen() -> None:
-    assert _at(_lab_inputs(rows=())).all == ()
+def test_nothing_entered_at_all_leaves_every_result_surface_quiet() -> None:
+    """Only the method's own checks speak on an empty screen — t0 is a typed input.
+
+    The lab fixture declares no packing architecture and no marker, so the sidebar
+    carries SPEC §4's readout of what its measured t0 implies and the missing-marker
+    warning; everything that is about a *result* stays silent.
+    """
+    diagnostics = _at(_lab_inputs(rows=()))
+    assert diagnostics.all == diagnostics.method
+    assert [d.code for d in diagnostics.method] == ["dead_time_check", "t0_marker"]
+
+
+# --- SPEC §4's checks on a measured t0 (ticket #24) -----------------------------------------
+
+# The driver's column as method.csv records it: re-read t0, architecture declared,
+# solvent-front marker. The fixture LAB_METHOD stays at 0.6 for the fits.
+_LAB_COLUMN = LAB_METHOD_AS_RECORDED
+
+
+def _dead_time(method: Method) -> list[Diagnostic]:
+    return [d for d in _at(_lab_inputs(method=method)).method if d.code == "dead_time_check"]
+
+
+def _marker(method: Method) -> list[Diagnostic]:
+    return [d for d in _at(_lab_inputs(method=method)).method if d.code == "t0_marker"]
+
+
+def test_the_reverse_check_is_a_readout_on_the_drivers_own_column() -> None:
+    """#34, decision 4: implied ε_total and V_ec stated as fact, and no warning on
+    correct data — 0.606 is 16.6% over the core–shell constant, and that tier is gone."""
+    (readout,) = _dead_time(_LAB_COLUMN)
+    assert readout.severity == "info"
+    assert "ε_total = 0.606" in readout.message
+    assert "30 µL of extra-column volume" in readout.message
+    assert "typical 26–78 µL" in readout.message
+    assert "0.450 min" in readout.message and "band 0.390–0.520 min" in readout.message
+
+
+def test_a_mis_declared_architecture_is_caught_by_the_negative_plumbing_volume() -> None:
+    # The only thing that catches a wrong packing type once the ~15% tier is dropped.
+    (warning,) = _dead_time(replace(_LAB_COLUMN, particle_is_solid_core=False))
+    assert warning.severity == "warning"
+    assert "below the geometry estimate" in warning.message
+    assert "-5 µL" in warning.message
+    assert "mis-declared" in warning.message
+
+
+def test_an_undeclared_architecture_keeps_the_porosity_readout_and_asks_for_the_rest() -> None:
+    (readout,) = _dead_time(replace(_LAB_COLUMN, particle_is_solid_core=None))
+    assert readout.severity == "info"
+    assert "ε_total = 0.606" in readout.message
+    assert "Declare the packing architecture" in readout.message
+    assert "extra-column volume" in readout.message
+
+
+def test_a_gap_too_large_for_plumbing_warns_of_a_retained_marker() -> None:
+    # 0.675 min is ε_total = 0.78 — still a porosity a column can have — and 90 µL.
+    (warning,) = _dead_time(replace(_LAB_COLUMN, t0=0.675))
+    assert warning.severity == "warning"
+    assert "90 µL of extra-column volume" in warning.message
+    assert "retained" in warning.message
+
+
+def test_a_porosity_no_column_has_is_a_warning_and_more_than_a_tube_holds_is_strong() -> None:
+    (implausible,) = _dead_time(replace(_LAB_COLUMN, t0=0.25))
+    assert implausible.severity == "warning"
+    assert "outside the 0.35–0.80" in implausible.message
+    (impossible,) = _dead_time(replace(_LAB_COLUMN, t0=0.95))
+    assert impossible.severity == "strong"
+    assert "more mobile phase than an empty tube" in impossible.message
+
+
+def test_without_a_column_id_the_reverse_check_says_nothing_rather_than_failing() -> None:
+    assert _dead_time(replace(_LAB_COLUMN, column_id_mm=None)) == []
+
+
+def test_an_estimated_t0_gets_the_stamp_and_neither_measured_t0_check() -> None:
+    estimated = replace(_LAB_COLUMN, t0_is_measured=False, t0_marker=None)
+    diagnostics = _at(_lab_inputs(method=estimated))
+    assert diagnostics.method == ()
+    assert [d.code for d in diagnostics.stamps] == ["estimated_t0"]
+
+
+def test_the_drivers_solvent_front_marker_is_warned_as_discouraged() -> None:
+    (warning,) = _marker(_LAB_COLUMN)
+    assert warning.severity == "warning"
+    assert "solvent disturbance" in warning.message
+    assert "solvent front, first disturbance" in warning.message
+
+
+def test_a_salt_marker_is_warned_as_size_excluded() -> None:
+    (warning,) = _marker(replace(_LAB_COLUMN, t0_marker="sodium nitrate"))
+    assert "inorganic salt" in warning.message and "interstitial" in warning.message
+
+
+def test_a_missing_marker_is_a_provenance_warning() -> None:
+    (warning,) = _marker(replace(_LAB_COLUMN, t0_marker=None))
+    assert "No t0 marker recorded" in warning.message
+
+
+def test_a_compound_marker_is_quiet() -> None:
+    assert _marker(replace(_LAB_COLUMN, t0_marker="uracil, apex")) == []
 
 
 def test_a_peak_that_leaves_at_k_below_one_is_early_however_late_it_looks() -> None:

@@ -318,6 +318,27 @@ def dwell_from_volume(volume_ml: float, flow_ml_min: float) -> float:
     return volume_ml / flow_ml_min
 
 
+def t0_autofill(
+    field_value: float | None, last_autofill: float | None, estimate: float
+) -> float | None:
+    """What the t0 field should hold once "Geometry estimate" is the source — or ``None``.
+
+    SPEC §4's fallback is *autofilled*, not captioned (#24, decided on #34): the field
+    holds the computed number, so ``t0_is_measured = False`` is truthful about what is
+    actually in it. Three cases:
+
+    * no autofill yet (the source was just chosen) — fill, overwriting whatever the
+      user had typed as a measured value;
+    * the field still holds the last autofill — refill, so the estimate tracks an edit
+      to the column dimensions or the architecture;
+    * the field holds something else — the user overwrote it, and the widget layer has
+      already flipped the source back to measured; leave it alone.
+    """
+    if last_autofill is None or field_value is None or field_value == last_autofill:
+        return estimate
+    return None
+
+
 @dataclass(frozen=True)
 class MethodEntry:
     """The method constants as the sidebar holds them, with %B still on 0–100.
