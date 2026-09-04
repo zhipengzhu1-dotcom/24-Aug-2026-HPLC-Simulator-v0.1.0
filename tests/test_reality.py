@@ -24,6 +24,9 @@ from hplcsim.resolution import ResolutionTable, resolution_table
 from hplcsim.retention import gradient_steepness, predict_retention
 from hplcsim.width import band_compression_factor, peak_width, plate_count_from_width
 from lab_data import (
+    LAB_CAMPAIGN27_RUNS,
+    LAB_CAMPAIGN27_TR,
+    LAB_CAMPAIGN27_WASH_ELUTED,
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
     LAB_MEASURED_TG25,
@@ -87,6 +90,15 @@ _W_HALF_PER_SIGMA = math.sqrt(8.0 * math.log(2.0))
 
 _LAB_AVERAGE_BAR = 2.0
 _LAB_WORST_CASE_BAR = 5.0
+
+# SPEC §10 item 3(b): no unstamped run exceeds this mean |ΔtR|, in percent, **on either
+# sample** — which is why it sits here rather than inside one sample's block. Re-pinned
+# by #55 from the provisional 0.4 (breached by three-peak run 3 at 0.42 % since the
+# 0.525 re-baseline) to 0.5 — layer 3's median bar on the den Uijl sets, borrowed as a
+# mean here so one number serves the reference data and the bench data. Largest
+# unstamped today: three-peak run 3 at 0.42 %, four-peak E1 at 0.14 %; the per-run
+# tripwires in each sample's block are the tighter guard.
+_UNSTAMPED_CEILING_PERCENT = 0.5
 
 
 def _lab_predictions(
@@ -1024,12 +1036,9 @@ _V2_PINNED_MEAN_OFFSET = {
     "run3_rep2": 0.0196,
     "run3_rep3": 0.0206,
 }
-# SPEC §10 item 3(b): no unstamped run exceeds this mean |ΔtR|, in percent, on either
-# sample. Re-pinned by #55 from the provisional 0.4 (breached by three-peak run 3 at
-# 0.42 % since the 0.525 re-baseline) to 0.5 — layer 3's median bar on the den Uijl sets.
-# Largest unstamped on this sample: E1 at 0.14 %; the per-run tripwires above are the
-# tighter guard.
-_V2_UNSTAMPED_CEILING_PERCENT = 0.5
+# The unstamped ceiling of SPEC §10 item 3(b) is `_UNSTAMPED_CEILING_PERCENT`, at the
+# top of this file: #55 set one number for both samples, so both blocks read the same
+# constant. Largest unstamped on this sample: E1 at 0.14 %.
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
@@ -1559,4 +1568,198 @@ def test_validation2_in_bracket_stamped_runs_miss_by_more_than_every_unstamped_r
     unstamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_UNSTAMPED}
 
     assert min(ordered.values()) > max(unstamped.values()), (ordered, unstamped)
-    assert max(unstamped.values()) <= _V2_UNSTAMPED_CEILING_PERCENT, unstamped
+    assert max(unstamped.values()) <= _UNSTAMPED_CEILING_PERCENT, unstamped
+
+
+# --- campaign #27: the three-peak sample's gradient-freedom runs (SPEC §10, #75) ---
+#
+# The four-peak block above pins SPEC §10's v0.2 bar on one sample. These three runs are
+# the same bar on the other one, and they are the harder half: the three-peak sample is
+# where the φ0-dependent residual is largest (0.42 → 0.82 → 1.67 % at φ0 = 5 / 15 / 25
+# %B) and where run 6 pairs a shallow s* with a raised start so the two biases cancel.
+# Measured on 2026-09-02 (#27), re-scored at t0 = 0.525 by #24 and tabulated on #55;
+# until #75 they sat in `lab_data` unasserted, so nothing failed if they drifted.
+#
+# The fit is always the same one every other three-peak claim uses: run1 + run2, tG =
+# 15/45 at 5 → 95 %B. Scouting s* bracket [0.0105, 0.0315]; s* = t0·Δφ/tG is the only
+# way the candidate gradient enters the elution composition (research doc §7).
+
+# Every three-peak condition the fit never saw, keyed the way #55's table names them.
+# runs 3 and 4 are the v0.1 pair (asserted for their own reasons above); they are here
+# because item 3(a)'s ordering and item 3(b)'s ceiling are claims *across* runs.
+_C27_HELD_OUT: dict[str, tuple[Run, dict[str, float]]] = {
+    "run3": (LAB_RUN3, LAB_MEASURED_TG25),
+    "run4": (LAB_RUN4, LAB_MEASURED_TG60),
+    "run5": (LAB_CAMPAIGN27_RUNS["run5"], LAB_CAMPAIGN27_TR["run5"]),
+    "run6": (LAB_CAMPAIGN27_RUNS["run6"], LAB_CAMPAIGN27_TR["run6"]),
+    "run7": (LAB_CAMPAIGN27_RUNS["run7"], LAB_CAMPAIGN27_TR["run7"]),
+}
+
+# The runs #75 wires: SPEC §10 item 1's held-out set minus the two v0.1 runs.
+_C27_CAMPAIGN_RUNS = ("run5", "run6", "run7")
+_C27_IDS = ["run5-phi0-15-s-star-matched", "run6-ramp-peaks-only", "run7-phi0-25"]
+
+# Which runs draw the *indicative, not decision-grade* stamp, by the two composition
+# guards #44 decided and the tiers #55 re-pinned — a fixture fact, recorded here the way
+# `VALIDATION2_STAMPED` is on the four-peak sample, so the reality layer can assert the
+# stamp's honesty without importing the app. runs 5, 6 and 7 all start ≥ 10 %B above the
+# scouting pair's 5 %B (diagnostic 7, strong); run 4 (s* 0.26 window-widths below the
+# bracket) and run 6 (0.20) are gentle on diagnostic 1, which does not stamp.
+_C27_STAMPED = ("run5", "run6", "run7")
+_C27_UNSTAMPED = ("run3", "run4")
+# SPEC §10 item 3(a) is scoped to runs strong on 7 whose s* is *inside* the bracket.
+# run 6's s* (0.0084) is below it, and it is the run whose two biases cancel — a shallow
+# s* pulls early (run 4: −0.106 min), a raised start pushes late (run 5: +0.115), and
+# run 6 lands between at +0.039. So it is recorded, not ordered.
+_C27_STAMPED_IN_BRACKET = ("run5", "run7")
+
+# Regression tripwires on mean |ΔtR| in percent, set just above where each run sits at
+# t0 = 0.525 (0.82 / 0.21 / 1.67), not at the 2 % contract — a drift to 1.9 % would clear
+# the contract with nobody noticing. The 0.6-era figures were 0.73 (run 5) and 1.52
+# (run 7), research doc §1.3; run 6 has no 0.6-era figure on record.
+_C27_TR_TRIPWIRE = {"run5": 0.85, "run6": 0.25, "run7": 1.75}
+
+# SPEC §10 item 1, layer two: each run's mean signed residual, predicted − measured in
+# minutes, pinned where it was measured at t0 = 0.525 (#24's re-baseline, tabulated on
+# #55). The 0.6-era values were +0.1025 (run 5) and +0.1802 (run 7), research doc §1.3.
+# The four-peak sample pins these within E4's measured repeatability floor; this sample
+# has no replicates, so it keeps #46's interim ± 0.10 % — of the run's own retention
+# times, not of the residual, which is what `_C27_PIN_TOLERANCE_FRACTION` applies.
+_C27_PINNED_MEAN_OFFSET = {"run5": 0.1146, "run6": 0.0387, "run7": 0.1981}
+_C27_PIN_TOLERANCE_FRACTION = 0.001
+
+
+def _c27_scored_peaks(run_name: str) -> list[str]:
+    """The peaks of a three-peak held-out run that the single-segment engine may score.
+
+    Run 6 ends at 55 %B, where Unknown-3 never leaves the hold; the 46.8 min on file is
+    the 45.1 min wash step bringing it off under a two-segment programme (SPEC §10 item
+    4(d), the walker's reality point). `LAB_CAMPAIGN27_WASH_ELUTED` is the fixture that
+    says so, and it — not a hard-coded peak list — is what excludes it here.
+    """
+    _, measured = _C27_HELD_OUT[run_name]
+    return [
+        peak.name
+        for peak in LAB_MEASURED_PEAKS
+        if peak.name in measured and (run_name, peak.name) not in LAB_CAMPAIGN27_WASH_ELUTED
+    ]
+
+
+def _c27_predicted_and_measured(run_name: str) -> tuple[list[float], list[float]]:
+    """Predicted and measured tR (min) at a three-peak held-out run, in fixture order."""
+    target, measured = _C27_HELD_OUT[run_name]
+    scored = _c27_scored_peaks(run_name)
+    fits = fit_peaks(LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2)
+    predicted = [
+        predict_retention(fit.params, LAB_METHOD, target.gradient).t_r
+        for fit, peak in zip(fits, LAB_MEASURED_PEAKS, strict=True)
+        if peak.name in scored
+    ]
+    return predicted, [measured[name] for name in scored]
+
+
+def _c27_offsets(run_name: str) -> list[float]:
+    """Predicted − measured tR (min) at a three-peak held-out run."""
+    predicted, measured = _c27_predicted_and_measured(run_name)
+    return [p - m for p, m in zip(predicted, measured, strict=True)]
+
+
+def _c27_mean_magnitude(run_name: str) -> float:
+    """Mean |ΔtR| in percent at a three-peak held-out run — the coarse bar's statistic."""
+    return fmean(abs(e) for e in _signed_percent_errors(*_c27_predicted_and_measured(run_name)))
+
+
+def test_campaign27_scores_run6_on_its_ramp_peaks_only() -> None:
+    """The exclusion the rest of this block depends on, asserted rather than assumed.
+
+    Scoring run 6's Unknown-3 against the single-segment engine would be scoring a
+    two-segment measurement: the engine puts it at ~110 min in the 55 %B hold and the
+    wash brought it off at 46.8. Runs 5 and 7 keep all three peaks.
+    """
+    assert ("run6", "Unknown-3") in LAB_CAMPAIGN27_WASH_ELUTED
+    assert _c27_scored_peaks("run6") == ["Unknown-1", "Unknown-2"]
+    assert "Unknown-3" not in LAB_CAMPAIGN27_TR["run6"]
+    for run_name in ("run5", "run7"):
+        assert _c27_scored_peaks(run_name) == ["Unknown-1", "Unknown-2", "Unknown-3"]
+
+
+@pytest.mark.parametrize("run_name", _C27_CAMPAIGN_RUNS, ids=_C27_IDS)
+def test_campaign27_held_out_runs_are_predicted_within_the_trust_bar(run_name: str) -> None:
+    """SPEC §10 item 1, layer one: the v0.1 coarse bar on the three-peak campaign runs.
+
+    Fit tG = 15/45 at 5 → 95 %B, predict three conditions the fit never saw: run 5
+    (15 → 95, tG 22.2 — s* matched to run 3, so the falsification test for "only s*
+    matters") at 0.82 % mean, run 6 on its two ramp peaks at 0.21 %, run 7 (25 → 95) at
+    1.67 %, all against a 2 % average and 5 % worst-case bar with order correct. Run 7's
+    worst peak is 2.76 %, the largest single-peak miss anywhere in the project and still
+    inside the bar. Each tripwire sits just above its run so drift shows.
+    """
+    predicted, measured = _c27_predicted_and_measured(run_name)
+
+    magnitudes = [abs(error) for error in _signed_percent_errors(predicted, measured)]
+    assert fmean(magnitudes) <= _LAB_AVERAGE_BAR
+    assert max(magnitudes) <= _LAB_WORST_CASE_BAR
+    assert _elution_order(predicted) == _elution_order(measured)
+
+    assert fmean(magnitudes) <= _C27_TR_TRIPWIRE[run_name]
+
+
+@pytest.mark.parametrize("run_name", _C27_CAMPAIGN_RUNS, ids=_C27_IDS)
+def test_campaign27_mean_residual_is_pinned_within_the_interim_tolerance(run_name: str) -> None:
+    """SPEC §10 item 1, layer two: each run's mean signed residual, pinned in minutes.
+
+    +0.115 (run 5), +0.039 (run 6, ramp peaks) and +0.198 min (run 7) at t0 = 0.525.
+    The four-peak sample pins these within E4's measured 0.002 min; this sample has no
+    replicates, so the tolerance stays #46's interim ± 0.10 %, read as ± 0.10 % of the
+    run's own measured retention times (0.015 / 0.021 / 0.015 min here). That is looser
+    than the four-peak floor by design, and it is still far tighter than the coarse bar:
+    a change that moved run 7 back to its 0.6-era +0.180 min would fail here.
+    """
+    measured = _c27_predicted_and_measured(run_name)[1]
+    tolerance = _C27_PIN_TOLERANCE_FRACTION * fmean(measured)
+
+    assert fmean(_c27_offsets(run_name)) == pytest.approx(
+        _C27_PINNED_MEAN_OFFSET[run_name], abs=tolerance
+    )
+
+
+def test_campaign27_in_bracket_stamped_runs_miss_by_more_than_every_unstamped_run() -> None:
+    """SPEC §10 item 3, on the three-peak sample, as #55 re-pinned it.
+
+    (a) Every run strong on diagnostic 7 whose s* is inside the scouting bracket misses
+    by more than every unstamped run — 0.82 % (run 5) and 1.67 % (run 7) against 0.42 %
+    (run 3, in-window) and 0.34 % (run 4) — which is what makes *indicative, not
+    decision-grade* honest. Run 6 is stamped and deliberately not ordered: its s* sits
+    below the bracket and its two biases cancel at 0.21 %, below run 3. The four-peak
+    sample makes the same claim at a much narrower margin (0.23 / 0.26 against 0.14).
+    (b) No unstamped three-peak run exceeds 0.5 % mean |ΔtR| — run 3 at 0.42 % is the
+    largest unstamped figure on either sample, so this sample is where the ceiling
+    binds; run 4 is gentle on diagnostic 1 only, which does not stamp.
+
+    Which runs are stamped is a fixture fact (`_C27_STAMPED`); that the app's diagnostics
+    draw it on exactly those runs is SPEC §10 item 2, left to the build.
+    """
+    assert set(_C27_STAMPED_IN_BRACKET) < set(_C27_STAMPED)
+    assert set(_C27_STAMPED) | set(_C27_UNSTAMPED) == set(_C27_HELD_OUT)
+    assert not set(_C27_STAMPED) & set(_C27_UNSTAMPED)
+
+    ordered = {run: _c27_mean_magnitude(run) for run in _C27_STAMPED_IN_BRACKET}
+    unstamped = {run: _c27_mean_magnitude(run) for run in _C27_UNSTAMPED}
+
+    assert min(ordered.values()) > max(unstamped.values()), (ordered, unstamped)
+    assert max(unstamped.values()) <= _UNSTAMPED_CEILING_PERCENT, unstamped
+
+
+def test_campaign27_residual_at_a_raised_phi0_is_not_below_the_scouting_phi0() -> None:
+    """SPEC §10 item 1's one structural claim per sample, on the three-peak sample.
+
+    Starting above the scouting pair's 5 %B has not made the residual smaller: run 5
+    (15 %B, +0.115 min) and run 7 (25 %B, +0.198) both sit above run 3 (5 %B, +0.068).
+    Run 6 also starts at 15 %B but moves s* as well, so it is not a raised-start
+    comparison and is excluded here for the same reason it is excluded from 3(a).
+    The doubling rule (×2.1 per 10 %B) is *not* asserted: it holds on this sample and
+    fails on the four-peak one, and the bar records only the ordering both share.
+    """
+    baseline = fmean(_c27_offsets("run3"))
+    for run_name in _C27_STAMPED_IN_BRACKET:
+        assert fmean(_c27_offsets(run_name)) >= baseline, (run_name, baseline)
