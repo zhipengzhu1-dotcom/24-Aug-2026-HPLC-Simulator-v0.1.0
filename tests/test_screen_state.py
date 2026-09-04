@@ -29,8 +29,10 @@ SEARCHED = "session_state"
 def _guarded_files() -> list[Path]:
     """Every file the seam covers: `app/`, `scripts/` and the entry point at the root."""
     candidates = [
-        *(ROOT / "app").glob("*.py"),
-        *(ROOT / "scripts").glob("*.py"),
+        # `rglob`, not `glob`: CLAUDE.md's rule says *no other file in* `app/`, and the
+        # first `app/<subpackage>/` would walk straight out of a non-recursive glob.
+        *(ROOT / "app").rglob("*.py"),
+        *(ROOT / "scripts").rglob("*.py"),
         ROOT / "streamlit_app.py",
     ]
     return sorted(path for path in candidates if path != OWNER)
@@ -142,3 +144,43 @@ def test_a_run_forgets_the_reads_of_the_last_one(monkeypatch: pytest.MonkeyPatch
     screen_state.begin_run()
 
     screen_state.restore(_SESSION)  # no ScreenStateError
+
+
+def test_a_widget_taking_its_key_arms_the_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`claim` is the half of the guard the accessor cannot see for itself.
+
+    Creating a widget is Streamlit taking the key and refusing every later write to it,
+    and it happens inside Streamlit's own API. Without `claim` the guard would be inert
+    for exactly the keys that matter most — the eleven no code path ever reads.
+    """
+    _screen(monkeypatch)
+    # What `st.number_input("Column length (mm)", ..., key=Keys.LENGTH)` does.
+    assert screen_state.claim(Keys.LENGTH) == Keys.LENGTH, "the widget still gets its key"
+
+    with pytest.raises(ScreenStateError) as raised:
+        screen_state.restore(_SESSION)
+
+    assert Keys.LENGTH in str(raised.value)
+
+
+def test_every_widget_key_in_the_entry_point_is_claimed() -> None:
+    """A widget added without `claim` is a widget the guard cannot see — so grep for it.
+
+    The same reason the seam above is a grep: this ticket exists because a rule written
+    in a comment and enforced by nothing decayed twice (#57, #79). `key=Keys.X` is how
+    every named widget key reaches Streamlit; the axis boxes pass a loop variable and
+    are covered by the accessor read directly above them.
+    """
+    unclaimed = [
+        f"{number}: {line.strip()}"
+        for number, line in enumerate(
+            (ROOT / "streamlit_app.py").read_text(encoding="utf-8").splitlines(), 1
+        )
+        if "key=Keys." in line and "claim(" not in line
+    ]
+
+    assert not unclaimed, (
+        f"widget keys that bypass screen_state.claim: {unclaimed}. Wrap the key — "
+        "`key=screen_state.claim(Keys.X)` — so restore()'s ordering guard can see the "
+        "widget take it."
+    )

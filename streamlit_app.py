@@ -73,7 +73,6 @@ from app.screen_state import (
     CORE_SHELL,
     DWELL_TIME_RANGE,
     ESTIMATED,
-    FLOW,
     FLOW_RANGE,
     FULLY_POROUS,
     LENGTH_RANGE,
@@ -81,7 +80,6 @@ from app.screen_state import (
     PARTICLE_RANGE,
     PARTICLE_UM,
     PLATE_COUNT_RANGE,
-    T0,
     T0_RANGE,
     TEMPERATURE_C,
     TEMPERATURE_RANGE,
@@ -102,6 +100,14 @@ from hplcsim.model import (
 from hplcsim.retention import gradient_end_time
 from hplcsim.session import SessionFileError, load_session, save_session
 from hplcsim.width import default_plate_count
+
+# The rest of the driver's method (validation/method.csv): the two fields no session file
+# can leave out, so `app.screen_state` needs no fallback for them and they stay here as
+# what the widgets open on. Its other four are there, beside the ranges they clamp to.
+_FLOW = 0.4
+# The driver's re-read of the solvent-front time (2026-08-31, method.csv), which
+# supersedes the 0.6 first entered. The engine fixtures are a separate question (#24).
+_T0 = 0.525
 
 # The scouting programme the rail opens on: 5 → 95 %B after a 0.5 min hold, run at
 # tG 15 and 45 min — validation/method.csv's pair. The candidate opens as one ramp over
@@ -337,7 +343,9 @@ def _load_control() -> None:
         # itself something a file restores — a widget instantiated before the restore
         # runs has already claimed its key, and writing to it then is an exception
         # rather than a value that quietly fails to land.
-        uploaded = st.file_uploader("Load a session", type=["json"], key=Keys.UPLOAD)
+        uploaded = st.file_uploader(
+            "Load a session", type=["json"], key=screen_state.claim(Keys.UPLOAD)
+        )
 
         if uploaded is not None and screen_state.get(Keys.LOADED_FILE) != uploaded.file_id:
             screen_state.put(Keys.LOADED_FILE, uploaded.file_id)
@@ -366,7 +374,9 @@ def _load_control() -> None:
             # warning, not a refusal (CLAUDE.md's warnings-over-blocks).
             st.warning(note, icon="⚠️")
 
-        st.text_input("Session name", key=Keys.SESSION_NAME, placeholder=_UNTITLED)
+        st.text_input(
+            "Session name", key=screen_state.claim(Keys.SESSION_NAME), placeholder=_UNTITLED
+        )
 
 
 def _save_control(inputs: CockpitInputs) -> None:
@@ -407,19 +417,36 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         st.caption("Instrument and column — shared by both scouting runs and the candidate.")
 
         length = st.number_input(
-            "Column length (mm)", *LENGTH_RANGE, COLUMN_LENGTH_MM, key=Keys.LENGTH
+            "Column length (mm)",
+            *LENGTH_RANGE,
+            COLUMN_LENGTH_MM,
+            key=screen_state.claim(Keys.LENGTH),
         )
         column_id = st.number_input(
-            "Column i.d. (mm)", *COLUMN_ID_RANGE, COLUMN_ID_MM, key=Keys.COLUMN_ID
+            "Column i.d. (mm)",
+            *COLUMN_ID_RANGE,
+            COLUMN_ID_MM,
+            key=screen_state.claim(Keys.COLUMN_ID),
         )
         particle = st.number_input(
-            "Particle size (µm)", *PARTICLE_RANGE, PARTICLE_UM, key=Keys.PARTICLE
+            "Particle size (µm)",
+            *PARTICLE_RANGE,
+            PARTICLE_UM,
+            key=screen_state.claim(Keys.PARTICLE),
         )
         flow = st.number_input(
-            "Flow F (mL/min)", *FLOW_RANGE, FLOW, step=0.05, format="%.3f", key=Keys.FLOW
+            "Flow F (mL/min)",
+            *FLOW_RANGE,
+            _FLOW,
+            step=0.05,
+            format="%.3f",
+            key=screen_state.claim(Keys.FLOW),
         )
         temperature = st.number_input(
-            "Temperature (°C)", *TEMPERATURE_RANGE, TEMPERATURE_C, key=Keys.TEMPERATURE
+            "Temperature (°C)",
+            *TEMPERATURE_RANGE,
+            TEMPERATURE_C,
+            key=screen_state.claim(Keys.TEMPERATURE),
         )
         st.caption("Temperature is metadata in v0.1 — the model is fixed-temperature.")
 
@@ -429,14 +456,14 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
             [FULLY_POROUS, CORE_SHELL],
             index=None,
             placeholder="Choose — never inferred from the column name",
-            key=Keys.ARCHITECTURE,
+            key=screen_state.claim(Keys.ARCHITECTURE),
         )
         solid_core = None if architecture is None else architecture == CORE_SHELL
         t0_source = st.radio(
             "t0 source",
             [MEASURED, ESTIMATED],
             horizontal=True,
-            key=Keys.T0_SOURCE,
+            key=screen_state.claim(Keys.T0_SOURCE),
             on_change=_t0_source_chosen,
         )
         estimate = None
@@ -445,17 +472,17 @@ def _sidebar() -> tuple[MethodEntry | None, object]:
         t0 = st.number_input(
             "t0 (min)",
             *T0_RANGE,
-            T0,
+            _T0,
             step=0.05,
             format="%.4f",
-            key=Keys.T0,
+            key=screen_state.claim(Keys.T0),
             on_change=_t0_typed,
         )
         marker: str | None = None
         if t0_source == MEASURED:
             marker = st.text_input(
                 "t0 marker",
-                key=Keys.T0_MARKER,
+                key=screen_state.claim(Keys.T0_MARKER),
                 placeholder="uracil, apex — or: solvent front, first disturbance",
                 help=(
                     "What was injected to measure t0, and which point of its trace was "
@@ -507,7 +534,7 @@ def _autofill_t0(
     if solid_core is None:
         return None
     geometry = Method(
-        t0=T0,
+        t0=_T0,
         t_dwell=0.0,
         flow=flow,
         column_length_mm=length,
@@ -569,7 +596,10 @@ def _dwell(flow: float) -> float | None:
     entered as t_D (min) or V_D (mL, ÷F); in-app measurement guidance."
     """
     entered_as = st.radio(
-        "Dwell entered as", [BY_VOLUME, BY_TIME], horizontal=True, key=Keys.DWELL_AS
+        "Dwell entered as",
+        [BY_VOLUME, BY_TIME],
+        horizontal=True,
+        key=screen_state.claim(Keys.DWELL_AS),
     )
     if entered_as != BY_VOLUME:
         return st.number_input(
@@ -577,11 +607,16 @@ def _dwell(flow: float) -> float | None:
             *DWELL_TIME_RANGE,
             value=None,
             format="%.4f",
-            key=Keys.DWELL_TIME,
+            key=screen_state.claim(Keys.DWELL_TIME),
         )
 
     volume = st.number_input(
-        "Dwell volume V_D (mL)", 0.0, 100.0, value=None, format="%.4f", key=Keys.DWELL_VOLUME
+        "Dwell volume V_D (mL)",
+        0.0,
+        100.0,
+        value=None,
+        format="%.4f",
+        key=screen_state.claim(Keys.DWELL_VOLUME),
     )
     with st.expander("How to measure V_D"):
         st.markdown(_DWELL_GUIDANCE)
@@ -600,11 +635,15 @@ def _plate_count_knob(method: Method) -> float | None:
     """
     estimate = default_plate_count(method)
     label = f"Use the column estimate (N ≈ {estimate:,.0f})"
-    if st.checkbox(label, value=True, key=Keys.USE_N_ESTIMATE):
+    if st.checkbox(label, value=True, key=screen_state.claim(Keys.USE_N_ESTIMATE)):
         st.caption("N = L/(2·dp) — geometry, not this instrument's real efficiency.")
         return None
     return st.number_input(
-        "Plate count N", *PLATE_COUNT_RANGE, _PLATE_COUNT, step=500.0, key=Keys.PLATE_COUNT
+        "Plate count N",
+        *PLATE_COUNT_RANGE,
+        _PLATE_COUNT,
+        step=500.0,
+        key=screen_state.claim(Keys.PLATE_COUNT),
     )
 
 
@@ -624,7 +663,7 @@ def _peak_table() -> list[PeakRow]:
     # the new data. It is only ever bumped by `screen_state.restore`.
     edited = st.data_editor(
         screen_state.get(Keys.PEAK_FRAME, tables.blank_peak_frame()),
-        key=Keys.peak_table(screen_state.nonce(Keys.PEAK_TABLE_NONCE)),
+        key=screen_state.claim(Keys.peak_table(screen_state.nonce(Keys.PEAK_TABLE_NONCE))),
         num_rows="dynamic",
         width="stretch",
         # Compact rows (#62): the peak table shares the screen with the pinned
@@ -686,7 +725,7 @@ def _scouting_table() -> tables.ScoutingRead:
     base = screen_state.get(Keys.SCOUTING_FRAME)
     edited = st.data_editor(
         base,
-        key=Keys.scouting_table(screen_state.nonce(Keys.SCOUTING_NONCE)),
+        key=screen_state.claim(Keys.scouting_table(screen_state.nonce(Keys.SCOUTING_NONCE))),
         num_rows="fixed",
         hide_index=True,
         width="stretch",
@@ -703,7 +742,7 @@ def _scouting_table() -> tables.ScoutingRead:
     )
     read = tables.scouting_read_from_frame(edited)
     if not tables.frames_agree(read.frame, edited):
-        screen_state.replace_frame(Keys.SCOUTING_FRAME, Keys.SCOUTING_NONCE, read.frame)
+        _replace_frame(Keys.SCOUTING_FRAME, Keys.SCOUTING_NONCE, read.frame)
         st.rerun()
     entry = read.entry
     st.caption(
@@ -732,11 +771,11 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     touched = screen_state.get(Keys.CANDIDATE_TOUCHED, False)
     base = screen_state.get(Keys.CANDIDATE_FRAME)
     if base is None or (not touched and not tables.frames_agree(base, seed)):
-        screen_state.replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, seed)
+        _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, seed)
         base = seed
     edited = st.data_editor(
         base,
-        key=Keys.candidate_table(screen_state.nonce(Keys.CANDIDATE_NONCE)),
+        key=screen_state.claim(Keys.candidate_table(screen_state.nonce(Keys.CANDIDATE_NONCE))),
         num_rows="dynamic",
         hide_index=True,
         width="stretch",
@@ -753,7 +792,7 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     shown = tables.candidate_frame(read.points)
     if not tables.frames_agree(shown, edited):
         screen_state.put(Keys.CANDIDATE_TOUCHED, True)
-        screen_state.replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, shown)
+        _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, shown)
         st.rerun()
     caption, reset = st.columns([3.2, 1.0], vertical_alignment="center")
     with caption:
@@ -794,6 +833,12 @@ def _percent_column(width: int) -> object:
 def _seed_programme(scouting: ScoutingEntry) -> Programme:
     """One ramp over the scouting range at tG 25 min — v0.1's opening candidate."""
     return Programme.from_gradient(scouting.gradient(_TG_CANDIDATE))
+
+
+def _replace_frame(frame_key: str, nonce_key: str, frame: object) -> None:
+    """Replace a table's frame and move its nonce, so the editor is rebuilt from it."""
+    screen_state.put(frame_key, frame)
+    screen_state.bump_nonce(nonce_key)
 
 
 def _reset_candidate() -> None:
@@ -1181,7 +1226,7 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
                 min_value=0.0 if key in (Keys.X_AXIS_START, Keys.X_AXIS_END) else None,
                 step=step,
                 format=fmt,
-                key=key,
+                key=screen_state.claim(key),
                 on_change=_mark_axis_touched,
             )
     with cols[5]:

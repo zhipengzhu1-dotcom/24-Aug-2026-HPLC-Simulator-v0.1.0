@@ -21,18 +21,16 @@ This is the one module in ``app/`` that imports Streamlit, and it imports nothin
 but the state proxy: no widget is created here, no layout is placed here. The entry point
 keeps the widgets; what it no longer keeps is the state they are written into.
 
-The numbers a widget and :func:`restore` must agree on live here too — the eight
-``*_RANGE`` clamps and the option labels. A file may legitimately hold a value no box on
-the screen can display, and ``Restore`` squeezes it to the range the box is built from;
-if the two ends were named in two files they would be two numbers, and the clamp would
-stop being a clamp. The driver's opening method comes with them: it is the fallback
-``restore`` uses for a field the file leaves out, and splitting the block would leave
-both halves claiming to be the whole instrument.
+The numbers a widget and :func:`restore` must agree on live here too, and only those:
+the eight ``*_RANGE`` clamps, the option labels a restored file picks by value, and the
+four geometry fallbacks. A file may legitimately hold a value no box on the screen can
+display, and ``Restore`` squeezes it to the range the box is built from; if the two ends
+were named in two files they would be two numbers, and the clamp would stop being a
+clamp. A number this module never reads is a widget default and stays with the widget —
+which is why ``PLATE_COUNT_RANGE`` is here and the plate count's own default is not.
 """
 
 from __future__ import annotations
-
-from collections.abc import Mapping
 
 import streamlit as st
 
@@ -41,17 +39,14 @@ from app.entry import ScoutingEntry, points_from_programme
 from app.session_io import Restore, inputs_from_session
 from hplcsim.session import Session
 
-# The driver's Acquity H-Class / CORTECS 2.1×100 method (validation/method.csv). SPEC §1
-# scopes v0.1 to a single user locally, so the number inputs open on that user's real
-# instrument rather than on a textbook column; the peak table still opens empty.
+# The four fields of the driver's Acquity H-Class / CORTECS 2.1×100 method
+# (validation/method.csv) that a session file is allowed to leave out, and so the four
+# `restore` needs a fallback for. The rest of that method — the flow and the t0 — are
+# widget defaults with no restore behind them and stay in the entry point.
 COLUMN_LENGTH_MM = 100.0
 COLUMN_ID_MM = 2.1
 PARTICLE_UM = 1.6
-FLOW = 0.4
 TEMPERATURE_C = 45.0
-# The driver's re-read of the solvent-front time (2026-08-31, method.csv), which
-# supersedes the 0.6 first entered. The engine fixtures are a separate question (#24).
-T0 = 0.525
 
 # Every bounded widget's range, named once. The widget call spreads it and `restore`
 # clamps to it, so a file carrying a value past the end of a slider cannot reach the
@@ -172,12 +167,6 @@ class Keys:
 # would be shared between two chromatographers with two different screens open.
 _READS = "_screen_state_reads"
 
-# The keys `restore` writes only on some files — a plate count the file carries, an
-# architecture it declares — so they cannot be read off the dict it builds.
-_CONDITIONAL_KEYS = frozenset(
-    {Keys.PLATE_COUNT, Keys.ARCHITECTURE, Keys.T0_AUTOFILL, Keys.LOAD_NOTE}
-)
-
 
 def begin_run() -> None:
     """Start a fresh script run: nothing has been read yet.
@@ -202,6 +191,20 @@ def get(key: str, default: object = None) -> object:
     """Read a key, recording the read for :func:`restore`'s guard."""
     _reads().add(key)
     return st.session_state.get(key, default)
+
+
+def claim(key: str) -> str:
+    """Register a widget's key as taken this run, and hand it straight back to it.
+
+    Every ``key=`` a widget is given goes through here. Creating a widget is Streamlit
+    reading and then owning that key — after it, ``session_state`` writes to the key are
+    refused by Streamlit itself, with a traceback where the page was — but it happens
+    inside Streamlit's own widget API, which this module never sees. Without this the
+    guard in :func:`restore` would cover only the keys some code path happens to read
+    through the accessor, and would be inert for the eleven that no code reads at all.
+    """
+    _reads().add(key)
+    return key
 
 
 def has(key: str) -> bool:
@@ -232,12 +235,6 @@ def bump_nonce(key: str) -> None:
     put(key, nonce(key) + 1)
 
 
-def replace_frame(frame_key: str, nonce_key: str, frame: object) -> None:
-    """Replace a table's frame and move its nonce, so the editor is rebuilt from it."""
-    put(frame_key, frame)
-    bump_nonce(nonce_key)
-
-
 def restore(session: Session) -> None:
     """Write a loaded session into the widgets, under the keys they answer to (SPEC §8).
 
@@ -255,10 +252,12 @@ def restore(session: Session) -> None:
     **The guard.** Restoring writes widget state, and state written after a widget has
     been created for this run is state that widget never sees — silently, with the file's
     values on screen in some fields and the old session's in others. Nothing checked
-    that until now. A widget drawn ahead of the uploader reads its key first, so a read
-    already made this run of a key this call is about to write means the ordering has
-    broken; that raises :class:`ScreenStateError` naming the keys, rather than loading
-    two thirds of a file. No user input can reach it — only an edit to ``main()``.
+    that until now. A widget drawn ahead of the uploader takes its key first, through
+    :func:`claim`, and any code reading one takes it through :func:`get`; either way, a
+    key already taken this run that this call is about to write means the ordering has
+    broken. That raises :class:`ScreenStateError` naming the keys, rather than loading
+    two thirds of a file behind Streamlit's own traceback. No user input can reach it —
+    only an edit to ``main()``.
     """
     # Snapshot first: everything below is itself a read, and a call must not trip over
     # its own footprints.
@@ -313,29 +312,34 @@ def restore(session: Session) -> None:
         # session's edits still layered over them.
         Keys.PEAK_TABLE_NONCE: nonce(Keys.PEAK_TABLE_NONCE) + 1,
     }
-    _refuse_if_already_read(already_read, set(values) | _CONDITIONAL_KEYS)
-
-    _write_all(values)
     if session.plate_count is not None:
-        put(
-            Keys.PLATE_COUNT,
-            clamp.within("plate count N", float(session.plate_count), *PLATE_COUNT_RANGE),
+        values[Keys.PLATE_COUNT] = clamp.within(
+            "plate count N", float(session.plate_count), *PLATE_COUNT_RANGE
         )
-    # An undeclared architecture is an *absent* choice, and the selectbox shows that as
-    # its placeholder only when its key holds nothing at all.
-    pop(Keys.ARCHITECTURE)
     if method.particle_is_solid_core is not None:
-        put(Keys.ARCHITECTURE, CORE_SHELL if method.particle_is_solid_core else FULLY_POROUS)
+        values[Keys.ARCHITECTURE] = CORE_SHELL if method.particle_is_solid_core else FULLY_POROUS
     # A restored estimate is treated as the autofill in place. With an architecture in
     # the file that means it is *recomputed* from the file's geometry on the same run —
     # the estimate is derived from inputs, so it recomputes on load exactly as the fit
     # does (SPEC §8), and a file written before a porosity constant changed comes back
     # at the current constant. Without an architecture there is nothing to recompute
     # from and the file's number stands, stamped as the estimate it was saved as.
-    pop(Keys.T0_AUTOFILL)
     if not method.t0_is_measured:
-        put(Keys.T0_AUTOFILL, get(Keys.T0))
-    put(Keys.LOAD_NOTE, clamp.note)
+        values[Keys.T0_AUTOFILL] = values[Keys.T0]
+    # Every warning `Restore` gathered above, so this is the last value computed.
+    values[Keys.LOAD_NOTE] = clamp.note
+    # Cleared rather than written, and cleared either way: an undeclared architecture is
+    # an *absent* choice, and the selectbox shows that as its placeholder only when its
+    # key holds nothing at all. Same for an autofill the file does not re-establish.
+    cleared = (Keys.ARCHITECTURE, Keys.T0_AUTOFILL)
+
+    # Derived from the writes themselves rather than listed beside them, so a field added
+    # to the load cannot be added without the guard covering it.
+    _refuse_if_already_read(already_read, set(values) | set(cleared))
+
+    for key in cleared:
+        pop(key)
+    st.session_state.update(values)
 
 
 def _refuse_if_already_read(already_read: frozenset[str], about_to_write: set[str]) -> None:
@@ -348,8 +352,3 @@ def _refuse_if_already_read(already_read: frozenset[str], about_to_write: set[st
             "would never see the values a loaded file writes into it. The session "
             "controls come first in main(), before every other widget."
         )
-
-
-def _write_all(values: Mapping[str, object]) -> None:
-    """The one bulk write. Reserved for :func:`restore`, which writes a whole screen."""
-    st.session_state.update(values)
