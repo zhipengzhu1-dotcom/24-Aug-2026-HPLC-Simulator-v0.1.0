@@ -97,7 +97,7 @@ def test_a_candidate_inside_the_scouting_bracket_says_nothing() -> None:
 
 
 def test_a_candidate_just_outside_the_bracket_is_an_info_flag_not_a_warning() -> None:
-    """SPEC §6: "the near-bracket flag stays gentle" — the tG = 60 evidence, 0.26%."""
+    """SPEC §6: "the near-bracket flag stays gentle" — the tG = 60 evidence, 0.34%."""
     inputs = _lab_inputs(candidate=Gradient(0.05, 0.95, t_gradient=60.0, t_init=0.5))
     (flag,) = _at(inputs).candidate
     assert flag.code == "tg_extrapolation"
@@ -210,7 +210,7 @@ def _params(log10_k0: float, s: float) -> RetentionParams:
 _SHALLOW_S = ("Shallow S", _params(3.0, 4.0))
 _STEEP_S = ("Steep S", _params(3.4, 5.0))
 
-# log10 k0 = 0.5 leaves the column inside one t0 of t0 + τ —
+# log10 k0 = 0.5 leaves the column 0.18 min after t0 + τ, inside t0 = 0.525 min of it —
 # research doc §4.3's "t'R < t0" early-eluter test, still in the gradient regime.
 _EARLY = ("Early", _params(0.5, 3.0))
 

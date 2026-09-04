@@ -350,7 +350,7 @@ def test_lab_peaks_get_a_plate_count_fitted_from_their_scouting_widths() -> None
     Characterisation at t0 = 0.525 (re-baselined 2026-09-03, #24). At the superseded
     0.6 these were 15212 / 14327 / 23968, with Unknown-1's per-run values 15299 and
     15126 — the numbers research doc §5.4 tabulated by hand before the inverse existed
-    as a function; that doc keeps them with a provenance note. N moves ~2.5% for a 12.5%
+    as a function, and still quotes as computed at 0.6. N moves ~2.5% for a 12.5%
     t0 change, the ~0.2× elasticity dead-time-from-geometry.md §6.2 records. Against the
     h = 2 geometry default of 31250, every peak lands at 15–25 k plates.
     """

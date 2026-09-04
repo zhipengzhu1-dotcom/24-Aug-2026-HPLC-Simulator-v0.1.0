@@ -987,7 +987,7 @@ _V2_TR_TRIPWIRE = {
 # measured at t0 = 0.525 (0.040 / 0.047 / 0.054 / 0.116 / 0.029 / 0.040 / 0.045). run5's
 # miss grew fivefold from the 0.011 it had at 0.6: in the post-gradient hold t0 enters
 # the retention time directly instead of being absorbed by the fit, and the widths there
-# are already 6–9 % under. Still an order of magnitude inside ±0.3.
+# are already 6–9 % under. Still 2.6–5.6× inside ±0.3 (run6 / run5).
 _V2_RS_TRIPWIRE = {
     "run3": 0.045,
     "run4": 0.05,
@@ -1029,6 +1029,10 @@ _V2_UNSTAMPED_CEILING_PERCENT = 0.4
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
+# The runs whose predicted Rs falls *outside* the repeatability band, with how far below
+# its lower edge each pair sits (min, max). Only run5, since the re-baseline to 0.525:
+# 0.009 / 0.018 / 0.020. Every run absent from this table is asserted inside the band.
+_V2_REPEATABILITY_SHORTFALL = {"run5": (0.005, 0.025)}
 
 
 def _v2_fits() -> list[FitResult]:
@@ -1371,7 +1375,7 @@ def test_the_rs_bar_of_spec_10_is_met_on_the_near_critical_pair(run_name: str) -
 
     #46 item 7 extends it to a raised start (run6, 0.116 worst), a hold (run5, 0.054 —
     peaks leaving in a hold move together, so a 1.5 % retention miss costs the Rs a
-    twentieth of the bar), the axis test (E1, 0.029) and run3's replicates; the worst
+    fifth of the bar), the axis test (E1, 0.029) and run3's replicates; the worst
     miss per run is pinned as a tripwire.
 
     Scope, so the SPEC sentence this backs is not read wider than the evidence: one
@@ -1470,16 +1474,17 @@ def test_validation2_resolution_is_inside_the_repeatability_band(run_name: str) 
 
     `test_validation2_resolution_is_inside_the_measurement_band` asks whether the
     prediction is inside what the *export's rounding* allows, and runs 5 and 6 are not
-    (run6 by 0.07–0.12 on every pair). This asks the question the instrument can
+    (run6 by 0.013–0.045 below the band on every pair). This asks the question the
+    instrument can
     actually answer: inside what the *instrument's repeatability* allows — E4's 0.002 min
     on tR and one export step on W½. Every predicted Rs on the six on-ramp conditions
     is, run6 included. run5 is not, since the re-baseline to t0 = 0.525: all three of its
     pairs sit 0.009–0.020 below the band's lower edge (0.033–0.054 below the measured
     point estimate), where at 0.6 every one was inside. In the
     post-gradient hold t0 is not absorbed by the fit, so the trap run is the one
-    condition whose Rs residual the replicates *can* resolve — pinned here as the
-    exception, with its size, so the sharper form of "Rs ± 0.3 is met" reads exactly as
-    wide as the evidence: every on-ramp condition, not every condition.
+    condition whose Rs residual the replicates *can* resolve — pinned in
+    `_V2_REPEATABILITY_SHORTFALL` with its size, so the sharper form of "Rs ± 0.3 is
+    met" reads exactly as wide as the evidence: every on-ramp condition, not every one.
     """
     bands = _resolution_bands(
         VALIDATION2_MEASURED_TR[run_name],
@@ -1488,9 +1493,10 @@ def test_validation2_resolution_is_inside_the_repeatability_band(run_name: str) 
         t_r_ulp=VALIDATION2_REPEATABILITY_TR / 2.0,
     )
     pairs = list(zip(_v2_table(run_name).pairs, bands, strict=True))
-    if run_name == "run5":
+    if run_name in _V2_REPEATABILITY_SHORTFALL:
+        least, most = _V2_REPEATABILITY_SHORTFALL[run_name]
         shortfalls = [low - pair.rs for pair, (low, _) in pairs]
-        assert all(0.005 <= shortfall <= 0.025 for shortfall in shortfalls), shortfalls
+        assert all(least <= shortfall <= most for shortfall in shortfalls), shortfalls
         return
     for pair, (low, high) in pairs:
         assert low <= pair.rs <= high, (pair.earlier.name, pair.later.name, pair.rs, low, high)

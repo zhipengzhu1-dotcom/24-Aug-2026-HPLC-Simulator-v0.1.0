@@ -61,9 +61,10 @@ from lab_data import (
     LAB_RUN3,
 )
 
-# The pre-build blind prediction of validation/run3.csv from runs 1–2, quoted in the
-# #14–#17 handoff and re-asserted in test_reality.py — the "engine fixture values" the
-# ticket's third acceptance criterion says the app must match.
+# The engine's prediction of validation/run3.csv from runs 1–2 at t0 = 0.525 (the
+# pre-build blind prediction in the #14–#17 handoff was 13.861 / 16.729 / 24.383 at 0.6),
+# re-asserted in test_reality.py — the "engine fixture values" the ticket's third
+# acceptance criterion says the app must match.
 _TG25_PREDICTED = {"Unknown-1": 13.871, "Unknown-2": 16.740, "Unknown-3": 24.395}
 
 

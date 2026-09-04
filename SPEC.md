@@ -6,7 +6,7 @@ The destination of the [wayfinder map (#1)](https://github.com/zhipengzhu1-dotco
 
 A Python simulator for **working chromatographers making real method-development decisions** ([map](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1)). The user enters two gradient scouting runs; the app fits per-peak retention parameters; it then predicts retention times, peak widths, resolution, and the rendered chromatogram for any candidate linear gradient. Quantitative honesty beats visual polish throughout. v0.1 serves a single user locally ([#6](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/6)).
 
-**Already validated on real data**: the exact algorithm specified here, run against the driver's Acquity H-Class / CORTECS 2.1×100 dataset ([#8](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/8)), blindly predicted a tG = 25 min confirmation run to **0.35% average |ΔtR|** and a tG = 60 min out-of-bracket run to **0.26%** — inside the trust bar by ~5×.
+**Already validated on real data**: the exact algorithm specified here, run against the driver's Acquity H-Class / CORTECS 2.1×100 dataset ([#8](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/8)), blindly predicted a tG = 25 min confirmation run to **0.42% average |ΔtR|** and a tG = 60 min out-of-bracket run to **0.34%** — inside the trust bar by ~5× (at the measured t0 = 0.525 min; 0.35% and 0.26% pre-build at 0.6).
 
 ## 2. Scope
 
@@ -58,7 +58,7 @@ Manual and implicit: **one row per compound**, tR(run 1) and tR(run 2) side by s
 
 All six ship in v0.1:
 
-1. **tG extrapolation**: info flag when candidate tG leaves [tG1, tG2]; strong warning beyond ~2× outside. (Lab evidence: 1.33× outside scored 0.26% — the near-bracket flag stays gentle.)
+1. **tG extrapolation**: info flag when candidate tG leaves [tG1, tG2]; strong warning beyond ~2× outside. (Lab evidence: 1.33× outside scored 0.34% — the near-bracket flag stays gentle.)
 2. **Early-eluter badge** (elutes near t0 + dwell + hold).
 3. **β-spacing escalation** on fit results.
 4. **Prediction crossing flags** (order at candidate differs from scouting runs).

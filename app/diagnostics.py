@@ -59,7 +59,7 @@ Code = Literal[
 # SPEC §6 diagnostic 1: "info flag when candidate tG leaves [tG1, tG2]; strong warning
 # beyond ~2× outside". "Outside" is multiplicative — the candidate's tG against the
 # bracket edge it passed — which is the measure the spec's own evidence is quoted in:
-# the lab dataset's tG = 60 sits 1.33× outside a 15–45 bracket and scored 0.26%.
+# the lab dataset's tG = 60 sits 1.33× outside a 15–45 bracket and scored 0.34%.
 STRONG_EXTRAPOLATION = 2.0
 
 # SPEC §5's area-share tracking check: "default threshold ~30% relative change". The
@@ -244,7 +244,7 @@ def _tg_extrapolation(candidate: Gradient, run1: Run, run2: Run) -> Diagnostic |
         message=(
             f"{head} Modest extrapolation of this kind holds up on the validation "
             "dataset — its held-out tG = 60 min run sits 1.33× outside a 15–45 min "
-            "bracket and predicted to 0.26%. Treat it as a prediction to confirm, not "
+            "bracket and predicted to 0.34%. Treat it as a prediction to confirm, not "
             "as a reason to stop."
         ),
     )
