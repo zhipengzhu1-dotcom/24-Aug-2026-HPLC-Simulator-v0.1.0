@@ -116,9 +116,9 @@ class RetentionResult:
     are ``None`` together, or all three describe the leg the band left in. In a hold
     ``b_e_seg`` is ``0.0``, since a hold has Δφ = 0.
 
-    One case diverges knowingly: a flat one-segment candidate (Δφ = 0) takes the closed
-    form's isocratic branch and reports ``None`` for all three, where the walker over the
-    same programme would report segment 0. #94 tracks that; it is not fixed here.
+    A flat one-segment candidate (Δφ = 0) reports segment 0 when the band leaves inside
+    that hold, and ``None`` when it is still on-column at the programme's end — the same
+    two answers the walker gives over the same programme (#94).
     """
 
     t_r: float
@@ -152,10 +152,29 @@ def predict_retention(params: RetentionParams, method: Method, target: Target) -
     k0 = params.k_at(gradient.phi0)
 
     # §4.1: test the pre-gradient migration first — the closed form's log argument
-    # goes non-positive exactly when the band has already left the column. A flat
-    # gradient (Δφ = 0) is the same isocratic case for every peak.
-    if k0 <= tau / t0 or gradient.delta_phi == 0.0:
+    # goes non-positive exactly when the band has already left the column.
+    if k0 <= tau / t0:
         return _classify(t_r=t0 * (1.0 + k0), k_e=k0, regime="isocratic_hold", t0=t0, tau=tau)
+
+    # A flat gradient (Δφ = 0) is the same isocratic case for every peak, but it is not
+    # the same *place*: its single leg is a hold the band can leave in, and the walker
+    # over the same programme calls that leg 0 (#94). The two paths have to agree,
+    # boundary included — a band still on-column when the programme ends leaves after the
+    # last leg, which is no segment's. The migration fraction is the walker's own
+    # arithmetic, term for term, so the two cannot part company on the last bit.
+    if gradient.delta_phi == 0.0:
+        x = tau / (t0 * k0)
+        leaves_in_the_hold = x + gradient.t_gradient / (t0 * k0) >= 1.0
+        return _classify(
+            t_r=t0 * (1.0 + k0),
+            k_e=k0,
+            regime="isocratic_hold",
+            t0=t0,
+            tau=tau,
+            eluting_segment=0 if leaves_in_the_hold else None,
+            b_e_seg=0.0 if leaves_in_the_hold else None,
+            k_seg_entry=k0 if leaves_in_the_hold else None,
+        )
 
     b_e = gradient_steepness(method, gradient, params.s_e)
 

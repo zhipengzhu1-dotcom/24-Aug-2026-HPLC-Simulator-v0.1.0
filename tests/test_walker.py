@@ -143,6 +143,53 @@ def test_a_flat_first_segment_is_the_initial_hold_by_another_name() -> None:
     assert result.t_r == pytest.approx(LAB_METHOD.t0 * (1.0 + 6.0), abs=1e-12)
 
 
+# --- #94: a flat one-segment candidate is a hold, and holds are somebody's segment ----
+
+# What a chromatographer makes by typing the same %B into both ends of a one-segment
+# candidate table. One segment never reaches the walker (`predict_retention` sends only
+# two or more), so the closed form has to arrive at the walker's answer on its own.
+_FLAT_INSIDE = Programme.from_gradient(Gradient(phi0=0.70, phif=0.70, t_gradient=25.0, t_init=0.5))
+# The same flat candidate at a composition Unknown-3 outlives: still on-column when the
+# programme ends, which is after the last leg and so no segment's.
+_FLAT_OUTLIVED = Programme.from_gradient(
+    Gradient(phi0=0.50, phif=0.50, t_gradient=25.0, t_init=0.5)
+)
+
+
+@pytest.mark.parametrize("programme", [_FLAT_INSIDE, _FLAT_OUTLIVED])
+def test_a_flat_one_segment_candidate_lands_where_the_walker_lands_it(
+    programme: Programme,
+) -> None:
+    """#94: the same physical band was given two different places by the two paths.
+
+    Both sides of the boundary, because getting one right by always answering 0 would
+    mirror the fault rather than fix it.
+    """
+    closed = predict_retention(LAB_PEAKS[2], LAB_METHOD, programme)
+    walked = walk_programme(LAB_PEAKS[2], LAB_METHOD, programme)
+
+    assert closed.eluting_segment == walked.eluting_segment
+    assert closed.b_e_seg == walked.b_e_seg
+    assert closed.k_seg_entry == walked.k_seg_entry
+    assert closed.t_r == pytest.approx(walked.t_r, rel=1e-12)
+
+
+def test_the_flat_candidate_has_both_of_the_walkers_answers_to_give() -> None:
+    """So the agreement above cannot pass by both paths saying ``None`` every time."""
+    k0 = LAB_PEAKS[2].k_at(0.70)
+    inside = predict_retention(LAB_PEAKS[2], LAB_METHOD, _FLAT_INSIDE)
+    assert inside.eluting_segment == 0
+    assert inside.b_e_seg == 0.0  # a hold has Δφ = 0
+    assert inside.k_seg_entry == pytest.approx(k0)
+    # SPEC §10 item 4a: the closed form still returns v0.1's number for the flat case.
+    assert inside.t_r == pytest.approx(LAB_METHOD.t0 * (1.0 + k0), abs=1e-12)
+
+    outlived = predict_retention(LAB_PEAKS[2], LAB_METHOD, _FLAT_OUTLIVED)
+    assert outlived.eluting_segment is None
+    assert outlived.b_e_seg is None
+    assert outlived.k_seg_entry is None
+
+
 # --- SPEC §10 item 4(c): a segment that starts after a peak has eluted is inert ---
 
 
