@@ -20,4 +20,4 @@ critical pair at Rs ≈ 1.75, which is what SPEC §10's `Rs ± 0.3` bar always n
 | `sticky-check.json` | scouting pair as a session file | loads the set into the app |
 
 Pre-registered predictions for runs not yet made live in `../run-sheets/`, never here.
-Fixtures: `tests/validation2_data.py` (runs 1–4; runs 5, 6 and E1 are scored on #46 and not yet wired).
+Fixtures: `tests/validation2_data.py` — runs 1–4 on SPEC §10's v0.1 bar; runs 5, 6, E1 and the E4 replicates (`run3_rep2`, `run3_rep3`) on #46's bar (`tests/test_reality.py`, last section).

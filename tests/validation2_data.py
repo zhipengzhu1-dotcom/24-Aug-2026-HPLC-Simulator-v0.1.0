@@ -60,6 +60,37 @@ VALIDATION2_RUN3 = Run(Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.
 # with run3 and Δφ, tG and s* with run4.
 VALIDATION2_RUN4 = Run(Gradient(phi0=0.15, phif=0.95, t_gradient=20.0, t_init=0.5), name="run4")
 
+# --- the 2026-09-03 bench session (#53, scored on #46) ---
+#
+# Three more programmes and two replicates, all keyed by file name like runs 3 and 4.
+# Every one was pre-registered under validation/run-sheets/ before injection; the sheet
+# each measured file answers is named in validation/run-sheets/README.md.
+
+# 4peaks_run5.csv — run P, the trap case: 15 → 55 %B at tG 25 with a 19.5 min hold at
+# 55 %B, then a 95 %B wash. tG is inside the scouting bracket but s* = 0.0096 is 0.35
+# window-widths below it, and the engine puts all four peaks *after* the ramp, in the
+# hold, flagged low-confidence — which is what happened. The engine sees only the single
+# ramp; the hold and the wash are what the programme table records and v0.1 cannot model.
+VALIDATION2_RUN5 = Run(Gradient(phi0=0.15, phif=0.55, t_gradient=25.0, t_init=0.5), name="run5")
+
+# 4peaks_run6.csv — raised start: 25 → 95 %B at tG 25. Δφ 0.70 and s* = 0.0168, inside
+# the scouting bracket, so this run moves φ0 by 20 %B with the composition interpolated.
+# log10 k0 at 25 %B is 2.7–2.8 on every peak, above the low-k0 floor, as pre-registered.
+VALIDATION2_RUN6 = Run(Gradient(phi0=0.25, phif=0.95, t_gradient=25.0, t_init=0.5), name="run6")
+
+# E1.csv — the axis test (research #52 §5.2): 5 → 85 %B at tG 20 shares φ0 with run3 and
+# Δφ, tG and s* (0.0240) with run4. Its residual therefore says which of the two moved
+# run4's residual off run3's: it landed at +0.017 min, one third of the way from run3's
+# +0.012 to run4's +0.028 — predominantly φ0 (#46 resolution, item 10). Asserted below
+# as a measurement, never as that reading.
+VALIDATION2_E1 = Run(Gradient(phi0=0.05, phif=0.85, t_gradient=20.0, t_init=0.5), name="E1")
+
+# E4_Run3.csv — run3's programme injected twice more in one sequence, both blocks in one
+# file. With the original that is three determinations of one condition: the sample's
+# repeatability floor, which is what every pinned residual below is allowed to drift by.
+VALIDATION2_RUN3_REP2 = Run(VALIDATION2_RUN3.gradient, name="run3_rep2")
+VALIDATION2_RUN3_REP3 = Run(VALIDATION2_RUN3.gradient, name="run3_rep3")
+
 # Per-peak measured tR and W½ from the scouting pair. All four peaks fit cleanly:
 # residual ~0, log10 k0 3.71–3.80, S 4.92–4.95, fitted N 29k–34k with the two scouting
 # widths agreeing to within 2–11%.
@@ -85,6 +116,36 @@ VALIDATION2_MEASURED_TR = {
         "Unknown-3": 15.837,
         "Unknown-4": 15.938,
     },
+    "run5": {
+        "Unknown-1": 32.202,
+        "Unknown-2": 32.955,
+        "Unknown-3": 34.565,
+        "Unknown-4": 35.202,
+    },
+    "run6": {
+        "Unknown-1": 16.448,
+        "Unknown-2": 16.658,
+        "Unknown-3": 17.074,
+        "Unknown-4": 17.218,
+    },
+    "E1": {
+        "Unknown-1": 17.904,
+        "Unknown-2": 18.051,
+        "Unknown-3": 18.345,
+        "Unknown-4": 18.446,
+    },
+    "run3_rep2": {
+        "Unknown-1": 16.372,
+        "Unknown-2": 16.503,
+        "Unknown-3": 16.767,
+        "Unknown-4": 16.857,
+    },
+    "run3_rep3": {
+        "Unknown-1": 16.371,
+        "Unknown-2": 16.502,
+        "Unknown-3": 16.766,
+        "Unknown-4": 16.856,
+    },
 }
 
 # The widths that turn a retention comparison into a *resolution* comparison at the
@@ -94,6 +155,13 @@ VALIDATION2_MEASURED_W_HALF = {
     "run2": {"Unknown-1": 0.056, "Unknown-2": 0.054, "Unknown-3": 0.057, "Unknown-4": 0.053},
     "run3": {"Unknown-1": 0.031, "Unknown-2": 0.029, "Unknown-3": 0.031, "Unknown-4": 0.029},
     "run4": {"Unknown-1": 0.034, "Unknown-2": 0.032, "Unknown-3": 0.035, "Unknown-4": 0.032},
+    # run5's peaks leave in the hold, 4–6× broader than on any ramp; Unknown-2's 0.16 is
+    # a dropped trailing zero, not a two-decimal reading (the export is three-decimal).
+    "run5": {"Unknown-1": 0.158, "Unknown-2": 0.160, "Unknown-3": 0.198, "Unknown-4": 0.186},
+    "run6": {"Unknown-1": 0.046, "Unknown-2": 0.044, "Unknown-3": 0.047, "Unknown-4": 0.043},
+    "E1": {"Unknown-1": 0.034, "Unknown-2": 0.032, "Unknown-3": 0.035, "Unknown-4": 0.032},
+    "run3_rep2": {"Unknown-1": 0.031, "Unknown-2": 0.029, "Unknown-3": 0.031, "Unknown-4": 0.029},
+    "run3_rep3": {"Unknown-1": 0.031, "Unknown-2": 0.029, "Unknown-3": 0.032, "Unknown-4": 0.029},
 }
 
 # All four runs export three decimals, so every width carries the same half-ULP. On
@@ -134,6 +202,36 @@ VALIDATION2_MEASURED_AREA = {
         "Unknown-3": 782671.0,
         "Unknown-4": 626879.0,
     },
+    "run5": {
+        "Unknown-1": 683768.0,
+        "Unknown-2": 496847.0,
+        "Unknown-3": 768642.0,
+        "Unknown-4": 643506.0,
+    },
+    "run6": {
+        "Unknown-1": 640394.0,
+        "Unknown-2": 448902.0,
+        "Unknown-3": 778697.0,
+        "Unknown-4": 629720.0,
+    },
+    "E1": {
+        "Unknown-1": 634507.0,
+        "Unknown-2": 429622.0,
+        "Unknown-3": 794099.0,
+        "Unknown-4": 630082.0,
+    },
+    "run3_rep2": {
+        "Unknown-1": 635888.0,
+        "Unknown-2": 423345.0,
+        "Unknown-3": 789737.0,
+        "Unknown-4": 628829.0,
+    },
+    "run3_rep3": {
+        "Unknown-1": 635779.0,
+        "Unknown-2": 422724.0,
+        "Unknown-3": 790949.0,
+        "Unknown-4": 627788.0,
+    },
 }
 
 # Which file each run came from, for the transcription check. Runs 3 and 4 are CRLF with
@@ -145,14 +243,95 @@ VALIDATION2_SOURCE_FILES = {
     "run2": "4peaks_run2.csv",
     "run3": "4peaks_run3.csv",
     "run4": "4peaks_run4.csv",
+    "run5": "4peaks_run5.csv",
+    "run6": "4peaks_run6.csv",
+    "E1": "E1.csv",
+    "run3_rep2": "E4_Run3.csv",
+    "run3_rep3": "E4_Run3.csv",
 }
+
+# E4_Run3.csv holds two peak tables under `Replicate-1` / `Replicate-2` headings above
+# one shared programme table; this names the block each replicate fixture was read from.
+VALIDATION2_REPLICATE_BLOCK = {"run3_rep2": "Replicate-1", "run3_rep3": "Replicate-2"}
 
 VALIDATION2_RUNS_BY_NAME = {
     "run1": VALIDATION2_RUN1,
     "run2": VALIDATION2_RUN2,
     "run3": VALIDATION2_RUN3,
     "run4": VALIDATION2_RUN4,
+    "run5": VALIDATION2_RUN5,
+    "run6": VALIDATION2_RUN6,
+    "E1": VALIDATION2_E1,
+    "run3_rep2": VALIDATION2_RUN3_REP2,
+    "run3_rep3": VALIDATION2_RUN3_REP3,
 }
 
-# The two conditions the fit never saw, and what each one is evidence about.
+# The two conditions the fit never saw, and what each one is evidence about. The v0.1
+# bar (SPEC §10's Rs ± 0.3, the near-rigid residual, the dwell argument) is asserted on
+# these two only; the 2026-09-03 runs are asserted on #46's bar below, not folded in.
 VALIDATION2_HELD_OUT = ("run3", "run4")
+
+# --- #46's bar on the 2026-09-03 runs ---
+
+# Every condition on file that the fit never saw, including the replicates of run3.
+# Order is the injection order of the sequence.
+VALIDATION2_HELD_OUT_2026_09_03 = ("run5", "run6", "E1", "run3_rep2", "run3_rep3")
+
+# The three determinations of run3's condition; their spread is the repeatability floor.
+VALIDATION2_RUN3_DETERMINATIONS = ("run3", "run3_rep2", "run3_rep3")
+
+# The floor itself, measured: the largest tR spread of any peak across the three
+# determinations (0.002 min; Unknown-4 0.001) and the largest W½ spread (one export
+# step). #46 item 10: E4's tR spread *replaces* the interim ± 0.10 % as the tolerance
+# every pinned residual on this sample is allowed.
+VALIDATION2_REPEATABILITY_TR = 0.002
+VALIDATION2_REPEATABILITY_W_HALF = 0.001
+
+# #46 item 3, layer two: each run's mean signed residual, predicted − measured in minutes,
+# pinned at its measured value so nothing drifts unremarked. run3 and run4 are the values
+# research #52 §3 reports (+0.01224 / +0.02769); the rest were scored on 2026-09-03.
+VALIDATION2_PINNED_MEAN_OFFSET = {
+    "run3": 0.0122,
+    "run4": 0.0277,
+    "run5": -0.4501,
+    "run6": 0.0339,
+    "E1": 0.0174,
+    "run3_rep2": 0.0132,
+    "run3_rep3": 0.0142,
+}
+
+# #46 items 4–5: which runs draw the *indicative, not decision-grade* stamp, by the two
+# composition guards #44 decided — run4 and run6 start above 5 %B by ≥ 10 %B (diagnostic
+# 7, strong); run5 sits 0.35 window-widths outside the s* bracket (diagnostic 1) and
+# starts at 15 %B. Recorded here as a fixture fact so the reality layer can assert the
+# stamp's honesty without importing the app; the app's own diagnostics are tested there.
+VALIDATION2_STAMPED = ("run4", "run5", "run6")
+VALIDATION2_UNSTAMPED = ("run3", "E1", "run3_rep2", "run3_rep3")
+
+# #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
+# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.096 %.
+VALIDATION2_UNSTAMPED_CEILING_PERCENT = 0.4
+
+# #46 item 7: Rs ± 0.3 extends to these runs; the worst miss per run is pinned as a
+# tripwire, the way `_V2_RS_TRIPWIRE` pins runs 3 and 4. run5 is the case where the
+# stamp is conservative — every pair within 0.011 while retention misses by 1.3 %,
+# because peaks that leave in a hold move together.
+VALIDATION2_RS_WORST_MISS = {
+    "run5": 0.02,
+    "run6": 0.10,
+    "E1": 0.04,
+    "run3_rep2": 0.06,
+    "run3_rep3": 0.04,
+}
+
+# Fitted-N widths against measured, per run. On a ramp the fit reproduces the widths to
+# within the export's precision, as runs 3 and 4 do. In run5's hold it under-predicts
+# every width by 6–9 % — the width model at post-gradient elution is its own finding,
+# pinned here as a band rather than hidden inside a looser one.
+VALIDATION2_FITTED_WIDTH_BANDS = {
+    "run5": (0.90, 0.95),
+    "run6": (0.98, 1.03),
+    "E1": (0.98, 1.02),
+    "run3_rep2": (0.98, 1.02),
+    "run3_rep3": (0.97, 1.02),
+}
