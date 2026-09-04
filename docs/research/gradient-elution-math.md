@@ -245,7 +245,8 @@ at all** — only run geometry.
 agree to floating-point tolerance for any $(k_0, S_e)$ and any run. I verified this
 algebraically; it is a direct consequence of $t_R = \tau + t_0 + (t_0/b_e)\ln(k_0/k_e)$.
 
-**Dwell / hold sensitivity** [derived; #52 §2.1, added 2026-09-03 under #54].
+**Dwell / hold sensitivity** [derived]. Added 2026-09-03 under #54, from research
+#52 §2.1.
 Differentiating the boxed form of §2.2 with respect to $\tau$:
 
 $$1 - \frac{\partial t_R}{\partial \tau} \;=\; \frac{1}{b_e\,(k_0 - \tau/t_0) + 1} \;=\; \frac{k_e}{k_0}$$
@@ -254,7 +255,9 @@ A dwell or hold error $\delta\tau$ therefore moves $t_R$ by $\delta\tau\,(1 - k_
 — nearly the whole $\delta\tau$ for a well-retained solute, and by the *same* amount
 for every peak and every gradient that share $\tau$. The same ratio sizes the entire
 pre-gradient migration correction: the $-\tau/t_0$ inside the logarithm contributes
-$\tau\,k_e/k_0$ to $t_R$ (the isocratic-hold term whose boundary is §4.1). One number
+$\approx \tau\,k_e/k_0$ to $t_R$ to first order (exactly
+$(t_0/b_e)\ln\{[b_e k_0 + 1]/[b_e(k_0 - \tau/t_0) + 1]\}$; the isocratic-hold term
+whose boundary is §4.1). One number
 bounds two error sources at once. Two consequences: (i) a dwell error is common-mode
 across runs whose $k_e/k_0$ are all small, so it can only be exposed by a *difference*
 in $k_e/k_0$ between runs — which is why the argument must be run across datasets

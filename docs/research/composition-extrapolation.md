@@ -452,9 +452,9 @@ I read the surrounding paragraph in the publisher PDF. The full sentence is:
 
 The same sentence gives a composition number: 15–20 %B, i.e. Δφ ≈ 0.15–0.20.
 (A sentence here claiming the project "stopped there" at the factor-of-three clause
-was struck 2026-09-03 under #54: `gradient-elution-math.md` §7.1 has quoted the
-sentence in full since its first commit; what it lacked, and #48 added, is the
-caveat that follows.)
+was struck 2026-09-03 under #54, on #48's finding: `gradient-elution-math.md` §7.1
+has quoted the sentence in full since its first commit; what §7.1 lacked, and #48
+added there, is the caveat that follows here.)
 
 **But it does not mean what one wants it to mean [derived], and this is the
 honesty point of the section.** The claim is about *experimental design* — the
@@ -827,10 +827,11 @@ claim of this document. If A predicts poorly while its s* says it should not,
 > against run 3's +0.355 % — inside SPEC §10's 2 % bar, but twice the in-window
 > residual that a matched s\* said it should reproduce, with the same predicted
 > φ_e per peak to 0.1 %B. §10.1(a) is amended above as a consequence.
-> **Run B is `run6.csv`** (15→55 %B, t_G 25, then held 20 min at 55 %B):
+> **Run B is `run6.csv`** (15→55 %B, t_G 25, then held 19.5 min at 55 %B):
 > Unknown-3 eluted in the 95 %B wash at 46.8 min against a pre-registered 47.0
 > (#46) — the post-gradient regime the first caution below anticipated, and the
-> evidence behind SPEC §6's wash-eluted badge (#58). **Run C is `run7.csv`**
+> evidence behind the wash-eluted badge that #58 decided for the v0.2 SPEC
+> amendment (#47, not yet in `SPEC.md`). **Run C is `run7.csv`**
 > (25→95 %B, t_G 25): mean +1.519 %, peak 1 worst at +2.496 % with log₁₀ k₀ = 1.74,
 > below the 2.1 floor as predicted — but peaks 2–3 did *not* hold (+1.606 /
 > +0.456 % against run 3's +0.425 / +0.105 %), so the k_i floor accounts for only
@@ -960,4 +961,5 @@ All accessed 2026-09-02.
 ---
 
 *Compiled 2026-09-02 for issue #43. Branch: `research/composition-extrapolation`.
-Amended 2026-09-03 under #54 with #52's corrections: §5.1, §10.1(a), §10.3.*
+Amended 2026-09-03 under #54: §10.1(a) and §10.3 with #52's corrections, §5.1 on
+#48's finding.*
