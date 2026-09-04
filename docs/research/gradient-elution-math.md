@@ -216,7 +216,7 @@ $$x(t) = \frac{\tau}{t_0 k_0} + \frac{1}{t_0 k_0}\int_0^{\,t-\tau}\!\! e^{\,b_e 
 Setting $x(t_R - t_0) = 1$ and solving gives exactly the boxed equation. This is the
 identity the implementation should be tested against.
 
-### 2.3 Two identities that fall out (and make good assertions)
+### 2.3 Three identities that fall out (and make good assertions)
 
 **Retention factor at elution.**
 
@@ -244,6 +244,27 @@ at all** — only run geometry.
 **Consistency check the engine should assert:** the two $\varphi_e$ expressions must
 agree to floating-point tolerance for any $(k_0, S_e)$ and any run. I verified this
 algebraically; it is a direct consequence of $t_R = \tau + t_0 + (t_0/b_e)\ln(k_0/k_e)$.
+
+**Dwell / hold sensitivity** [derived]. Added 2026-09-03 under #54, from research
+#52 §2.1.
+Differentiating the boxed form of §2.2 with respect to $\tau$:
+
+$$1 - \frac{\partial t_R}{\partial \tau} \;=\; \frac{1}{b_e\,(k_0 - \tau/t_0) + 1} \;=\; \frac{k_e}{k_0}$$
+
+A dwell or hold error $\delta\tau$ therefore moves $t_R$ by $\delta\tau\,(1 - k_e/k_0)$
+— nearly the whole $\delta\tau$ for a well-retained solute, and by the *same* amount
+for every peak and every gradient that share $\tau$. The same ratio sizes the entire
+pre-gradient migration correction: the $-\tau/t_0$ inside the logarithm contributes
+$\approx \tau\,k_e/k_0$ to $t_R$ to first order (exactly
+$(t_0/b_e)\ln\{[b_e k_0 + 1]/[b_e(k_0 - \tau/t_0) + 1]\}$; the isocratic-hold term
+whose boundary is §4.1). One number
+bounds two error sources at once. Two consequences: (i) a dwell error is common-mode
+across runs whose $k_e/k_0$ are all small, so it can only be exposed by a *difference*
+in $k_e/k_0$ between runs — which is why the argument must be run across datasets
+(on this project's data $k_e/k_0$ is 6e-4 to 2e-3 on the four-peak sample but 8.8e-2
+on the three-peak sample's run 7, and the $\delta\tau \approx 2$ min that closes the
+one needs $\approx 10$ min for the other; research #52 §2.2); (ii) for a peak whose
+$k_e/k_0$ is not small, the hold term is not negligible and the §4.1 boundary is close.
 
 ### 2.4 Validity limits of §2.2
 
@@ -1270,4 +1291,5 @@ Ordered roughly by how load-bearing they are here.
 ---
 
 *Compiled 2026-08-24 for issue #2. Branch: `research/gradient-math`. Amended
-2026-09-03 under #48 with #43's corrections: §0, §1, §7.1, §7.5, §10 item 10, refs. 16–17.*
+2026-09-03 under #48 with #43's corrections: §0, §1, §7.1, §7.5, §10 item 10, refs. 16–17;
+and under #54 with #52's dwell-sensitivity identity: §2.3.*

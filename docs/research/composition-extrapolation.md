@@ -450,8 +450,11 @@ I read the surrounding paragraph in the publisher PDF. The full sentence is:
 > temperature studies and 0.5–0.6 pH units of eluent A, between runs in the
 > investigation of pH effects."
 
-**This project already quotes the "factor of three" clause and stopped there.**
 The same sentence gives a composition number: 15–20 %B, i.e. Δφ ≈ 0.15–0.20.
+(A sentence here claiming the project "stopped there" at the factor-of-three clause
+was struck 2026-09-03 under #54, on #48's finding: `gradient-elution-math.md` §7.1
+has quoted the sentence in full since its first commit; what §7.1 lacked, and #48
+added there, is the caveat that follows here.)
 
 **But it does not mean what one wants it to mean [derived], and this is the
 honesty point of the section.** The claim is about *experimental design* — the
@@ -725,6 +728,17 @@ v0.2 has a live trap: a candidate at 15→55 %B with t_G = 25 min sits comfortab
 *inside* [15, 45] on the t_G axis while being 0.20 window-widths *outside* the
 calibration in s* (§10.3, run B). A t_G-only diagnostic calls that safe.
 
+> **Amendment to (a), 2026-09-03 under #54** (from #52's research, §1.4 and §8
+> item 2). The first half of (a) stands: the bracket variable is s\*. The second
+> half — "do **not** add a second, parallel φ diagnostic" — is withdrawn. This
+> repository's own bench data are the counter-example: `run3.csv` and `run5.csv`
+> are s\*-matched to 0.1 % (0.02160 vs 0.02162), the engine puts every peak at the
+> same φ_e on both to 0.1 %B, and the mean residual still doubles (+0.355 % →
+> +0.729 %). Every s\*-mediated mechanism predicts those two residuals agree; they
+> differ by 0.046 min. **s\* is necessary, not sufficient.** φ₀ needs a term of
+> its own beside the s\* bracket — #44's diagnostic 7, φ₀ departure — and (d)'s
+> per-peak k_i floor is a different hazard, not a substitute for it.
+
 **b. Report both numbers, because they answer different questions.**
 - *Per-method, one number*: overshoot in window-widths, `log_β(s*_edge/s*_cand)`
   — identical for every peak (§7.3). This drives the escalation tier and belongs
@@ -805,6 +819,25 @@ each targeting a distinct claim, all on the existing sample and column:
 Run A is the flagship: it is the cheapest run that can *falsify* the central
 claim of this document. If A predicts poorly while its s* says it should not,
 §7.2 is wrong and #44's design must change. **Run A before B and C.**
+
+> **As run** (recorded 2026-09-03 under #54; the numbers are #52's, §1.3–1.4).
+> All three were made on 2026-09-02 as campaign #27's φ-range arm.
+> **Run A is `run5.csv`** (15→95 %B, t_G 22.2, s\* 0.02162 against run 3's
+> 0.02160) and the s\*-invariance claim **failed**: mean residual +0.729 %
+> against run 3's +0.355 % — inside SPEC §10's 2 % bar, but twice the in-window
+> residual that a matched s\* said it should reproduce, with the same predicted
+> φ_e per peak to 0.1 %B. §10.1(a) is amended above as a consequence.
+> **Run B is `run6.csv`** (15→55 %B, t_G 25, then held 19.5 min at 55 %B):
+> Unknown-3 eluted in the 95 %B wash at 46.8 min against a pre-registered 47.0
+> (#46) — the post-gradient regime the first caution below anticipated, and the
+> evidence behind the wash-eluted badge that #58 decided for the v0.2 SPEC
+> amendment (#47, not yet in `SPEC.md`). **Run C is `run7.csv`**
+> (25→95 %B, t_G 25): mean +1.519 %, peak 1 worst at +2.496 % with log₁₀ k₀ = 1.74,
+> below the 2.1 floor as predicted — but peaks 2–3 did *not* hold (+1.606 /
+> +0.456 % against run 3's +0.425 / +0.105 %), so the k_i floor accounts for only
+> part of run C; the rest is the φ₀ term. That the residual roughly doubles per
+> 10 %B of φ₀ across runs 3 / A / C is #52's observation on this instrument, not
+> a law.
 
 Three cautions on the design [derived]:
 
@@ -927,4 +960,6 @@ All accessed 2026-09-02.
 
 ---
 
-*Compiled 2026-09-02 for issue #43. Branch: `research/composition-extrapolation`.*
+*Compiled 2026-09-02 for issue #43. Branch: `research/composition-extrapolation`.
+Amended 2026-09-03 under #54: §10.1(a) and §10.3 with #52's corrections, §5.1 on
+#48's finding.*

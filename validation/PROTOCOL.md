@@ -18,6 +18,8 @@ One column, one flow, one temperature, one mobile-phase pair, one gradient **ran
 
 Keep injection volume constant — the area-based tracking check depends on it. Re-equilibrate ≥ 10 column volumes between runs.
 
+> **Gap on record (noted 2026-09-03 under [#54](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/54), from #52 §4.3).** Every gradient table recorded through 2026-09-03 — campaign #27's runs 5–7, `Validation_2/` runs 1–4, and the 2026-09-03 four-peak runs 5, 6, E1 and E4 (files still on `prototype/candidate-programme` when this was written) — holds its re-equilibration composition for 3.4–4.0 min at 0.4 mL/min: 1.36–1.60 mL, **≈ 5.7–6.7 column volumes** at V_M ≈ t0·F = 0.24 mL (6.5–7.6 at the driver's t0 of 0.525 min). That is above the ~2 CV Schellinger et al. show suffices for *repeatability* and below this protocol's ≥ 10 CV. Runs 1–4 of campaign #27 carry no gradient table and are assumed the same. The runs on file therefore do not meet the protocol, and the re-equilibration end-point is one of the two mechanisms #52 left standing for the φ0-dependent residual. The instruction stands as written: the next sequence holds ≥ 10 CV — **6.0 min at 0.4 mL/min on this column** — and records it ([#53](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/53)).
+
 ## 3 · Run the three gradients
 
 | Run | Purpose | Gradient time |
@@ -59,4 +61,4 @@ All runs share the range 5 → 95 %B and the same initial hold (0.5 min shown; 0
 
 Simulator inputs from these tables: %B start = 5, %B end = 95, t_init = 0.5 min, tG = 15 / 45 / 25 (/ 60).
 
-Notes: adding 0.1% FA to the acetonitrile too is your chromatographic choice — the model is indifferent, but use the same bottles for all runs. Re-equilibration: ≥ 10 column volumes ≈ 15 min at 1 mL/min on a 150 × 4.6 mm column (Vm ≈ 1.5 mL); scale to your column and flow. A different shared endpoint (80 or 100 %B) is fine if identical across runs.
+Notes: adding 0.1% FA to the acetonitrile too is your chromatographic choice — the model is indifferent, but use the same bottles for all runs. Re-equilibration: ≥ 10 column volumes ≈ 15 min at 1 mL/min on a 150 × 4.6 mm column (Vm ≈ 1.5 mL); scale to your column and flow — on the 100 × 2.1 mm column in `method.csv` at 0.4 mL/min (Vm ≈ 0.24 mL) that is 6.0 min, not the 3.4–4.0 min the recorded programmes hold (see §2). A different shared endpoint (80 or 100 %B) is fine if identical across runs.
