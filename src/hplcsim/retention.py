@@ -29,7 +29,10 @@ def _steepness(t0: float, delta_phi: float, s_e: float, duration: float) -> floa
 
 
 def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
-    """b_e = t0·Δφ·S_e/tG for a v0.1 single-ramp gradient (research doc §1.3)."""
+    """b_e = t0·Δφ·S_e/tG for a v0.1 single-ramp gradient (research doc §1.3).
+
+    A name over :func:`_steepness`, which is the one home the natural-log convention has.
+    """
     return _steepness(method.t0, gradient.delta_phi, s_e, gradient.t_gradient)
 
 
@@ -39,6 +42,9 @@ def segment_steepness(method: Method, programme: Programme, index: int, s_e: flo
     SPEC §3: b_e,seg = t0·Δφ_seg·S_e / duration, with Δφ_seg the segment's signed
     composition change. It is zero in a hold and negative in a descending segment,
     where a positive-only reading would make the band appear to speed up.
+
+    A name over :func:`_steepness`, which is the one home the natural-log convention has:
+    a segment's b_e cannot drift from a gradient's.
     """
     return _steepness(
         method.t0, programme.delta_phi(index), s_e, programme.segments[index].duration

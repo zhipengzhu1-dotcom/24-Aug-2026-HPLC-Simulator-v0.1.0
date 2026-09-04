@@ -14,10 +14,12 @@ import pytest
 from den_uijl_data import SET_X, SET_Y, ScanningGradientSet
 from hplcsim.fit import fit_peaks
 from hplcsim.model import (
+    DescendingSegmentCompressionError,
     Gradient,
     Method,
     MultiSegmentProgrammeError,
     Programme,
+    ProgrammeNotSupportedError,
     RetentionParams,
     Run,
     Segment,
@@ -258,10 +260,13 @@ class TestProgrammeBandCompression:
             phi0=0.05,
             segments=(Segment(duration=10.0, phi_end=0.90), Segment(duration=3.0, phi_end=0.40)),
         )
-        with pytest.raises(ValueError, match="b_e must be non-negative"):
+        with pytest.raises(DescendingSegmentCompressionError, match="#70"):
             programme_band_compression_factor(
                 LAB_METHOD, programme, LAB_PEAKS[0].s_e, eluting_segment=1, k_entry=42.0
             )
+        # Both refusals are the same posture: a legal method the engine cannot yet answer.
+        assert issubclass(DescendingSegmentCompressionError, ProgrammeNotSupportedError)
+        assert issubclass(MultiSegmentProgrammeError, ProgrammeNotSupportedError)
 
     def test_a_band_leaving_in_a_hold_is_not_compressed(self) -> None:
         assert (
@@ -346,11 +351,16 @@ def _bitwise_cases() -> list[_Case]:
 _BITWISE_CASES = _bitwise_cases()
 
 
-@pytest.mark.parametrize(
+# One decorator for both halves of SPEC §10 item 4(a): retention and width are swept
+# over exactly the same fixtures, and a case added to one must reach the other.
+_over_every_fixture = pytest.mark.parametrize(
     ("params", "method", "gradient"),
     [case[1:] for case in _BITWISE_CASES],
     ids=[case[0] for case in _BITWISE_CASES],
 )
+
+
+@_over_every_fixture
 def test_one_segment_retention_is_bitwise_identical(
     params: RetentionParams, method: Method, gradient: Gradient
 ) -> None:
@@ -363,11 +373,7 @@ def test_one_segment_retention_is_bitwise_identical(
     assert from_programme.low_confidence == from_gradient.low_confidence
 
 
-@pytest.mark.parametrize(
-    ("params", "method", "gradient"),
-    [case[1:] for case in _BITWISE_CASES],
-    ids=[case[0] for case in _BITWISE_CASES],
-)
+@_over_every_fixture
 def test_one_segment_width_is_bitwise_identical(
     params: RetentionParams, method: Method, gradient: Gradient
 ) -> None:

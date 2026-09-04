@@ -17,6 +17,7 @@ from statistics import fmean
 from typing import Literal
 
 from hplcsim.model import (
+    DescendingSegmentCompressionError,
     Gradient,
     Method,
     Peak,
@@ -54,7 +55,12 @@ def default_plate_count(method: Method) -> float:
 
 
 def band_compression_factor(b_e: float, k0: float) -> float:
-    """Band compression factor G for steepness ``b_e`` and retention ``k0`` at φ0.
+    """Band compression factor G for steepness ``b_e`` and retention ``k0``.
+
+    ``k0`` is the band's retention factor at the composition it *enters the ramp at* —
+    φ0 for a v0.1 gradient, and the entry composition of the eluting segment under a
+    programme (:func:`programme_band_compression_factor`); the two coincide for one
+    segment, which is why the name is kept.
 
     G(p) = √(1 + p + p²/3)/(1 + p) with p = b_e·k0/(1 + k0) — research doc §5.2,
     from Wilson et al. (2016) Eqs. 8–9 and Hao et al. (2021) Eq. 3, which agree
@@ -210,20 +216,31 @@ def programme_band_compression_factor(
     last segment ends (§4.2). Both of those are v0.1's uncompressed cases already.
     ``k_entry`` is the band's retention factor at the composition entering that segment.
 
-    For one segment this reduces exactly to v0.1's G: index 0, b_e,seg = b_e and
-    k_entry = k at φ0.
+    **Timebase.** The index is into the *pump* programme, but which segment the band
+    leaves in is decided at the **column inlet** — the pump programme delayed by t_D
+    (SPEC §3; research doc §2.1). The two differ by the dwell, so the walker (#70) must
+    take the index from the inlet timeline it already walks, never from pump time. For a
+    one-segment programme the distinction cannot bite: there is only one index.
 
-    A *descending* segment is left open on purpose: the type allows one (SPEC §3) but
-    G(p) was derived for a band being compressed by a rising composition, so
-    :func:`band_compression_factor`'s non-negative guard still fires and the caller gets
-    a refusal rather than an invented number. Choosing what a descending segment does to
-    a width is #70's question, on the evidence #70 gathers.
+    For one segment this reduces exactly to v0.1's G: index 0, b_e,seg = b_e and
+    k_entry = k at φ0 — a bitwise identity, asserted per peak per run.
+
+    A *descending* segment raises :class:`~hplcsim.model.DescendingSegmentCompressionError`:
+    the type allows one (SPEC §3) but G(p) was derived for a band being compressed by a
+    rising composition, so the rule declines rather than inventing a dilation factor.
+    Choosing what a descending segment does to a width is #70's question, on the evidence
+    #70 gathers.
     """
     if eluting_segment is None or programme.is_hold(eluting_segment):
         return 1.0
-    return band_compression_factor(
-        segment_steepness(method, programme, eluting_segment, s_e), k_entry
-    )
+    b_e_seg = segment_steepness(method, programme, eluting_segment, s_e)
+    if b_e_seg < 0.0:
+        raise DescendingSegmentCompressionError(
+            f"segment {eluting_segment + 1} descends (b_e,seg = {b_e_seg}); what a "
+            f"descending segment does to a band's width is ticket #70's question, and "
+            f"G(p) is derived for a rising composition only."
+        )
+    return band_compression_factor(b_e_seg, k_entry)
 
 
 def peak_width_programme(

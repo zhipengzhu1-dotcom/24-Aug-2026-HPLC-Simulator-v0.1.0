@@ -108,12 +108,33 @@ class Gradient:
         return self.phif - self.phi0
 
 
-class MultiSegmentProgrammeError(NotImplementedError):
+class ProgrammeNotSupportedError(NotImplementedError):
+    """Something a programme may legally describe that the v0.1 engine cannot yet answer.
+
+    ``NotImplementedError`` and not ``ValueError`` on purpose: the programme is a valid
+    method — SPEC §3 says so — and the engine is the incomplete party. Every subclass
+    names the ticket that will complete it, so a refusal is never a dead end. Catching
+    the base is how a caller says "anything v0.2 has not finished".
+    """
+
+
+class MultiSegmentProgrammeError(ProgrammeNotSupportedError):
     """A programme of two or more segments, asked of an engine that has only v0.1's path.
 
     Raised where a :class:`Programme` must become a :class:`Gradient` — the one door
-    into v0.1's closed form. It is a ``NotImplementedError`` and not a ``ValueError``
-    on purpose: the programme is a valid method, the engine is the incomplete party.
+    into v0.1's closed form.
+    """
+
+
+class DescendingSegmentCompressionError(ProgrammeNotSupportedError):
+    """A band asked to elute in a *descending* segment, whose G nothing has settled.
+
+    The type allows a descending segment and :func:`~hplcsim.retention.segment_steepness`
+    signs it correctly (SPEC §3: "a descending segment slows the band"). What is missing
+    is only the *width*: G(p) was derived for a band compressed by a rising composition,
+    so the band-compression rule declines rather than inventing a dilation factor. A
+    typed, named refusal rather than a bare ``ValueError`` because the method is legal —
+    the same posture the multi-segment refusal takes.
     """
 
 
