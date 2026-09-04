@@ -24,8 +24,14 @@ from __future__ import annotations
 import pytest
 
 import spec10_item2
-from app.chromatogram import chromatogram, figure, overlay, programme_curve
-from app.diagnostics import Diagnostics, diagnose
+from app.chromatogram import (
+    ProgrammeCurve,
+    chromatogram,
+    figure,
+    programme_curve,
+    programme_overlay,
+)
+from app.diagnostics import Diagnostics, critical_pair_is_indicative, diagnose
 from app.pipeline import Cockpit, CockpitInputs, run_cockpit
 from app.tables import (
     COMPOUND,
@@ -78,7 +84,7 @@ def _rendered(candidate: Target) -> tuple[CockpitInputs, Cockpit, Diagnostics]:
 
 def _overlay(candidate: Target, *, extend_to: float | None = None):  # type: ignore[no-untyped-def]
     inputs, cockpit, diagnostics = _rendered(candidate)
-    return overlay(
+    return programme_overlay(
         inputs.method,
         inputs.target,
         (inputs.run1, inputs.run2),
@@ -86,6 +92,22 @@ def _overlay(candidate: Target, *, extend_to: float | None = None):  # type: ign
         cockpit.predicted_by_name,
         extend_to=extend_to,
     )
+
+
+def _percent_b_at(curve: ProgrammeCurve, minutes: float) -> float:
+    """Read a drawn curve the way the plot does — linear between its points, flat outside.
+
+    Deliberately re-derived here rather than offered by :class:`ProgrammeCurve`: the
+    assertion below is that a peak's marker lands *on* the curve, and a reader that
+    shipped beside the curve would be the same arithmetic checking itself.
+    """
+    points = list(zip(curve.times, curve.percent_b, strict=True))
+    if minutes <= points[0][0]:
+        return points[0][1]
+    for (t0, b0), (t1, b1) in zip(points, points[1:], strict=False):
+        if t0 <= minutes <= t1:
+            return b1 if t1 == t0 else b0 + (b1 - b0) * (minutes - t0) / (t1 - t0)
+    return points[-1][1]
 
 
 # --- the curves: a programme as the detector meets it -------------------------------------
@@ -117,7 +139,7 @@ def test_the_curve_reaches_phi_f_where_the_gradient_end_marker_is_drawn() -> Non
         curve = programme_curve(LAB_METHOD, candidate, label="candidate", dashed=False)
         end = gradient_end_time(LAB_METHOD, candidate)
         assert curve.times[-1] == pytest.approx(end)
-        assert curve.percent_b_at(end) == pytest.approx(percent_b_from_phi(candidate.phif))
+        assert _percent_b_at(curve, end) == pytest.approx(percent_b_from_phi(candidate.phif))
 
 
 def test_a_programme_that_ends_early_is_carried_flat_across_the_rest_of_the_plot() -> None:
@@ -125,7 +147,7 @@ def test_a_programme_that_ends_early_is_carried_flat_across_the_rest_of_the_plot
     curve = programme_curve(LAB_METHOD, TRAP, label="candidate", dashed=False, extend_to=90.0)
     assert curve.times[-1] == 90.0
     assert curve.percent_b[-1] == pytest.approx(55.0)
-    assert curve.percent_b_at(75.0) == pytest.approx(55.0)
+    assert _percent_b_at(curve, 75.0) == pytest.approx(55.0)
 
 
 def test_a_window_shorter_than_the_programme_does_not_truncate_it() -> None:
@@ -159,7 +181,7 @@ def test_every_peak_marker_lands_on_the_candidate_curve(candidate: Target) -> No
     drawn = _overlay(candidate)
     assert drawn.peaks
     for peak in drawn.peaks:
-        assert peak.percent_b == pytest.approx(drawn.candidate.percent_b_at(peak.t_r), abs=1e-9)
+        assert peak.percent_b == pytest.approx(_percent_b_at(drawn.candidate, peak.t_r), abs=1e-9)
 
 
 def test_a_peak_left_in_the_wash_is_marked_at_the_holds_own_composition() -> None:
@@ -197,7 +219,7 @@ def test_a_peak_with_no_prediction_is_left_out_rather_than_drawn_at_a_guessed_ti
     thinned = {
         name: peak for name, peak in cockpit.predicted_by_name.items() if name != "Unknown-2"
     }
-    drawn = overlay(
+    drawn = programme_overlay(
         inputs.method, inputs.target, (inputs.run1, inputs.run2), diagnostics.windows, thinned
     )
     assert [peak.name for peak in drawn.peaks] == ["Unknown-1", "Unknown-3"]
@@ -230,7 +252,7 @@ def test_the_axis_is_padded_but_never_past_the_ends_a_chromatographer_reads() ->
 def test_a_shallow_candidate_is_not_magnified_into_a_full_height_ramp() -> None:
     """A 4 %B move drawn on a 4 %B axis would read as a gradient it is not."""
     narrow = Gradient(phi0=0.05, phif=0.09, t_gradient=25.0, t_init=0.5)
-    drawn = overlay(LAB_METHOD, narrow, (), (), {})
+    drawn = programme_overlay(LAB_METHOD, narrow, (), (), {})
     low, high = drawn.percent_b_range
     assert high - low >= 10.0
 
@@ -247,7 +269,7 @@ def _figure_for(candidate: Target):  # type: ignore[no-untyped-def]
         gradient_end=gradient_end_time(inputs.method, inputs.target),
     )
     drawn = _overlay(candidate, extend_to=float(trace.time[-1]))
-    return figure(trace, programmes=drawn), drawn
+    return figure(trace, overlay=drawn), drawn
 
 
 def test_the_overlay_reaches_the_figure_on_its_own_axis() -> None:
@@ -432,3 +454,58 @@ def test_the_overlay_does_not_change_the_colour_of_the_trace_it_sits_behind() ->
     overlaid, _ = _figure_for(TRAP)
 
     assert plain.data[0].line.color == overlaid.data[len(_overlay(TRAP).curves)].line.color
+
+
+def test_a_near_full_strength_hold_does_not_push_the_axis_past_100_percent_b() -> None:
+    """The min-span widening runs before the clamp, not after: 103 %B is not a thing."""
+    hold = Programme(phi0=0.98, segments=(Segment(20.0, 0.98001),), t_init=0.5)
+    low, high = programme_overlay(LAB_METHOD, hold, (), (), {}).percent_b_range
+    assert high == 100.0
+    assert low <= 98.0
+
+
+# --- the other road to the stamp: a badged peak inside the critical pair -------------------
+
+
+def test_a_badged_peak_in_the_critical_pair_downgrades_it_with_no_stamp_in_sight() -> None:
+    """SPEC §6: "a low-k0 or wash-eluted badge downgrades only the pairs involving that
+    peak" — so the pair, not the method, is what the leading Rs must be asked about.
+
+    This candidate starts at the scouting start and sits inside the steepness bracket,
+    so neither method-level guard fires and there is no stamp; two of its peaks are
+    brought off in the trailing hold, and one of them is in the critical pair. Every
+    surface that shows that Rs has to say so. None of SPEC §10 item 2's fixture runs can
+    catch this: every wash-eluted or low-k0 run there is also strong on diagnostic 7.
+    """
+    inputs, cockpit, diagnostics = _rendered(WASH)
+
+    assert diagnostics.indicative is None
+    critical = cockpit.resolution.critical_pair if cockpit.resolution else None
+    assert critical is not None
+    assert {badge.code for badge in diagnostics.badges[critical.later.name]} == {"wash_eluted"}
+    assert critical_pair_is_indicative(cockpit, diagnostics)
+
+
+def test_a_clean_candidate_leaves_the_leading_rs_decision_grade() -> None:
+    inputs, cockpit, diagnostics = _rendered(
+        Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5)
+    )
+    assert not critical_pair_is_indicative(cockpit, diagnostics)
+
+
+def test_a_badge_outside_the_critical_pair_leaves_the_leading_rs_alone() -> None:
+    """The scoping cuts both ways: a downgraded pair that is not the critical one."""
+    inputs, cockpit, diagnostics = _rendered(WASH)
+    assert cockpit.resolution is not None
+    washed = {
+        name
+        for name, badges in diagnostics.badges.items()
+        if any(badge.code == "wash_eluted" for badge in badges)
+    }
+    clean = [
+        pair
+        for pair in cockpit.resolution.pairs
+        if not {pair.earlier.name, pair.later.name} & washed
+    ]
+    for pair in clean:
+        assert not diagnostics.pair_is_indicative((pair.earlier.name, pair.later.name))

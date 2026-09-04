@@ -289,8 +289,7 @@ def _grid_points(start: float, stop: float, narrowest_sigma: float) -> int:
 # saturated thing in the picture because they are the point of it.
 _CANDIDATE_COLOUR = "#5b8c5a"
 _SCOUTING_COLOUR = "#9aa7b6"
-_WINDOW_MARKER_COLOUR = "#b0399a"
-_WINDOW_WHISKER_COLOUR = "#b0399a"
+_WINDOW_COLOUR = "#b0399a"
 
 # Air above and below the compositions actually drawn, and the narrowest %B span the
 # axis is allowed to have: a candidate that moves 4 %B should not be magnified into a
@@ -312,20 +311,6 @@ class ProgrammeCurve:
     times: tuple[float, ...]
     percent_b: tuple[float, ...]
     dashed: bool
-
-    def percent_b_at(self, minutes: float) -> float:
-        """The composition this curve is at, at one time — linear between its points.
-
-        Flat before the first point and after the last, which is what the programme
-        does: the run starts at φ0 and holds the last segment's composition afterwards.
-        """
-        points = list(zip(self.times, self.percent_b, strict=True))
-        if minutes <= points[0][0]:
-            return points[0][1]
-        for (t0, b0), (t1, b1) in zip(points, points[1:], strict=False):
-            if t0 <= minutes <= t1:
-                return b1 if t1 == t0 else b0 + (b1 - b0) * (minutes - t0) / (t1 - t0)
-        return points[-1][1]
 
 
 @dataclass(frozen=True)
@@ -372,15 +357,18 @@ class Overlay:
             for peak in self.peaks
             for b in (peak.percent_b, peak.percent_b_low, peak.percent_b_high)
         ]
-        low, high = min(values), max(values)
+        drawn_low, drawn_high = min(values), max(values)
+        low = drawn_low - _OVERLAY_PAD_PERCENT_B
+        high = drawn_high + _OVERLAY_PAD_PERCENT_B
         if high - low < _MIN_OVERLAY_SPAN_PERCENT_B:
-            middle = (low + high) / 2.0
+            middle = (drawn_low + drawn_high) / 2.0
             low = middle - _MIN_OVERLAY_SPAN_PERCENT_B / 2.0
             high = middle + _MIN_OVERLAY_SPAN_PERCENT_B / 2.0
-        return (
-            min(low, max(0.0, low - _OVERLAY_PAD_PERCENT_B)),
-            max(high, min(100.0, high + _OVERLAY_PAD_PERCENT_B)),
-        )
+        # The clamp comes last, after the widening: widening a near-100 %B hold and
+        # then clamping in the other order left the axis running to 103 %B, which is a
+        # composition no pump makes. Whatever is drawn is still inside the range —
+        # cropping a value to keep the axis tidy is the one thing this must not do.
+        return (min(drawn_low, max(0.0, low)), max(drawn_high, min(100.0, high)))
 
 
 def programme_curve(
@@ -415,7 +403,7 @@ def programme_curve(
     )
 
 
-def overlay(
+def programme_overlay(
     method: Method,
     target: Target,
     scouting: Sequence[Run],
@@ -473,19 +461,19 @@ def figure(
     *,
     height: int = CHROMATOGRAM_HEIGHT,
     view: AxisView | None = None,
-    programmes: Overlay | None = None,
+    overlay: Overlay | None = None,
 ) -> Any:
     """The Plotly figure for a rendered trace — the hero of SPEC §7's Cockpit.
 
-    ``programmes`` is SPEC §7's always-on overlay. It is drawn first, so the two
+    ``overlay`` is SPEC §7's always-on programme overlay. It is drawn first, so the two
     programmes sit *behind* the trace they explain and the trace stays the hero; the
     peak markers go on last, because a whisker under a Gaussian cannot be read.
     """
     if view is None:
         view = axis_view(trace)
     fig = go.Figure()
-    if programmes is not None:
-        _draw_programmes(fig, programmes)
+    if overlay is not None:
+        _draw_programmes(fig, overlay)
     fig.add_trace(
         go.Scatter(
             x=trace.time,
@@ -539,8 +527,8 @@ def figure(
             if _room_on_the_right(trace.gradient_end, view.x_range)
             else "bottom left",
         )
-    if programmes is not None:
-        _draw_windows(fig, programmes)
+    if overlay is not None:
+        _draw_peak_windows(fig, overlay)
     fig.update_layout(
         height=height,
         # The top margin is what the tallest peak's label hangs in. Labels are rotated
@@ -550,7 +538,7 @@ def figure(
         # pinned block was made to fit; this is not.
         margin={
             "l": 10,
-            "r": 10 if programmes is None else _OVERLAY_RIGHT_MARGIN,
+            "r": 10 if overlay is None else _OVERLAY_RIGHT_MARGIN,
             "t": 44,
             "b": 10,
         },
@@ -569,13 +557,13 @@ def figure(
         # box meant for the signal would move the programmes without saying so.
         **(
             {}
-            if programmes is None
+            if overlay is None
             else {
                 "yaxis2": {
                     "title": "%B",
                     "overlaying": "y",
                     "side": "right",
-                    "range": list(programmes.percent_b_range),
+                    "range": list(overlay.percent_b_range),
                     "showgrid": False,
                     "zeroline": False,
                     "tickfont": {"size": 9},
@@ -588,7 +576,7 @@ def figure(
     return fig
 
 
-def _draw_programmes(fig: Any, programmes: Overlay) -> None:
+def _draw_programmes(fig: Any, overlay: Overlay) -> None:
     """The scouting pair dashed and the candidate solid, on the right-hand %B axis.
 
     Dashed against solid is SPEC §7's own distinction — "as run" against "predicted" —
@@ -597,7 +585,7 @@ def _draw_programmes(fig: Any, programmes: Overlay) -> None:
     curve names itself on hover instead, and the caption beneath the plot says which is
     which.
     """
-    for curve in programmes.curves:
+    for curve in overlay.curves:
         fig.add_trace(
             go.Scatter(
                 x=list(curve.times),
@@ -617,7 +605,7 @@ def _draw_programmes(fig: Any, programmes: Overlay) -> None:
         )
 
 
-def _draw_windows(fig: Any, programmes: Overlay) -> None:
+def _draw_peak_windows(fig: Any, overlay: Overlay) -> None:
     """Each peak at its elution composition, its calibrated window as the whisker.
 
     The marker lands on the candidate curve whenever the peak elutes on a ramp — that
@@ -625,9 +613,9 @@ def _draw_windows(fig: Any, programmes: Overlay) -> None:
     thing worth showing beside it: how far the fit's own two compositions reach, and
     whether this peak is being predicted inside them or outside.
     """
-    if not programmes.peaks:
+    if not overlay.peaks:
         return
-    peaks = programmes.peaks
+    peaks = overlay.peaks
     fig.add_trace(
         go.Scatter(
             x=[peak.t_r for peak in peaks],
@@ -638,7 +626,7 @@ def _draw_windows(fig: Any, programmes: Overlay) -> None:
             marker={
                 "size": 7,
                 "symbol": "diamond",
-                "color": _WINDOW_MARKER_COLOUR,
+                "color": _WINDOW_COLOUR,
                 "line": {"width": 1, "color": "#ffffff"},
             },
             error_y={
@@ -646,7 +634,7 @@ def _draw_windows(fig: Any, programmes: Overlay) -> None:
                 "symmetric": False,
                 "array": [peak.percent_b_high - peak.percent_b for peak in peaks],
                 "arrayminus": [peak.percent_b - peak.percent_b_low for peak in peaks],
-                "color": _WINDOW_WHISKER_COLOUR,
+                "color": _WINDOW_COLOUR,
                 "thickness": 1.2,
                 "width": 4,
             },

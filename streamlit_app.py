@@ -44,7 +44,12 @@ from collections.abc import Sequence
 import streamlit as st
 
 from app import chromatogram, panels, tables, worksheet
-from app.diagnostics import Diagnostic, Diagnostics, diagnose
+from app.diagnostics import (
+    Diagnostic,
+    Diagnostics,
+    critical_pair_is_indicative,
+    diagnose,
+)
 from app.panels import Row
 from app.pipeline import (
     Cockpit,
@@ -166,6 +171,17 @@ _INDICATIVE_SHORT = (
 # every field on it is a fragment, so the sentence above would not fit and would not
 # read as a field if it did.
 _INDICATIVE_STATUS = "Rs indicative — not decision-grade"
+
+# The same downgrade reached by the other road (SPEC §6): no method-level guard fired,
+# but a peak in the critical pair carries a low-k0 or wash-eluted badge, which downgrades
+# the pairs that peak is in and only those. Its own reason, because the stamp's sentence
+# — "the LSS line was never pinned where these peaks are being predicted" — is about the
+# candidate, and this is about one peak.
+_INDICATIVE_BY_BADGE = (
+    "🚫 The critical pair is indicative, not decision-grade — one of its peaks carries a "
+    "badge (see Flags, and the selected-peak panel for what it says). Every other pair "
+    "on the resolution tab still stands; the Rs grade column says which (SPEC §6)."
+)
 
 
 class Keys:
@@ -974,8 +990,9 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     if cockpit.blocked is not None:
         st.error(cockpit.blocked)
         return
+    indicative = critical_pair_is_indicative(cockpit, diagnostics)
     st.markdown(
-        panels.panel("Method summary", _summary_rows(cockpit, diagnostics)),
+        panels.panel("Method summary", _summary_rows(cockpit, indicative)),
         unsafe_allow_html=True,
     )
     _peak_detail(cockpit, diagnostics)
@@ -983,10 +1000,10 @@ def _summary_panels(cockpit: Cockpit, diagnostics: Diagnostics) -> None:
     # W½, N and Rs. The stamp is a caption beneath them rather than a row inside them,
     # because SPEC §7 enumerates what those panels hold.
     _stamp_caption(diagnostics)
-    _indicative_caption(diagnostics)
+    _indicative_caption(diagnostics, indicative)
 
 
-def _summary_rows(cockpit: Cockpit, diagnostics: Diagnostics) -> list[Row]:
+def _summary_rows(cockpit: Cockpit, indicative: bool) -> list[Row]:
     resolution = cockpit.resolution
     if resolution is None or not resolution.peaks:
         return []
@@ -1001,7 +1018,7 @@ def _summary_rows(cockpit: Cockpit, diagnostics: Diagnostics) -> list[Row]:
         # time and the minimum k on the same panel are retention, which the same
         # paragraph keeps shown as numbers. So the mark goes on the two labels it is
         # about rather than over the whole panel, and the caption beneath says why.
-        mark = " (indicative)" if diagnostics.indicative is not None else ""
+        mark = " (indicative)" if indicative else ""
         rows += [
             Row(f"Min. Rs{mark}", f"{critical.rs:.2f}", panels.resolution_colour(critical.rs)),
             Row(f"Critical pair{mark}", f"{critical.earlier.name} / {critical.later.name}"),
@@ -1191,8 +1208,10 @@ def _status_bar(
     if any(stamp.code == "estimated_t0" for stamp in diagnostics.stamps):
         fields.append("t0 estimated — fitted S, k0, N not transferable")
     # SPEC §6's other output stamp, on the same always-visible strip and for the same
-    # reason: an Rs read off any tab is read with the bar in view.
-    if diagnostics.indicative is not None:
+    # reason: an Rs read off any tab is read with the bar in view. The Rs on the bar is
+    # the critical pair's, so it is the critical pair that is asked — a badged peak in
+    # that pair downgrades this number with no method-level guard firing at all.
+    if critical_pair_is_indicative(cockpit, diagnostics):
         fields.append(_INDICATIVE_STATUS)
     st.markdown(panels.status_bar(fields), unsafe_allow_html=True)
 
@@ -1241,7 +1260,7 @@ def _chromatogram(
     # both programmes span the plot rather than stopping where the last segment does,
     # and from `diagnostics.windows`, which is what the fit tab's readout is built from
     # too — one set of numbers, two surfaces.
-    programmes = chromatogram.overlay(
+    overlay = chromatogram.programme_overlay(
         inputs.method,
         inputs.target,
         (inputs.run1, inputs.run2),
@@ -1249,7 +1268,7 @@ def _chromatogram(
         cockpit.predicted_by_name,
         extend_to=float(trace.time[-1]),
     )
-    st.plotly_chart(chromatogram.figure(trace, view=view, programmes=programmes), width="stretch")
+    st.plotly_chart(chromatogram.figure(trace, view=view, overlay=overlay), width="stretch")
     notes = [
         "Candidate solid, scouting pair dashed, on the right-hand %B axis; each peak "
         "is marked at its elution composition, whiskered by its calibrated window.",
@@ -1360,15 +1379,20 @@ def _stamp_caption(diagnostics: Diagnostics) -> None:
         st.caption(_STAMP_SHORT)
 
 
-def _indicative_caption(diagnostics: Diagnostics) -> None:
+def _indicative_caption(diagnostics: Diagnostics, indicative: bool) -> None:
     """SPEC §6's *indicative, not decision-grade* stamp, short, beside a stamped output.
 
     Same shape as :func:`_stamp_caption` and for the same reason: the resolution tab
     carries the whole sentence once, and every other surface showing an Rs carries a
     line short enough to be read with the number rather than instead of it.
+
+    ``indicative`` is about the *critical pair*, which is the Rs this panel leads with,
+    so the caption follows the two rows it explains rather than the method-level stamp.
+    The wording then says which road the downgrade came by.
     """
-    if diagnostics.indicative is not None:
-        st.caption(_INDICATIVE_SHORT)
+    if not indicative:
+        return
+    st.caption(_INDICATIVE_SHORT if diagnostics.indicative is not None else _INDICATIVE_BY_BADGE)
 
 
 main()

@@ -891,3 +891,27 @@ def test_the_wash_eluted_badge_reaches_the_flags_column() -> None:
     marked = set(flags.loc[flags[FLAGS].str.contains("wash-eluted"), COMPOUND])
 
     assert marked == {"Unknown-3"}
+
+
+# A candidate at the scouting start, inside the steepness bracket, whose later peaks are
+# brought off in a trailing hold: no method-level stamp, and a wash-eluted peak inside
+# the critical pair. The screen has to downgrade the Rs it leads with anyway (SPEC §6).
+_WASH_CANDIDATE = Programme(
+    phi0=0.05,
+    segments=(Segment(duration=12.0, phif=0.60), Segment(duration=30.0, phif=0.60)),
+    t_init=0.5,
+)
+
+
+def test_a_badged_critical_pair_downgrades_min_rs_with_no_method_level_stamp() -> None:
+    """SPEC §6 scopes a badge to its own peak's pairs — including the leading one."""
+    app = _loaded(_WASH_CANDIDATE)
+
+    # No method-level guard fired: the long sentence must not appear.
+    assert not any("indicative, not decision-grade" in text for text in _messages(app)["error"])
+
+    summary = _panel(app, "Method summary")
+    assert "Min. Rs (indicative)" in summary
+    assert "Critical pair (indicative)" in summary
+    assert "Rs indicative — not decision-grade" in _status_bar(app)
+    assert any("one of its peaks carries a badge" in caption for caption in _captions(app))

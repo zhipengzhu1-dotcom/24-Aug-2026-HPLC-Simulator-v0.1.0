@@ -78,7 +78,7 @@ Six ship in v0.1; v0.2 re-expresses 1 and adds 7–9:
 
 **What a prediction may claim** ([#44](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/44) decision 8). Inside the s\* bracket with φ0 unchanged: v0.1's claim, unchanged. Gentle on 1 or 7: numbers unchanged; the inline warning names the distance (window-widths for s\*, %B for φ0) and the fit tab names the peaks sitting outside their windows. Strong on either: keep predicting, say plainly that the LSS line was never pinned there, and **stamp Rs and the critical pair as indicative, not decision-grade** — an output stamp in the manner of 6; retention times stay shown as numbers. The ladder is driven by the worse of 1 and 7. A low-k0 or wash-eluted badge downgrades only the pairs involving that peak. **Nowhere does the app claim curvature-corrected accuracy** — two parameters cannot see curvature.
 
-Presentation: per-peak badges (2, 4, 8, 9 — in the Flags column and the selected-peak panel), fit-page notices (3), a **per-peak composition-window readout** on the fit-parameters tab (each peak's calibrated window [φ_e,run2, φ_e,run1] in %B, its width ln β / S_e, and where the candidate puts that peak's elution composition relative to it — the per-peak fact behind 1, whose tier is method-level), result banners (5), output stamps (6, and the indicative stamp on Min. Rs, the resolution tab and the status bar), candidate-control inline warnings (1, 7) directly beneath the candidate table.
+Presentation: per-peak badges (2, 4, 8, 9 — in the Flags column and the selected-peak panel), fit-page notices (3), a **per-peak composition-window readout** on the fit-parameters tab (each peak's calibrated window [φ_e,run2, φ_e,run1] in %B, its width ln β / S_e, and where the candidate puts that peak's elution composition relative to it — the per-peak fact behind 1, whose tier is method-level), result banners (5), output stamps (6, and the indicative stamp on Min. Rs, the resolution tab and the status bar), candidate-control inline warnings (1, 7) directly beneath the candidate table. The stamp's **per-pair scoping is carried on the resolution tab as an Rs-grade column** ([#74](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/74)): the method-level stamp marks every pair, a badge marks only the pairs its own peak is in, and Min. Rs and the status bar follow the **critical pair** — so a badged peak inside the critical pair downgrades the Rs the screen leads with even when neither 1 nor 7 has fired.
 
 ## 7. UI ([#7](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/7))
 
@@ -123,10 +123,12 @@ composition with its calibrated composition window as the whisker. **Always on**
 toggle — the strong-tier states are when it must be seen. Both programmes are drawn on the
 chromatogram's own time base, which is the **detector's**: the pump's programme delayed by
 t_D + t0, the same expression the gradient-end marker uses. That is what makes the picture
-readable rather than merely adjacent — a peak's marker lies *on* the candidate curve wherever
-that peak elutes on a ramp, because the composition a band leaves the column in is the
-composition arriving at the detector at that instant, and a marker sitting off the curve is a
-peak brought off in a hold or after the programme ends ([#74](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/74)). The **axis range is its own always-open
+readable rather than merely adjacent — every peak's marker lies *on* the candidate curve,
+because the composition a band leaves the column in is the composition arriving at the detector
+at that instant, on a ramp, on a descending leg and in a hold alike. What the reader then judges
+is the marker against its own **whisker**: a marker outside it is a peak being predicted at a
+composition the fit was never shown, which is the per-peak fact behind §6's diagnostic 1
+([#74](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/74)). The **axis range is its own always-open
 strip**: a pinned row between the chromatogram and the status bar with x start, x end, y start,
 y end and Reset, never inside the plot's own scroll. Spacing is compact enough that at 1440 × 900
 both tables, both inline warnings, the chromatogram with its overlay and the axis strip are on
