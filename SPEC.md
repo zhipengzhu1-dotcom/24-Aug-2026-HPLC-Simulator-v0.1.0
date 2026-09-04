@@ -223,7 +223,9 @@ streamlit_app.py  # the app's entry point — at the root because `streamlit run
                   # script's own folder on sys.path, so an entry point inside app/ cannot
                   # import app.pipeline at all
 app/              # the Cockpit: depends on the engine, never the reverse
-  pipeline.py     # entry -> fit -> prediction, Streamlit-free (what the app's tests target)
+  entry.py        # what the user typed: the peak table split, the rail's programme tables,
+                  # SPEC §4's two entry conversions
+  pipeline.py     # fit -> prediction, Streamlit-free (what the app's tests target)
   diagnostics.py  # §5's entry checks and §6's nine diagnostics, thresholds and wording
   chromatogram.py # the Gaussian sum, the resolution-map frame (filled at v0.7), v0.2's programme overlay
   tables.py       # the display frames; the base-10 display boundary
