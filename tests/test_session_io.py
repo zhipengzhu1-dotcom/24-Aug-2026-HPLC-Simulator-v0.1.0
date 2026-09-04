@@ -13,7 +13,8 @@ from dataclasses import replace
 
 import pytest
 
-from app.pipeline import CockpitInputs, split_rows
+from app.entry import split_rows
+from app.pipeline import CockpitInputs
 from app.session_io import (
     Restore,
     inputs_from_session,

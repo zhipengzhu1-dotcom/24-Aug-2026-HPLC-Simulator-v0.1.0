@@ -1,12 +1,12 @@
 """The four tables the Cockpit shows, as DataFrames (SPEC §7).
 
 Pandas lives here and in nothing else; the numbers arrive already computed by
-:mod:`app.pipeline`. This module's only real work is the *display* boundary for
-the tables: the base-10 quantities a chromatographer reads (log10 k0, S, %B) are
-made from the natural-log ones the engine holds, through ``model``'s converters
-and never by hand (CLAUDE.md's log-convention rule). The left rail formats a few
-of those same quantities in ``streamlit_app.py``, calling the same converters —
-the rule holds, but this is not the only file that crosses the boundary.
+:mod:`app.entry` and :mod:`app.pipeline`. This module's only real work is the
+*display* boundary for the tables: the base-10 quantities a chromatographer reads
+(log10 k0, S, %B) are made from the natural-log ones the engine holds, through
+``model``'s converters and never by hand (CLAUDE.md's log-convention rule). The left
+rail formats a few of those same quantities in ``streamlit_app.py``, calling the same
+converters — the rule holds, but this is not the only file that crosses the boundary.
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ from typing import Any
 import pandas as pd
 
 from app.diagnostics import CompositionWindow, Diagnostic, Diagnostics
-from app.pipeline import Cockpit, PeakOutcome, ProgrammePoint, ScoutingEntry
+from app.entry import ProgrammePoint, ScoutingEntry
+from app.pipeline import Cockpit, PeakOutcome
 from hplcsim.model import (
     PeakRow,
     log10_k0_from_ln_k0,
@@ -163,7 +164,7 @@ def _na(value: float | None) -> Any:
 def peak_rows_from_frame(frame: pd.DataFrame) -> list[PeakRow]:
     """The edited table back as :class:`~hplcsim.model.PeakRow`, blanks and all.
 
-    Nothing is dropped or validated here — :func:`~app.pipeline.split_rows` decides what
+    Nothing is dropped or validated here — :func:`~app.entry.split_rows` decides what
     counts as a row and what counts as tracked, so that judgement stays in one place.
     """
     return [
@@ -330,7 +331,7 @@ def _number(value: Any) -> float | None:
 # Both are typed like an instrument's gradient table: a row is a time from injection
 # and the %B reached at it. The frames here are the editors' — what a table shows and
 # what it reads back — and nothing more: the crossing from points to the engine's
-# gradient or programme is `app.pipeline`'s (`ScoutingEntry`, `programme_from_points`).
+# gradient or programme is `app.entry`'s (`ScoutingEntry`, `programme_from_points`).
 
 NO = "#"
 T1 = "t₁ (min)"
@@ -427,7 +428,7 @@ def candidate_frame(points: Sequence[ProgrammePoint]) -> pd.DataFrame:
 def candidate_points_from_frame(frame: pd.DataFrame) -> tuple[ProgrammePoint, ...]:
     """The edited candidate table back as points, every way of spelling a blank as ``None``.
 
-    Nothing is dropped or judged here — :func:`~app.pipeline.programme_from_points`
+    Nothing is dropped or judged here — :func:`~app.entry.programme_from_points`
     decides which rows make the programme, so that judgement stays in one place.
     """
     return tuple(

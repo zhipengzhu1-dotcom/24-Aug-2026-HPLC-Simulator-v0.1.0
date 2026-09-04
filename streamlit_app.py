@@ -50,10 +50,7 @@ from app.diagnostics import (
     critical_pair_is_indicative,
     diagnose,
 )
-from app.panels import Row
-from app.pipeline import (
-    Cockpit,
-    CockpitInputs,
+from app.entry import (
     MethodEntry,
     ProgrammeRead,
     ScoutingEntry,
@@ -61,9 +58,10 @@ from app.pipeline import (
     points_from_programme,
     programme_from_points,
     programme_summary,
-    run_cockpit,
     t0_autofill,
 )
+from app.panels import Row
+from app.pipeline import Cockpit, CockpitInputs, run_cockpit
 from app.session_io import (
     Restore,
     inputs_from_session,
@@ -660,7 +658,7 @@ def _autofill_t0(
     """Write the geometry estimate into the t0 field, when there is one to write.
 
     Runs before the field is drawn, which is the only moment a keyed widget's value can
-    be set from this side. :func:`app.pipeline.t0_autofill` decides whether to; this
+    be set from this side. :func:`app.entry.t0_autofill` decides whether to; this
     only knows which keys hold what. No architecture, no estimate — the field keeps
     what it holds, and the caption says why (the estimator refuses to guess, #34).
     """

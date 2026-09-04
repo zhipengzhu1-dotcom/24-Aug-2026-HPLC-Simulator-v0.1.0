@@ -26,7 +26,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.pipeline import Cockpit, CockpitInputs, Entry, run_cockpit
+from app.entry import Entry
+from app.pipeline import Cockpit, CockpitInputs, run_cockpit
 from hplcsim.dead_time import (
     EXTRA_COLUMN_VOLUME_TYPICAL_ML,
     POROSITY_PLAUSIBLE,
@@ -110,7 +111,7 @@ _PAIR_DOWNGRADING_BADGES: frozenset[str] = frozenset({"low_k0", "wash_eluted"})
 AREA_SHARE_THRESHOLD = 0.30
 
 # The extra-column volume is a display quantity in µL: the engine keeps it in mL (CLAUDE.md's
-# units), and this is the one place the conversion happens, like %B in `app.pipeline`.
+# units), and this is the one place the conversion happens, like %B in `app.entry`.
 _UL_PER_ML = 1000.0
 
 # Research doc §4.3's other early-eluter test, beside t'R < t0: "Report a low-confidence
@@ -836,7 +837,7 @@ def _marker_check(marker: str | None) -> Diagnostic | None:
 
 @dataclass(frozen=True)
 class _EnteredRow:
-    """One typed row, whichever half of :class:`~app.pipeline.Entry` it came from.
+    """One typed row, whichever half of :class:`~app.entry.Entry` it came from.
 
     ``Entry`` splits on completeness, and SPEC §5's checks do not: the area check has
     to normalise over the whole sample or every share is wrong, and the co-elution

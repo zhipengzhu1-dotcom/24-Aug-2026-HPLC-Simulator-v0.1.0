@@ -4,7 +4,7 @@ SPEC §7 (v0.2, #45): the scouting programme and the candidate programme are two
 No. / Time / %B tables in the rail. What a table holds is a list of *points* — a time
 and a composition — the way an instrument's own gradient table is typed; what the
 engine wants is a :class:`~hplcsim.model.Programme`. The crossing between the two is
-logic, so it lives in :mod:`app.pipeline` and is asserted here, and the pandas frame
+logic, so it lives in :mod:`app.entry` and is asserted here, and the pandas frame
 the editor shows is :mod:`app.tables`'s side of the same crossing.
 """
 
@@ -15,14 +15,13 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from app.pipeline import (
-    CockpitInputs,
+from app.entry import (
     ProgrammePoint,
     ScoutingEntry,
     points_from_programme,
     programme_from_points,
-    run_cockpit,
 )
+from app.pipeline import CockpitInputs, run_cockpit
 from app.tables import (
     CANDIDATE_COLUMNS,
     PERCENT_B,

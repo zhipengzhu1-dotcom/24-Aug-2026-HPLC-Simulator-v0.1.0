@@ -1,9 +1,10 @@
 """The Cockpit's logic layer, exercised without a browser (SPEC §7, ticket #19).
 
 Streamlit is nowhere in this file. `app.streamlit_app` is widgets and layout; every
-number it renders comes from `app.pipeline`, `app.chromatogram` and `app.tables`,
-which is what makes the ticket's third acceptance criterion — the app's run-3
-prediction against the engine's own fixtures — an assertion rather than a habit.
+number it renders comes from `app.entry`, `app.pipeline`, `app.chromatogram` and
+`app.tables`, which is what makes the ticket's third acceptance criterion — the
+app's run-3 prediction against the engine's own fixtures — an assertion rather than
+a habit.
 """
 
 from __future__ import annotations
@@ -18,17 +19,14 @@ import pytest
 
 from app.chromatogram import AxisRequest, Chromatogram, axis_view, chromatogram
 from app.diagnostics import Diagnostics, diagnose
-from app.pipeline import (
-    Cockpit,
-    CockpitInputs,
+from app.entry import (
     MethodEntry,
     ScoutingEntry,
-    area_shares,
     dwell_from_volume,
-    run_cockpit,
     split_rows,
     t0_autofill,
 )
+from app.pipeline import Cockpit, CockpitInputs, area_shares, run_cockpit
 from app.tables import (
     COMPOUND,
     FIT_COLUMNS,

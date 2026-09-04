@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from app.diagnostics import STRONG_WINDOW_WIDTHS
-from app.pipeline import ProgrammePoint, ScoutingEntry, points_from_programme
+from app.entry import ProgrammePoint, ScoutingEntry, points_from_programme
 from app.tables import (
     COMPOUND,
     FLAGS,

@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import re
 
-from app.pipeline import CockpitInputs, split_rows
+from app.entry import split_rows
+from app.pipeline import CockpitInputs
 from hplcsim.model import Peak, PeakRow, as_programme
 from hplcsim.session import Session
 
@@ -76,7 +77,7 @@ class Restore:
 def session_from_inputs(inputs: CockpitInputs, *, session_name: str = "") -> Session:
     """The screen as the file holds it, ready for :func:`~hplcsim.session.save_session`.
 
-    Saves what :func:`~app.pipeline.split_rows` made of the table, not the raw table:
+    Saves what :func:`~app.entry.split_rows` made of the table, not the raw table:
     the editor's spare blank rows are not worth writing down, and the automatic P1…Pn
     the user reads beside a row is the name that should come back. Splitting here is
     also what puts each row in the list the file requires it to be in — a row with one
