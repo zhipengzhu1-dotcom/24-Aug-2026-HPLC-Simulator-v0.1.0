@@ -42,7 +42,6 @@ from hplcsim.model import Method
 # (π/4) × 1e-3 mL·mm⁻³ — the one numeric constant of the estimator, written exactly
 # (research doc §7.1: never the rounded 0.000785), as `width.py` writes √(8 ln 2).
 _ML_PER_MM3: Final = math.pi / 4.0 / 1000.0
-_UL_PER_ML: Final = 1000.0
 
 Architecture = Literal["fully_porous", "core_shell"]
 
@@ -82,11 +81,12 @@ POROSITY_IMPOSSIBLE: Final = 1.0
 POROSITY_PLAUSIBLE: Final = (0.35, 0.80)
 
 # Extra-column volume of a UHPLC system, injector to detector — Handlovic's measured
-# range (`porosity-for-t0-geometry.md` §4.1). Above it the marker is probably retained,
-# or the time includes something that is not plumbing. The warning edge is the lower
-# end of #34's "≳ 80–100 µL", i.e. just past the top of the measured range.
-EXTRA_COLUMN_VOLUME_TYPICAL_UL: Final = (26.0, 78.0)
-EXTRA_COLUMN_VOLUME_RETAINED_UL: Final = 80.0
+# 26–78 µL (`porosity-for-t0-geometry.md` §4.1), in the engine's mL. Above it the marker
+# is probably retained, or the time includes something that is not plumbing. The warning
+# edge is the lower end of #34's "≳ 80–100 µL", just past the top of the measured range.
+# µL is a display unit: the app converts at its boundary, as it does %B.
+EXTRA_COLUMN_VOLUME_TYPICAL_ML: Final = (0.026, 0.078)
+EXTRA_COLUMN_VOLUME_RETAINED_ML: Final = 0.080
 
 
 def architecture_of(method: Method) -> Architecture | None:
@@ -169,15 +169,16 @@ class DeadTimeCheck:
     """What a measured t0 implies about the column and the plumbing (research doc §7.5).
 
     ``implied_porosity`` needs only the column geometry. ``geometry`` and
-    ``extra_column_volume_ul`` need the architecture as well and are ``None`` without
+    ``extra_column_volume_ml`` need the architecture as well and are ``None`` without
     it — the accepted cost of refusing to guess: with the architecture undeclared the
-    check keeps only its two porosity bounds and loses its sharpest tier (#34).
+    check keeps only its two porosity bounds and loses its sharpest tier (#34), so a
+    ``"plausible"`` finding then means only that the porosity bounds passed.
     """
 
     implied_porosity: float
     column_volume_ml: float
     geometry: DeadTimeEstimate | None
-    extra_column_volume_ul: float | None
+    extra_column_volume_ml: float | None
     finding: Finding
 
 
@@ -195,31 +196,31 @@ def check_measured_t0(method: Method) -> DeadTimeCheck:
     implied = method.flow * method.t0 / volume
 
     geometry: DeadTimeEstimate | None = None
-    extra_column_ul: float | None = None
+    extra_column_ml: float | None = None
     if architecture_of(method) is not None:
         geometry = estimate_t0(method)
-        extra_column_ul = method.flow * (method.t0 - geometry.t0) * _UL_PER_ML
+        extra_column_ml = method.flow * (method.t0 - geometry.t0)
 
     return DeadTimeCheck(
         implied_porosity=implied,
         column_volume_ml=volume,
         geometry=geometry,
-        extra_column_volume_ul=extra_column_ul,
-        finding=_finding(implied, extra_column_ul),
+        extra_column_volume_ml=extra_column_ml,
+        finding=_finding(implied, extra_column_ml),
     )
 
 
-def _finding(implied_porosity: float, extra_column_ul: float | None) -> Finding:
+def _finding(implied_porosity: float, extra_column_ml: float | None) -> Finding:
     lo, hi = POROSITY_PLAUSIBLE
     if implied_porosity > POROSITY_IMPOSSIBLE:
         return "impossible_porosity"
     if not lo <= implied_porosity <= hi:
         return "implausible_porosity"
-    if extra_column_ul is None:
+    if extra_column_ml is None:
         return "plausible"
-    if extra_column_ul < 0.0:
+    if extra_column_ml < 0.0:
         return "below_geometry"
-    if extra_column_ul >= EXTRA_COLUMN_VOLUME_RETAINED_UL:
+    if extra_column_ml >= EXTRA_COLUMN_VOLUME_RETAINED_ML:
         return "marker_retained"
     return "plausible"
 
@@ -236,10 +237,10 @@ MarkerKind = Literal["absent", "solvent_disturbance", "inorganic_salt", "compoun
 # Research doc §5.2. A solvent disturbance is not a compound and is "strongly discouraged"
 # as a hold-up marker (Redón 2023); a dilute inorganic salt is Donnan-excluded from the
 # pores and measures the interstitial volume only — ~40% low on a fully porous column
-# (David 2025). Matched on whole words so "KI" cannot fire inside "Kinetex".
-_SOLVENT_DISTURBANCE_WORDS: Final = frozenset(
-    {"solvent", "front", "disturbance", "baseline", "injection", "system", "refractive", "void"}
-)
+# (David 2025). Matched on whole words so "KI" cannot fire inside "Kinetex", and the
+# disturbance vocabulary is kept narrow so "uracil, 1 µL injection, apex" stays a compound.
+_SOLVENT_DISTURBANCE_WORDS: Final = frozenset({"solvent", "front", "disturbance"})
+_SOLVENT_DISTURBANCE_PHRASES: Final = ("system peak", "injection peak", "void peak")
 _INORGANIC_SALT_WORDS: Final = frozenset(
     {
         "nitrate",
@@ -265,11 +266,12 @@ _WORDS: Final = re.compile(r"[a-z0-9]+")
 
 def classify_marker(marker: str | None) -> MarkerKind:
     """What kind of thing the recorded t0 marker is — the provenance check of §7.6."""
-    words = set(_WORDS.findall((marker or "").lower()))
+    text = (marker or "").lower()
+    words = set(_WORDS.findall(text))
     if not words:
         return "absent"
     if words & _INORGANIC_SALT_WORDS:
         return "inorganic_salt"
-    if words & _SOLVENT_DISTURBANCE_WORDS:
+    if words & _SOLVENT_DISTURBANCE_WORDS or any(p in text for p in _SOLVENT_DISTURBANCE_PHRASES):
         return "solvent_disturbance"
     return "compound"

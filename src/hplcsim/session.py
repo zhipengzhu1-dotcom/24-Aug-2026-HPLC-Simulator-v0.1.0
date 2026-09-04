@@ -35,6 +35,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from hplcsim import __version__
+from hplcsim.dead_time import architecture_of
 from hplcsim.model import Gradient, Method, Peak, Run, percent_b_from_phi, phi_from_percent_b
 
 SCHEMA_VERSION: Final = 1
@@ -43,8 +44,10 @@ SCHEMA_VERSION: Final = 1
 _T0_SOURCES: Final = {"measured": True, "estimated": False}
 
 # particle_architecture in the file <-> Method.particle_is_solid_core, the input the
-# geometry estimate of t0 selects its porosity by (#24). Absent when undeclared, like
-# every other unset field — the estimator refuses on ``None`` rather than guessing.
+# geometry estimate of t0 selects its porosity by (#24). The file's names are the
+# engine's own ``Architecture`` literal (``dead_time.architecture_of`` writes them);
+# absent when undeclared, like every other unset field — the estimator refuses on
+# ``None`` rather than guessing.
 _ARCHITECTURES: Final = {"fully_porous": False, "core_shell": True}
 
 _TWO_RUNS: Final = "session file: runs must hold exactly two scouting runs"
@@ -170,7 +173,7 @@ def _method_block(session: Session, shared: Gradient) -> dict[str, Any]:
             "t0_min": method.t0,
             "t0_source": "measured" if method.t0_is_measured else "estimated",
             "t0_marker": method.t0_marker or None,
-            "particle_architecture": _architecture_name(method.particle_is_solid_core),
+            "particle_architecture": architecture_of(method),
             "dwell_min": method.t_dwell,
             "pct_b_start": percent_b_from_phi(shared.phi0),
             "pct_b_end": percent_b_from_phi(shared.phif),
@@ -178,12 +181,6 @@ def _method_block(session: Session, shared: Gradient) -> dict[str, Any]:
             "plate_count": session.plate_count,
         }
     )
-
-
-def _architecture_name(is_solid_core: bool | None) -> str | None:
-    if is_solid_core is None:
-        return None
-    return "core_shell" if is_solid_core else "fully_porous"
 
 
 def _run_row(run: Run) -> dict[str, Any]:

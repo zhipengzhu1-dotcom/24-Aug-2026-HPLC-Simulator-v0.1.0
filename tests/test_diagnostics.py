@@ -39,6 +39,7 @@ from lab_data import (
     LAB_MEASURED_AREA,
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
+    LAB_METHOD_AS_RECORDED,
     LAB_PEAKS,
     LAB_RUN1,
     LAB_RUN2,
@@ -519,11 +520,9 @@ def test_nothing_entered_at_all_leaves_every_result_surface_quiet() -> None:
 
 # --- SPEC §4's checks on a measured t0 (ticket #24) -----------------------------------------
 
-# validation/method.csv as of 2026-08-31: the driver's re-read t0 and the declared
-# architecture (CORTECS is solid-core). The fixture LAB_METHOD stays at 0.6 for the fits.
-_LAB_COLUMN = replace(
-    LAB_METHOD, t0=0.525, particle_is_solid_core=True, t0_marker="solvent front, first disturbance"
-)
+# The driver's column as method.csv records it: re-read t0, architecture declared,
+# solvent-front marker. The fixture LAB_METHOD stays at 0.6 for the fits.
+_LAB_COLUMN = LAB_METHOD_AS_RECORDED
 
 
 def _dead_time(method: Method) -> list[Diagnostic]:

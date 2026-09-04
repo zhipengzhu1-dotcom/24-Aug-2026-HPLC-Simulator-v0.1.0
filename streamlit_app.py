@@ -43,7 +43,7 @@ from collections.abc import Sequence
 import streamlit as st
 
 from app import chromatogram, panels, tables, worksheet
-from app.diagnostics import Diagnostic, Diagnostics, dead_time_notices, diagnose
+from app.diagnostics import Diagnostic, Diagnostics, diagnose
 from app.panels import Row
 from app.pipeline import (
     Cockpit,
@@ -244,7 +244,7 @@ def main() -> None:
     _load_control()
     save_slot = st.sidebar.container()
 
-    constants = _sidebar()
+    constants, t0_notices = _sidebar()
 
     # SPEC §4 makes the dwell required with no silent default: it belongs to the
     # instrument, a guessed one biases every prediction the same way, and this is the
@@ -290,6 +290,10 @@ def main() -> None:
 
     with save_slot:
         _save_control(inputs)
+    with t0_notices:
+        # SPEC §4's checks on the typed t0 — beside the field they are about, in the
+        # sidebar, filled here because they are diagnostics like every other notice.
+        _notices(diagnostics.method)
     with worksheet_slot:
         # SPEC §7's guided empty state, above the tabs rather than instead of them.
         # Step 2 asks for the peak table and SPEC §4's scouting-spacing warning is
@@ -445,8 +449,12 @@ def _restore(session: Session) -> None:
         st.session_state[Keys.ARCHITECTURE] = (
             _CORE_SHELL if method.particle_is_solid_core else _FULLY_POROUS
         )
-    # A restored estimate is the file's number: treat it as the autofill in place, so
-    # the field is refilled only if the geometry it came from is edited.
+    # A restored estimate is treated as the autofill in place. With an architecture in
+    # the file that means it is *recomputed* from the file's geometry on the same run —
+    # the estimate is derived from inputs, so it recomputes on load exactly as the fit
+    # does (SPEC §8), and a file written before a porosity constant changed comes back
+    # at the current constant. Without an architecture there is nothing to recompute
+    # from and the file's number stands, stamped as the estimate it was saved as.
     st.session_state.pop(Keys.T0_AUTOFILL, None)
     if not method.t0_is_measured:
         st.session_state[Keys.T0_AUTOFILL] = st.session_state[Keys.T0]
@@ -495,8 +503,12 @@ def _save_control(inputs: CockpitInputs) -> None:
 # --- sidebar: the method constants of SPEC §4 -----------------------------------------
 
 
-def _sidebar() -> MethodEntry | None:
-    """The method constants, or ``None`` while the required dwell is still unset."""
+def _sidebar() -> tuple[MethodEntry | None, object]:
+    """The method constants, or ``None`` while the required dwell is still unset.
+
+    The second value is the container reserved beneath the t0 field for SPEC §4's
+    dead-time notices, which ``main`` fills from the diagnostics once they exist.
+    """
     with st.sidebar:
         st.header("Method constants")
         st.caption("Shared by both scouting runs and by the candidate.")
@@ -557,8 +569,8 @@ def _sidebar() -> MethodEntry | None:
                     "read. A dead time without its marker has no provenance."
                 ),
             )
-        # SPEC §4's checks on the typed t0 are painted here, beside the field, once the
-        # method exists — which is after the dwell below. Reserved now, filled then.
+        # SPEC §4's checks on the typed t0 are painted here, beside the field, from the
+        # diagnostics `main` computes once everything is entered. Reserved now.
         t0_notices = st.container()
         if t0_source == _ESTIMATED:
             _estimate_caption(estimate)
@@ -566,7 +578,7 @@ def _sidebar() -> MethodEntry | None:
         st.subheader("Dwell")
         t_dwell = _dwell(flow)
         if t_dwell is None:
-            return None
+            return None, t0_notices
 
         st.subheader("Gradient")
         percent_b_start = st.number_input(
@@ -589,19 +601,18 @@ def _sidebar() -> MethodEntry | None:
             particle_is_solid_core=solid_core,
             t0_marker=(marker or "").strip() or None,
         )
-        with t0_notices:
-            _notices(dead_time_notices(method))
 
         st.subheader("Plate count N")
         plate_count = _plate_count_knob(method)
 
-    return MethodEntry(
+    entry = MethodEntry(
         method=method,
         percent_b_start=percent_b_start,
         percent_b_end=percent_b_end,
         hold=hold,
         plate_count=plate_count,
     )
+    return entry, t0_notices
 
 
 def _autofill_t0(

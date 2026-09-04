@@ -26,7 +26,7 @@ from typing import Literal
 
 from app.pipeline import Cockpit, CockpitInputs, Entry, PeakRow, run_cockpit
 from hplcsim.dead_time import (
-    EXTRA_COLUMN_VOLUME_TYPICAL_UL,
+    EXTRA_COLUMN_VOLUME_TYPICAL_ML,
     POROSITY_PLAUSIBLE,
     DeadTimeCheck,
     check_measured_t0,
@@ -66,6 +66,10 @@ STRONG_EXTRAPOLATION = 2.0
 # change is measured against the *first* run's share, which is the larger base for a
 # peak whose share grows and so the more conservative reading of "relative change".
 AREA_SHARE_THRESHOLD = 0.30
+
+# The extra-column volume is a display quantity in µL: the engine keeps it in mL (CLAUDE.md's
+# units), and this is the one place the conversion happens, like %B in `app.pipeline`.
+_UL_PER_ML = 1000.0
 
 # Research doc §4.3's other early-eluter test, beside t'R < t0: "Report a low-confidence
 # flag when k_e at the fitted parameters is below ~1". The engine already sets
@@ -356,7 +360,7 @@ def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
     """
     porosity = f"ε_total = {check.implied_porosity:.3f}"
     lo, hi = POROSITY_PLAUSIBLE
-    typical_lo, typical_hi = EXTRA_COLUMN_VOLUME_TYPICAL_UL
+    typical_lo, typical_hi = (v * _UL_PER_ML for v in EXTRA_COLUMN_VOLUME_TYPICAL_ML)
 
     if check.finding == "impossible_porosity":
         return Diagnostic(
@@ -383,7 +387,7 @@ def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
         )
 
     geometry = check.geometry
-    if geometry is None or check.extra_column_volume_ul is None:
+    if geometry is None or check.extra_column_volume_ml is None:
         return Diagnostic(
             code="dead_time_check",
             severity="info",
@@ -395,7 +399,7 @@ def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
             ),
         )
 
-    v_ec = check.extra_column_volume_ul
+    v_ec = check.extra_column_volume_ml * _UL_PER_ML
     band_lo, band_hi = geometry.t0_band
     against = (
         f"against the {geometry.porosity.label} geometry estimate of {geometry.t0:.3f} min "

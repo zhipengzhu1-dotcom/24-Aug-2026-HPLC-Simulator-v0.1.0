@@ -438,6 +438,30 @@ def test_a_restored_estimated_t0_still_stamps_the_outputs() -> None:
     assert any("t0 estimated" in bar for bar in status)
 
 
+def test_a_restored_estimate_is_recomputed_from_the_files_geometry() -> None:
+    """The estimate is derived from inputs, so it recomputes on load as the fit does
+    (SPEC §8). RESTORED is 4.6 × 150 mm at 1.2 mL/min, core–shell: 0.52 × 2.493 mL / 1.2."""
+    estimated = replace(RESTORED, method=replace(RESTORED.method, t0_is_measured=False))
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(estimated).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+
+    assert _radio(app, "t0 source").value == "Geometry estimate"
+    assert _number(app, "t0 (min)").value == pytest.approx(1.0802, abs=5e-5)
+
+
+def test_a_restored_estimate_without_an_architecture_keeps_the_files_number() -> None:
+    method = replace(RESTORED.method, t0_is_measured=False, particle_is_solid_core=None)
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(replace(RESTORED, method=method)).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+
+    assert _number(app, "t0 (min)").value == pytest.approx(1.42)
+    status = [m.value for m in app.markdown if "hs-status" in m.value]  # type: ignore[attr-defined]
+    assert any("t0 estimated" in bar for bar in status)
+
+
 def test_a_restored_session_saves_back_to_an_identical_file() -> None:
     """Round trip through the actual screen: load, then save, and get the file back.
 

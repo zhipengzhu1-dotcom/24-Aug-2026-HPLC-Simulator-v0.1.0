@@ -15,8 +15,8 @@ from dataclasses import replace
 import pytest
 
 from hplcsim.dead_time import (
-    EXTRA_COLUMN_VOLUME_RETAINED_UL,
-    EXTRA_COLUMN_VOLUME_TYPICAL_UL,
+    EXTRA_COLUMN_VOLUME_RETAINED_ML,
+    EXTRA_COLUMN_VOLUME_TYPICAL_ML,
     POROSITY,
     POROSITY_PLAUSIBLE,
     check_measured_t0,
@@ -27,11 +27,19 @@ from hplcsim.dead_time import (
 from hplcsim.fit import FitResult, fit_peaks
 from hplcsim.model import Method
 from hplcsim.retention import predict_retention
-from lab_data import LAB_MEASURED_PEAKS, LAB_METHOD, LAB_RUN1, LAB_RUN2, LAB_RUN3, LAB_RUN4
+from lab_data import (
+    LAB_MEASURED_PEAKS,
+    LAB_METHOD,
+    LAB_METHOD_AS_RECORDED,
+    LAB_RUN1,
+    LAB_RUN2,
+    LAB_RUN3,
+    LAB_RUN4,
+)
 
-# validation/method.csv as of 2026-08-31: the driver's re-read t0, and the architecture
-# CORTECS is (solid-core), declared. The fixture LAB_METHOD keeps 0.6 for the fits.
-LAB_COLUMN = replace(LAB_METHOD, t0=0.525, particle_is_solid_core=True)
+# The driver's column as method.csv records it (t0 0.525, core–shell declared); the
+# fixture LAB_METHOD keeps 0.6 for the fits.
+LAB_COLUMN = LAB_METHOD_AS_RECORDED
 
 
 # --- the estimator (research doc §7.1–§7.2) --------------------------------------------
@@ -133,7 +141,7 @@ class TestReverseCheck:
         """
         check = check_measured_t0(LAB_COLUMN)
         assert check.implied_porosity == pytest.approx(0.6063, abs=5e-5)
-        assert check.extra_column_volume_ul == pytest.approx(29.9, abs=0.05)
+        assert check.extra_column_volume_ml == pytest.approx(0.0299, abs=0.00005)
         assert check.finding == "plausible"
         assert check.geometry is not None and check.geometry.t0 == pytest.approx(0.4503, abs=5e-5)
 
@@ -141,8 +149,19 @@ class TestReverseCheck:
         # §4.2's inversion (test (e) of §7.9): at the lab geometry and 0.525, fully porous
         # puts the geometry estimate above the marker, an impossible −4.7 µL of plumbing.
         check = check_measured_t0(replace(LAB_COLUMN, particle_is_solid_core=False))
-        assert check.extra_column_volume_ul == pytest.approx(-4.7, abs=0.05)
+        assert check.extra_column_volume_ml == pytest.approx(-0.0047, abs=0.00005)
         assert check.finding == "below_geometry"
+
+    @pytest.mark.parametrize("porosity", [0.62, 0.66])
+    def test_every_fully_porous_constant_puts_geometry_above_the_marker(
+        self, porosity: float
+    ) -> None:
+        # §7.9(e) in full: the porosity doc's 0.62 and Waters' 0.66 both imply V_ec < 0
+        # at the lab geometry and 0.525 — −4.7 and −18.6 µL (#34's table).
+        geometry_t0 = porosity * column_volume_ml(LAB_COLUMN) / LAB_COLUMN.flow
+        v_ec_ul = LAB_COLUMN.flow * (LAB_COLUMN.t0 - geometry_t0) * 1000.0
+        assert v_ec_ul < 0.0
+        assert v_ec_ul == pytest.approx({0.62: -4.7, 0.66: -18.6}[porosity], abs=0.05)
 
     def test_the_superseded_0_6_min_no_longer_fires_anything(self) -> None:
         # The "~15% above the constant" tier of the first draft was dropped on #34: at
@@ -156,7 +175,7 @@ class TestReverseCheck:
         check = check_measured_t0(replace(LAB_COLUMN, particle_is_solid_core=None))
         assert check.implied_porosity == pytest.approx(0.6063, abs=5e-5)
         assert check.geometry is None
-        assert check.extra_column_volume_ul is None
+        assert check.extra_column_volume_ml is None
         assert check.finding == "plausible"
 
     def test_more_mobile_phase_than_an_empty_tube_is_impossible(self) -> None:
@@ -175,16 +194,17 @@ class TestReverseCheck:
 
     def test_a_gap_too_large_to_be_plumbing_means_a_retained_marker(self) -> None:
         # 80 µL is 0.2 min at 0.4 mL/min above the 0.4503 estimate; still ε_total = 0.75.
-        t0 = 0.4503 + EXTRA_COLUMN_VOLUME_RETAINED_UL / 1000.0 / LAB_COLUMN.flow + 1e-3
+        t0 = 0.4503 + EXTRA_COLUMN_VOLUME_RETAINED_ML / LAB_COLUMN.flow + 1e-3
         check = check_measured_t0(replace(LAB_COLUMN, t0=t0))
-        assert check.extra_column_volume_ul is not None
-        assert check.extra_column_volume_ul > EXTRA_COLUMN_VOLUME_TYPICAL_UL[1]
+        assert check.extra_column_volume_ml is not None
+        assert check.extra_column_volume_ml > EXTRA_COLUMN_VOLUME_TYPICAL_ML[1]
         assert check.finding == "marker_retained"
 
     def test_the_bounds_are_the_ones_the_map_decided(self) -> None:
         assert POROSITY_PLAUSIBLE == (0.35, 0.80)
-        assert EXTRA_COLUMN_VOLUME_TYPICAL_UL == (26.0, 78.0)
-        assert EXTRA_COLUMN_VOLUME_RETAINED_UL == 80.0
+        # 26–78 µL and 80 µL, held in the engine's mL.
+        assert EXTRA_COLUMN_VOLUME_TYPICAL_ML == (0.026, 0.078)
+        assert EXTRA_COLUMN_VOLUME_RETAINED_ML == 0.080
 
     def test_the_check_needs_only_the_geometry_not_the_architecture(self) -> None:
         with pytest.raises(ValueError, match="column_id_mm"):
@@ -210,8 +230,11 @@ class TestReverseCheck:
         ("KNO3", "inorganic_salt"),
         ("KI", "inorganic_salt"),
         ("potassium bromide, apex", "inorganic_salt"),
-        # Whole words only: "KI" must not fire inside a column name.
+        # Whole words only: "KI" must not fire inside a column name, and ordinary
+        # injection vocabulary around a compound is not a disturbance.
         ("uracil on Kinetex", "compound"),
+        ("uracil, 1 µL injection, apex", "compound"),
+        ("injection peak", "solvent_disturbance"),
     ],
 )
 def test_marker_classification(marker: str | None, kind: str) -> None:

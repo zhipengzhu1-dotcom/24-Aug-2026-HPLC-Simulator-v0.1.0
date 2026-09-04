@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from hplcsim.model import (
     Gradient,
     Method,
@@ -27,6 +29,17 @@ LAB_METHOD = Method(
     column_id_mm=2.1,
     particle_um=1.6,
     temperature_c=45.0,
+)
+
+# validation/method.csv as it reads today, for the tests that are about the *method*
+# rather than the fits: the re-read t0, the architecture CORTECS is (solid-core,
+# declared — never inferred from the name), and the marker as recorded. The fits and
+# every pinned number stay on LAB_METHOD above until the re-baseline is taken (#24).
+LAB_METHOD_AS_RECORDED = replace(
+    LAB_METHOD,
+    t0=0.525,
+    particle_is_solid_core=True,
+    t0_marker="solvent front, first disturbance",
 )
 
 # validation/run1.csv and run2.csv: the tG = 15 / 45 min scouting pair (β = 3).
