@@ -17,12 +17,13 @@ Playwright screenshots in the ticket's PR are what proves the editor itself.
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from app.diagnostics import STRONG_EXTRAPOLATION
+from app.diagnostics import STRONG_WINDOW_WIDTHS
 from app.pipeline import ProgrammePoint, ScoutingEntry, points_from_programme
 from app.tables import PERCENT_B, T1, T2, T_CANDIDATE, candidate_frame, scouting_frame
 from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
@@ -190,7 +191,7 @@ def test_the_strong_extrapolation_warning_reaches_the_page_as_an_error() -> None
 
     (notice,) = _extrapolation(app, "error")
     assert f"{120.0 / 45.0:.2f}×" in notice
-    assert STRONG_EXTRAPOLATION < 120.0 / 45.0
+    assert math.log(120.0 / 45.0, 3.0) > STRONG_WINDOW_WIDTHS  # 0.89 window-widths at β = 3
     assert _extrapolation(app, "info") == []
 
 
