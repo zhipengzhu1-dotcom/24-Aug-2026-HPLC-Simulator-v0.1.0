@@ -12,12 +12,13 @@ the rule holds, but this is not the only file that crosses the boundary.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
 from app.diagnostics import Diagnostic
-from app.pipeline import Cockpit, PeakOutcome, PeakRow
+from app.pipeline import Cockpit, PeakOutcome, PeakRow, ProgrammePoint, ScoutingEntry
 from hplcsim.model import log10_k0_from_ln_k0, s_base10_from_s_e
 from hplcsim.width import PlateCountSource
 
@@ -235,3 +236,131 @@ def _number(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
     return float(value)
+
+
+# --- the rail's two programme tables (SPEC §7, v0.2, #73) ---------------------------------
+#
+# Both are typed like an instrument's gradient table: a row is a time from injection
+# and the %B reached at it. The frames here are the editors' — what a table shows and
+# what it reads back — and nothing more: the crossing from points to the engine's
+# gradient or programme is `app.pipeline`'s (`ScoutingEntry`, `programme_from_points`).
+
+NO = "#"
+T1 = "t₁ (min)"
+T2 = "t₂ (min)"
+T_CANDIDATE = "t (min)"
+PERCENT_B = "%B"
+SCOUTING_COLUMNS = (NO, T1, T2, PERCENT_B)
+CANDIDATE_COLUMNS = (T_CANDIDATE, PERCENT_B)
+
+# A ramp has to take some time. When row 3 of the scouting table is typed before the
+# hold ends, the run is put back to this rather than left with a gradient time the
+# engine would divide by.
+_MIN_GRADIENT_TIME = 0.1
+
+
+@dataclass(frozen=True)
+class ScoutingRead:
+    """The scouting table read: its five values, the frame as it should show, and why.
+
+    ``frame`` differs from what was typed only where a cell follows another — row 1's
+    times are the start of the run, row 2's second time and %B follow its first and
+    row 1's — or where a ramp was typed to end before the hold did; ``notes`` name the
+    second kind. The caller shows ``frame`` back when it differs from what was typed.
+    """
+
+    entry: ScoutingEntry
+    frame: pd.DataFrame
+    notes: tuple[str, ...] = ()
+
+
+def scouting_frame(entry: ScoutingEntry) -> pd.DataFrame:
+    """One programme at two speeds as three rows: start, end of hold, end of each ramp."""
+    hold = entry.hold
+    return pd.DataFrame(
+        {
+            NO: pd.Series([1, 2, 3], dtype="Int64"),
+            T1: pd.Series([0.0, hold, hold + entry.t_gradient1], dtype="Float64"),
+            T2: pd.Series([0.0, hold, hold + entry.t_gradient2], dtype="Float64"),
+            PERCENT_B: pd.Series(
+                [entry.percent_b_start, entry.percent_b_start, entry.percent_b_end],
+                dtype="Float64",
+            ),
+        }
+    )
+
+
+def scouting_read_from_frame(frame: pd.DataFrame) -> ScoutingRead:
+    """The edited scouting table back as its five values, the following cells put back."""
+    t1 = [_number(value) for value in frame[T1]]
+    t2 = [_number(value) for value in frame[T2]]
+    percent = [_number(value) for value in frame[PERCENT_B]]
+    # A required cell cannot be committed blank in the editor; a blank that arrives
+    # anyway (a frame built elsewhere) reads as the start of the run.
+    start = _or_zero(percent[0])
+    end = percent[2] if percent[2] is not None else start
+    hold = max(_or_zero(t1[1]), 0.0)
+    notes = []
+    gradient_times = []
+    for run, end_time in (("run 1", t1[2]), ("run 2", t2[2])):
+        t_gradient = round(_or_zero(end_time) - hold, 6)
+        if t_gradient <= 0.0:
+            notes.append(
+                f"**{run.capitalize()}'s ramp was typed to end before the hold does** — a "
+                f"gradient has to take some time, so row 3 is put back to "
+                f"{hold + _MIN_GRADIENT_TIME:g} min (tG {_MIN_GRADIENT_TIME:g} min); "
+                "type the time the ramp really ends."
+            )
+            t_gradient = _MIN_GRADIENT_TIME
+        gradient_times.append(t_gradient)
+    entry = ScoutingEntry(
+        percent_b_start=start,
+        percent_b_end=end,
+        hold=hold,
+        t_gradient1=gradient_times[0],
+        t_gradient2=gradient_times[1],
+    )
+    return ScoutingRead(entry=entry, frame=scouting_frame(entry), notes=tuple(notes))
+
+
+def _or_zero(value: float | None) -> float:
+    return 0.0 if value is None else value
+
+
+def candidate_frame(points: Sequence[ProgrammePoint]) -> pd.DataFrame:
+    """The candidate table's rows as the editor's frame, a blank cell as ``pd.NA``."""
+    return pd.DataFrame(
+        {
+            T_CANDIDATE: pd.Series([_na(point.t_min) for point in points], dtype="Float64"),
+            PERCENT_B: pd.Series([_na(point.percent_b) for point in points], dtype="Float64"),
+        }
+    )
+
+
+def candidate_points_from_frame(frame: pd.DataFrame) -> tuple[ProgrammePoint, ...]:
+    """The edited candidate table back as points, every way of spelling a blank as ``None``.
+
+    Nothing is dropped or judged here — :func:`~app.pipeline.programme_from_points`
+    decides which rows make the programme, so that judgement stays in one place.
+    """
+    return tuple(
+        ProgrammePoint(
+            t_min=_number(record.get(T_CANDIDATE)), percent_b=_number(record.get(PERCENT_B))
+        )
+        for record in frame.to_dict("records")
+    )
+
+
+def frames_agree(left: pd.DataFrame, right: pd.DataFrame) -> bool:
+    """Whether two table frames hold the same cells, dtype and blank spelling aside.
+
+    The editor hands its frame back in whatever dtypes the browser's edits left it in,
+    and ``DataFrame.equals`` is dtype-strict; what the rail needs to know is whether a
+    cell *reads* differently — a put-back to make, a first edit to notice.
+    """
+    if list(left.columns) != list(right.columns) or len(left) != len(right):
+        return False
+    return all(
+        [_number(a) for a in left[column]] == [_number(b) for b in right[column]]
+        for column in left.columns
+    )

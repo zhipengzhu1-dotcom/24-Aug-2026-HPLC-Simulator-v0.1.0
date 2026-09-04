@@ -91,9 +91,9 @@ Check with `lsof -i :8501 -i :8765`; no output means nothing is running.
   `.mypy_cache`, every `__pycache__`. `uv` recreates what it needs. Never delete `.venv`
   unless you are prepared to wait for `uv` to rebuild it (it will, on the next
   `uv run`).
-- **Session file will not save on the prototype branch**: expected. v0.1's save refuses a
-  candidate whose %B range differs from the scouting runs'; ticket #44 decided this
-  becomes a warning path in v0.2.
+- **Session file will not save on the prototype branch**: expected there. v0.1's save
+  refused a candidate whose %B range differs from the scouting runs'; on `main` since
+  v0.2 (#71, #73) the file takes any programme and the rail's candidate table shows it.
 
 ## 6. Where things are
 
