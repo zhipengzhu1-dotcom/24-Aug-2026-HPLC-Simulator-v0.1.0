@@ -14,7 +14,13 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 ## Tooling
 
 - Python ≥ 3.12, uv-managed. Run everything through uv: `uv run pytest`, `uv run ruff check`, `uv run mypy`.
-- ruff lints and formats; mypy runs strict on `src/hplcsim` and `app/` (only the root `streamlit_app.py` is excluded); pytest owns `tests/`.
+- ruff lints and formats; mypy runs strict on `src/hplcsim`, `app/` and `scripts/` (only the root `streamlit_app.py` is excluded); pytest owns `tests/`.
+- **The screen has a second gate, and it is not pytest.** `AppTest` has no frontend and no scroll, so anything about layout, stickiness or a browser-held widget value is invisible to it — #57 and #79 both shipped green. `scripts/check_sticky_rows.py` measures SPEC §7's three pinned rows in a real browser; run it after any change to `app/panels.py`'s stylesheet or to where the pinned rows are placed:
+
+  ```bash
+  uv run --extra app streamlit run streamlit_app.py --server.headless true --server.port 8767
+  uv run --with playwright python scripts/check_sticky_rows.py --port 8767
+  ```
 - Engine correctness is defined by the three-layer test bar (SPEC §10); changes to scientific code must keep every layer green.
 
 ## Process

@@ -200,7 +200,10 @@ STYLE = _with_layout_numbers("""
      2.2rem the tab row rides up under Streamlit's own floating header and is clipped
      along its top edge. Checked in a browser at 1440 x 900 both ways. This is the
      only padding in the stylesheet that #62 increases; it costs 14 px of page. */
-  .block-container { padding-top: 3.1rem; padding-bottom: 1rem; max-width: 100%; }
+  /* `padding-bottom` is 0, not the 1rem it was: this is `stMainBlockContainer`, the
+     status bar's containing block, and its offset is measured from the foot of the
+     page. Any padding here sits between the two and the bar stops that far short (#79). */
+  .block-container { padding-top: 3.1rem; padding-bottom: 0; max-width: 100%; }
 
   /* Compact spacing (#62). Streamlit's 1rem block gap, its element margins and its
      heading margins are what the white bands between the rail's panels were; the target
@@ -221,6 +224,48 @@ STYLE = _with_layout_numbers("""
   section[data-testid="stSidebar"] { border-right: 1px solid #c3ceda; }
   section[data-testid="stSidebar"] .stNumberInput label,
   section[data-testid="stSidebar"] .stRadio label { font-size: 0.78rem; }
+
+  /* --- Why these rows pin at all (#79) -----------------------------------------
+     Every `position: sticky` row in this app sat at its natural position at every
+     scroll offset. The offsets and the stacking order were right the whole time; what
+     was missing was travel.
+
+     A sticky box is clamped to its **containing block**, and Streamlit wraps each app
+     container in a generated `stLayoutWrapper` that hugs its child exactly. Measured at
+     1440 x 900: the chromatogram is 311 px tall inside a 311 px wrapper, the axis strip
+     92 px inside 92 px. With no block area below the row there is nowhere for it to be
+     held, so `bottom:` never took effect and each rect moved up by exactly the scroll
+     delta. Nothing else was wrong: `position: sticky` computed, the offsets resolved,
+     and no ancestor up to `section.stMain` carried an `overflow`, `contain`,
+     `content-visibility` or `transform` that would have broken stickiness.
+
+     `display: contents` removes the wrapper's box, so each row's containing block
+     becomes the tall block it is laid out in. That is the whole fix. It is written
+     against Streamlit's generated DOM, so `scripts/check_sticky_rows.py` measures the
+     three rects in a real browser and is the only thing that can catch a regression —
+     `AppTest` has no frontend and no scroll, which is why this shipped twice. */
+  div:has(> .st-key-hs-chromatogram),
+  div:has(> .st-key-hs-axis),
+  div:has(> .st-key-hs-status),
+  /* The status bar is markup inside a markdown block, so its own chain is taken out
+     too — the keyed container is the stable handle to scope that by, and the sticky
+     element stays the painted bar itself. Every div in that chain is matched by shape
+     rather than by name: one of them is an unnamed emotion-cache div, and leaving that
+     single box in place is enough to hug the bar and stop it pinning at all. */
+  .st-key-hs-status,
+  .st-key-hs-status div:has(.hs-status) { display: contents; }
+
+  /* The status bar's pin line is the foot of the page, so nothing may sit between its
+     containing block and that foot. Two things did: the page's own bottom padding —
+     now 0 on `.block-container` above, which is the same element — and the block gap
+     above the row.
+
+     This gap rule reaches the *outermost* vertical block only, so what it closes is
+     every seam between the page's top-level blocks, not just the one above the bar:
+     the worksheet, the two columns and the status bar now sit flush. The rows inside
+     the columns keep `--hs-block-gap`, which is why the chromatogram's offset still
+     has to carry one (see its rule). */
+  div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] { gap: 0; }
 
   .hs-panel {
     border: 1px solid #b9c6d6; border-radius: 3px; background: #f2f6fb;
@@ -255,7 +300,11 @@ STYLE = _with_layout_numbers("""
      the main column's flow the bar cannot reach the sidebar; and if sticky positioning
      is ever defeated it degrades to sitting at the end of the content, still the foot. */
   .hs-status {
-    position: sticky; bottom: 0; z-index: 90; margin-top: 10px;
+    position: sticky; bottom: 0; z-index: 90;
+    /* No top margin, and no block gap above it (see the outer-block rule under
+       "Why these rows pin"). Both would sit between this row's containing block and
+       the foot of the page, and the offset above is measured from the foot. */
+    margin-top: 0;
     background: #dbe6f2; border-top: 1px solid #b9c6d6;
     padding: var(--hs-status-pad) 14px; font-size: var(--hs-status-font);
     line-height: var(--hs-status-line); color: #24445f;
@@ -275,8 +324,23 @@ STYLE = _with_layout_numbers("""
      this caps the whole block regardless — on a short laptop viewport it yields rather
      than eating the page. */
   .st-key-hs-chromatogram {
-    position: sticky; bottom: calc(var(--hs-status-height) + var(--hs-axis-height));
+    /* The block gap is part of the offset, not a rounding error: this row and the axis
+       strip are two flex items with `--hs-block-gap` between them, so the chromatogram's
+       pinned foot sits one gap above the strip's head. Leave the gap out and the row
+       pins one gap lower than it can actually reach, which reads as 6 px of drift at
+       full scroll and nowhere else. `tests/test_panels.py` holds the same derivation. */
+    position: sticky;
+    bottom: calc(var(--hs-status-height) + var(--hs-axis-height) + var(--hs-block-gap));
     z-index: 80;
+    /* Absorb the column's flex slack *above* the pinned pair. The two Cockpit columns
+       are stretched to equal height, so when the rail is the taller one its extra height
+       lands as free space at the foot of this column — and a sticky row is never pushed
+       *below* its natural position, so at full scroll both rows floated that far above
+       the status bar. `margin-top: auto` collects the slack above them instead, which
+       does change the resting picture: the white space that used to sit under the axis
+       strip now sits between the tab body and the plot. That is the better place for it,
+       because it is the pinned rows that must reach the foot. */
+    margin-top: auto;
     background: var(--hs-surface); border-top: 1px solid #c3ceda; padding-top: 4px;
     /* `flex: 0 0 auto` for the reason given on `.st-key-hs-axis` below. What this block
        loses off its foot without it is the area caveat and diagnostic 6's stamp, the two
