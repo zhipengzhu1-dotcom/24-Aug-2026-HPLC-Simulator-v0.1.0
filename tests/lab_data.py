@@ -110,8 +110,9 @@ LAB_RUN7 = Run(Gradient(phi0=0.25, phif=0.95, t_gradient=25.0, t_init=0.5), name
 LAB_CAMPAIGN27_RUNS = {"run5": LAB_RUN5, "run6": LAB_RUN6, "run7": LAB_RUN7}
 
 # validation/run5.csv, run6.csv, run7.csv. Keyed by compound, so a fixture edit cannot
-# silently transpose peaks. Unknown-3 is absent from run6 by measurement, not omission —
-# see LAB_CAMPAIGN27_WASH_ELUTED. Consumers must not assume three peaks per run.
+# silently transpose peaks. Unknown-3 has no run6 entry here on purpose: it left in the
+# wash step, not the hold — see LAB_CAMPAIGN27_WASH_ELUTED. Consumers must not assume
+# three peaks per run.
 LAB_CAMPAIGN27_TR = {
     "run5": {"Unknown-1": 10.980, "Unknown-2": 13.843, "Unknown-3": 21.495},
     "run6": {"Unknown-1": 18.164, "Unknown-2": 24.471},
