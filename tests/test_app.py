@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from app.chromatogram import AxisRequest, Chromatogram, axis_view, chromatogram
-from app.diagnostics import diagnose
+from app.diagnostics import Diagnostics, diagnose
 from app.pipeline import (
     Cockpit,
     CockpitInputs,
@@ -721,14 +721,14 @@ def test_every_table_keeps_its_columns_when_there_is_nothing_to_put_in_them() ->
 
     assert tuple(fit_frame(empty).columns) == FIT_COLUMNS
     assert tuple(prediction_frame(empty, {}).columns) == PREDICTION_COLUMNS
-    assert tuple(resolution_frame(empty).columns) == RESOLUTION_COLUMNS
+    assert tuple(resolution_frame(empty, Diagnostics()).columns) == RESOLUTION_COLUMNS
 
 
 def test_the_prediction_and_resolution_tables_are_in_elution_order() -> None:
     """Order is a property of the condition, not of the typed list (research doc §7.4)."""
     cockpit = run_cockpit(_lab_inputs())
     times = list(prediction_frame(cockpit, {})["tR (min)"])
-    pairs = list(resolution_frame(cockpit)["Pair"])
+    pairs = list(resolution_frame(cockpit, Diagnostics())["Pair"])
 
     assert times == sorted(times)
     assert pairs == ["Unknown-1 / Unknown-2", "Unknown-2 / Unknown-3"]
@@ -739,7 +739,7 @@ def test_the_resolution_table_agrees_with_the_times_and_widths_beside_it() -> No
     cockpit = run_cockpit(_lab_inputs())
     assert cockpit.resolution is not None
     predicted = prediction_frame(cockpit, {}).set_index(COMPOUND)
-    resolutions = resolution_frame(cockpit)
+    resolutions = resolution_frame(cockpit, Diagnostics())
     w_half_per_sigma = math.sqrt(8.0 * math.log(2.0))
 
     for row, pair in zip(resolutions.to_dict("records"), cockpit.resolution.pairs, strict=True):

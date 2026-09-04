@@ -14,6 +14,7 @@ import pathlib
 
 import pytest
 
+import spec10_item2
 from app.diagnostics import (
     STRONG_WINDOW_WIDTHS,
     Diagnostic,
@@ -23,63 +24,27 @@ from app.diagnostics import (
     window_widths_outside,
 )
 from app.pipeline import CockpitInputs, PeakRow
-from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment, Target
+from hplcsim.model import Gradient, Programme, Run, Segment, Target
 from lab_data import (
     LAB_MEASURED_PEAKS,
     LAB_METHOD,
     LAB_RUN1,
     LAB_RUN2,
-    LAB_RUN3,
     LAB_RUN4,
-    LAB_RUN5,
     LAB_RUN6,
     LAB_RUN6_PROGRAMME,
-    LAB_RUN7,
     LAB_STAMPED,
     LAB_UNSTAMPED,
 )
 from validation2_data import (
-    VALIDATION2_E1,
-    VALIDATION2_METHOD,
-    VALIDATION2_PEAKS,
-    VALIDATION2_RUN1,
-    VALIDATION2_RUN2,
-    VALIDATION2_RUN3,
-    VALIDATION2_RUN4,
-    VALIDATION2_RUN5_PROGRAMME,
-    VALIDATION2_RUN6,
     VALIDATION2_STAMPED,
     VALIDATION2_UNSTAMPED,
 )
 
-
-def _rows(peaks: list[Peak]) -> tuple[PeakRow, ...]:
-    return tuple(
-        PeakRow(
-            name=peak.name,
-            t_r_run1=peak.t_r_run1,
-            t_r_run2=peak.t_r_run2,
-            w_half_run1=peak.w_half_run1,
-            w_half_run2=peak.w_half_run2,
-        )
-        for peak in peaks
-    )
-
-
-def _inputs(
-    method: Method, run1: Run, run2: Run, target: Target, rows: tuple[PeakRow, ...]
-) -> CockpitInputs:
-    """The cockpit inputs for ``target``, through the rail's door when it is a programme.
-
-    Since #73 ``CockpitInputs.candidate`` is the one-segment reading and the engine
-    predicts :attr:`CockpitInputs.target`; a programme goes in by ``with_programme`` so
-    the reading is derived, never typed.
-    """
-    if isinstance(target, Programme):
-        return CockpitInputs.with_programme(
-            method=method, run1=run1, run2=run2, programme=target, rows=rows
-        )
-    return CockpitInputs(method=method, run1=run1, run2=run2, candidate=target, rows=rows)
+# The rows a sample's peaks make and the door a programme goes in by are shared with
+# `test_overlay` through `spec10_item2`, so both files drive the Cockpit the same way.
+_rows = spec10_item2.rows
+_inputs = spec10_item2.cockpit_inputs
 
 
 def _lab(candidate: Target) -> Diagnostics:
@@ -424,53 +389,13 @@ def test_a_peak_leaving_in_a_hold_reports_the_holds_composition() -> None:
 # gradient otherwise — diagnosed through the same call the app makes. The expected
 # table is SPEC §10 item 2's, transcribed; nothing here is recomputed from the code.
 
-_THREE_PEAK: dict[str, Target] = {
-    "run3": LAB_RUN3.gradient,
-    "run4": LAB_RUN4.gradient,
-    "run5": LAB_RUN5.gradient,
-    "run6": LAB_RUN6_PROGRAMME,
-    "run7": LAB_RUN7.gradient,
-}
-_FOUR_PEAK: dict[str, Target] = {
-    "run3": VALIDATION2_RUN3.gradient,
-    "run4": VALIDATION2_RUN4.gradient,
-    "run5": VALIDATION2_RUN5_PROGRAMME,
-    "run6": VALIDATION2_RUN6.gradient,
-    "E1": VALIDATION2_E1.gradient,
-}
-
-# (sample, run) -> diagnostic 1's tier, diagnostic 7's tier, the peaks 8 fires on, the
-# peaks 9 fires on. SPEC §10 item 2, at t0 = 0.525.
-_SILENT = None
-_ALL_FOUR = ("Unknown-1", "Unknown-2", "Unknown-3", "Unknown-4")
-_TABLE: dict[tuple[str, str], tuple[str | None, str | None, tuple[str, ...], tuple[str, ...]]] = {
-    ("three-peak", "run3"): (_SILENT, _SILENT, (), ()),
-    ("three-peak", "run4"): ("info", _SILENT, (), ()),
-    ("three-peak", "run5"): (_SILENT, "strong", (), ()),
-    ("three-peak", "run6"): ("info", "strong", (), ("Unknown-3",)),
-    ("three-peak", "run7"): (_SILENT, "strong", ("Unknown-1",), ()),
-    ("four-peak", "run3"): (_SILENT, _SILENT, (), ()),
-    ("four-peak", "run4"): (_SILENT, "strong", (), ()),
-    ("four-peak", "run5"): (_SILENT, "strong", (), _ALL_FOUR),
-    ("four-peak", "run6"): (_SILENT, "strong", (), ()),
-    ("four-peak", "E1"): (_SILENT, _SILENT, (), ()),
-}
+_THREE_PEAK = spec10_item2.THREE_PEAK
+_FOUR_PEAK = spec10_item2.FOUR_PEAK
+_TABLE = spec10_item2.TABLE
 
 
 def _diagnose(sample: str, run: str) -> Diagnostics:
-    if sample == "three-peak":
-        inputs = _inputs(
-            LAB_METHOD, LAB_RUN1, LAB_RUN2, _THREE_PEAK[run], _rows(LAB_MEASURED_PEAKS)
-        )
-    else:
-        inputs = _inputs(
-            VALIDATION2_METHOD,
-            VALIDATION2_RUN1,
-            VALIDATION2_RUN2,
-            _FOUR_PEAK[run],
-            _rows(VALIDATION2_PEAKS),
-        )
-    return diagnose(inputs)
+    return diagnose(spec10_item2.inputs_for(sample, run))
 
 
 def _tier(diagnostics: Diagnostics, code: str) -> str | None:
@@ -478,7 +403,7 @@ def _tier(diagnostics: Diagnostics, code: str) -> str | None:
     return found[0].severity if found else None
 
 
-@pytest.mark.parametrize(("sample", "run"), list(_TABLE), ids=[f"{s}-{r}" for s, r in _TABLE])
+@pytest.mark.parametrize(("sample", "run"), list(_TABLE), ids=spec10_item2.IDS)
 def test_the_fire_silent_table_of_spec_10_item_2(sample: str, run: str) -> None:
     diagnostics = _diagnose(sample, run)
     tier_1, tier_7, low_k0, wash = _TABLE[(sample, run)]

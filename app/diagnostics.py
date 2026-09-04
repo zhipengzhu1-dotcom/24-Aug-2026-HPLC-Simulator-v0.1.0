@@ -561,6 +561,23 @@ def _indicative(candidate: Sequence[Diagnostic]) -> Diagnostic | None:
     )
 
 
+def critical_pair_is_indicative(cockpit: Cockpit, diagnostics: Diagnostics) -> bool:
+    """Whether the Rs the screen leads with is indicative rather than decision-grade.
+
+    The method-level stamp downgrades every pair, so it downgrades this one. But SPEC
+    §6 also says "a low-k0 or wash-eluted badge downgrades only the pairs involving that
+    peak" — and when the badged peak *is* in the critical pair, Min. Rs and the critical
+    pair are exactly the two numbers that must not be read as decision-grade, whether or
+    not either method-level guard fired. Asking the pair rather than the method is what
+    keeps those surfaces honest for a candidate at the scouting start, inside the
+    steepness bracket, with one peak left in a trailing hold: no stamp, and one downgraded pair.
+    """
+    critical = cockpit.resolution.critical_pair if cockpit.resolution else None
+    if critical is None:
+        return False
+    return diagnostics.pair_is_indicative((critical.earlier.name, critical.later.name))
+
+
 # --- the per-peak composition-window readout (SPEC §6, presentation) -----------------------
 
 

@@ -17,9 +17,9 @@ from typing import Any
 
 import pandas as pd
 
-from app.diagnostics import Diagnostic
+from app.diagnostics import CompositionWindow, Diagnostic, Diagnostics
 from app.pipeline import Cockpit, PeakOutcome, PeakRow, ProgrammePoint, ScoutingEntry
-from hplcsim.model import log10_k0_from_ln_k0, s_base10_from_s_e
+from hplcsim.model import log10_k0_from_ln_k0, percent_b_from_phi, s_base10_from_s_e
 from hplcsim.width import PlateCountSource
 
 COMPOUND = "Compound"
@@ -68,7 +68,35 @@ def badge_labels(badges: Sequence[Diagnostic]) -> str:
     return "; ".join(_BADGE_LABEL.get(badge.code, badge.code) for badge in badges)
 
 
-RESOLUTION_COLUMNS = ("Pair", "ΔtR (min)", "Rs")
+GRADE = "Rs grade"
+RESOLUTION_COLUMNS = ("Pair", "ΔtR (min)", "Rs", GRADE)
+
+# SPEC §6's per-peak composition-window readout, on the fit-parameters tab: the per-peak
+# fact behind diagnostic 1, whose own tier is method-level. Each peak's calibrated
+# window is the two elution compositions the fit was actually shown, its width is
+# ln β / S_e, and the last two columns say where the candidate puts this peak against
+# them — which is the whole question diagnostic 1 answers as one number for the method.
+# Headers are terse because the rail leaves the main view about 1000 px and six columns
+# do not fit at conversational widths — the last one clipped in the browser at
+# 1440 × 900, which is the defect #73 shipped a first screenshot of. The caption
+# beneath the table carries the sentence the headers no longer can.
+WINDOW_LOW = "From (%B)"
+WINDOW_HIGH = "To (%B)"
+WINDOW_WIDTH = "Width (%B)"
+WINDOW_CANDIDATE = "Elutes at (%B)"
+WINDOW_POSITION = "Position"
+WINDOW_COLUMNS = (
+    COMPOUND,
+    WINDOW_LOW,
+    WINDOW_HIGH,
+    WINDOW_WIDTH,
+    WINDOW_CANDIDATE,
+    WINDOW_POSITION,
+)
+
+# What a stamped Rs pair is called in the resolution table's own column. The sentence
+# is painted once above the table (SPEC §6's stamp); a cell needs a word.
+_INDICATIVE_CELL = "indicative"
 
 # What SPEC §6 diagnostic 5 and the fitted-N badge say when they fire, in the words
 # ticket #19 owns. Wiring the remaining five diagnostics is ticket #20's.
@@ -213,8 +241,16 @@ def prediction_frame(
     )
 
 
-def resolution_frame(cockpit: Cockpit) -> pd.DataFrame:
-    """Adjacent-pair resolution at the candidate gradient (SPEC §3)."""
+def resolution_frame(cockpit: Cockpit, diagnostics: Diagnostics) -> pd.DataFrame:
+    """Adjacent-pair resolution at the candidate gradient (SPEC §3).
+
+    ``diagnostics`` carries SPEC §6's *indicative, not decision-grade* stamp, which is
+    what the last column reads. Required rather than defaulted, like
+    :func:`prediction_frame`'s badges: a defaulted argument would exist only to let a
+    caller ship a table of resolutions with nothing saying which of them were never
+    pinned. The stamp downgrades every pair; a low-k0 or wash-eluted badge downgrades
+    only the pairs its own peak is in, which is why this asks per pair.
+    """
     if cockpit.resolution is None:
         return pd.DataFrame(columns=RESOLUTION_COLUMNS)
     return pd.DataFrame(
@@ -223,9 +259,53 @@ def resolution_frame(cockpit: Cockpit) -> pd.DataFrame:
                 "Pair": f"{pair.earlier.name} / {pair.later.name}",
                 "ΔtR (min)": pair.later.retention.t_r - pair.earlier.retention.t_r,
                 "Rs": pair.rs,
+                GRADE: _INDICATIVE_CELL
+                if diagnostics.pair_is_indicative((pair.earlier.name, pair.later.name))
+                else "",
             }
             for pair in cockpit.resolution.pairs
-        ]
+        ],
+        columns=RESOLUTION_COLUMNS,
+    )
+
+
+def window_position_label(window: CompositionWindow) -> str:
+    """Where the candidate puts one peak against its own calibrated window.
+
+    Inside is said as "inside", not as a distance of zero: a peak the fit was shown the
+    composition of is the ordinary case, and a column of zeroes would read as a
+    measurement rather than as the absence of an extrapolation.
+    """
+    if window.position == "inside":
+        return "inside"
+    return f"{window.distance_in_widths:.2f} widths {window.position}"
+
+
+def composition_window_frame(windows: Sequence[CompositionWindow]) -> pd.DataFrame:
+    """SPEC §6's per-peak composition-window readout, in %B (the display boundary).
+
+    The engine holds every composition as a fraction; this is where they become the %B
+    a chromatographer reads, through ``model``'s own converter and never by hand
+    (CLAUDE.md's units rule). Nothing is computed here — the window, its width and the
+    candidate's position in it are :class:`~app.diagnostics.CompositionWindow`'s, which
+    is also what the chromatogram's whiskers are drawn from.
+    """
+    return pd.DataFrame(
+        [
+            {
+                COMPOUND: window.name,
+                WINDOW_LOW: percent_b_from_phi(window.phi_low),
+                WINDOW_HIGH: percent_b_from_phi(window.phi_high),
+                # A width is a *difference* of compositions; the same converter
+                # carries it across, since 0–1 to 0–100 scales a span exactly as
+                # it scales a position.
+                WINDOW_WIDTH: percent_b_from_phi(window.width),
+                WINDOW_CANDIDATE: percent_b_from_phi(window.candidate_phi_e),
+                WINDOW_POSITION: window_position_label(window),
+            }
+            for window in windows
+        ],
+        columns=WINDOW_COLUMNS,
     )
 
 

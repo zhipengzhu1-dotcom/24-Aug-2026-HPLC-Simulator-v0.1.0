@@ -25,12 +25,29 @@ import pytest
 
 from app.diagnostics import STRONG_WINDOW_WIDTHS
 from app.pipeline import ProgrammePoint, ScoutingEntry, points_from_programme
-from app.tables import PERCENT_B, T1, T2, T_CANDIDATE, candidate_frame, scouting_frame
+from app.tables import (
+    COMPOUND,
+    FLAGS,
+    PERCENT_B,
+    T1,
+    T2,
+    T_CANDIDATE,
+    candidate_frame,
+    scouting_frame,
+)
 from hplcsim.model import Gradient, Method, Peak, Programme, Run, Segment
 from hplcsim.session import (
     Session,
     UntrackedPeak,
     save_session,
+)
+from lab_data import (
+    LAB_MEASURED_PEAKS,
+    LAB_METHOD,
+    LAB_RUN1,
+    LAB_RUN2,
+    LAB_RUN6_PROGRAMME,
+    LAB_RUN7,
 )
 
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
@@ -760,3 +777,141 @@ def test_a_refused_file_does_not_leave_the_last_files_warning_standing_beside_it
 
     assert any("schema_version 99" in text for text in _messages(app)["error"])
     assert not any("outside what this screen" in text for text in _messages(app)["warning"])
+
+
+# --- ticket #74: the overlay, the readout, the badges and the indicative stamp -----------
+#
+# `tests/test_overlay.py` proves the four surfaces are built correctly; these prove they
+# are painted. The condition is the trap case of #45 — a candidate starting 10 %B above
+# the scouting start and ramping to 55 %B at a tG inside the bracket — which is strong on
+# diagnostic 7 and so carries the stamp. It arrives through a session file, because
+# `AppTest` cannot type into the peak table's editor.
+
+_TRAP_CANDIDATE = Programme.from_gradient(
+    Gradient(phi0=0.15, phif=0.55, t_gradient=25.0, t_init=0.5)
+)
+_QUIET_CANDIDATE = Programme.from_gradient(
+    Gradient(phi0=0.05, phif=0.95, t_gradient=25.0, t_init=0.5)
+)
+
+
+def _lab_session(candidate: Programme) -> Session:
+    return Session(
+        session_name="Lab dataset",
+        method=LAB_METHOD,
+        runs=(LAB_RUN1, LAB_RUN2),
+        peaks=tuple(LAB_MEASURED_PEAKS),
+        candidate=candidate,
+    )
+
+
+def _loaded(candidate: Programme) -> object:
+    app = _running_app()
+    _uploader(app).upload("s.json", save_session(_lab_session(candidate)).encode("utf-8"))
+    app.run()  # type: ignore[attr-defined]
+    assert not app.exception, app.exception  # type: ignore[attr-defined]
+    return app
+
+
+def _captions(app: object) -> list[str]:
+    return [caption.value for caption in app.caption]  # type: ignore[attr-defined]
+
+
+def _flag_column(app: object) -> list[object]:
+    """The rendered prediction table — the one data grid carrying a Flags column."""
+    return [
+        frame.value
+        for frame in app.dataframe  # type: ignore[attr-defined]
+        if FLAGS in list(frame.value.columns)
+    ]
+
+
+def _panel(app: object, title: str) -> str:
+    blocks = [m.value for m in app.markdown if f">{title}</div>" in m.value]  # type: ignore[attr-defined]
+    assert len(blocks) == 1, f"{title!r} matched {len(blocks)} panels"
+    return str(blocks[0])
+
+
+def test_the_chromatogram_says_which_line_is_the_candidate_and_which_the_pair() -> None:
+    """SPEC §7's overlay is always on, so the caption explaining it is too."""
+    app = _loaded(_QUIET_CANDIDATE)
+    assert any("Candidate solid, scouting pair dashed" in c for c in _captions(app))
+    assert any("calibrated window" in c for c in _captions(app))
+
+
+def test_the_fit_tab_carries_the_per_peak_composition_window_readout() -> None:
+    app = _loaded(_QUIET_CANDIDATE)
+    headings = [m.value for m in app.markdown]  # type: ignore[attr-defined]
+    assert any("Calibrated composition windows" in text for text in headings)
+    assert any("ln β / S_e" in caption for caption in _captions(app))
+
+
+def test_the_indicative_stamp_reaches_every_surface_spec_6_names_it_on() -> None:
+    """Min. Rs, the resolution tab and the status bar, in the manner of diagnostic 6."""
+    app = _loaded(_TRAP_CANDIDATE)
+
+    summary = _panel(app, "Method summary")
+    assert "Min. Rs (indicative)" in summary
+    assert "Critical pair (indicative)" in summary
+    # Retention stays shown as numbers at the same condition (SPEC §6).
+    assert "Run time (indicative)" not in summary
+
+    assert any("indicative, not decision-grade" in text for text in _messages(app)["error"])
+    assert any("indicative, not decision-grade" in caption for caption in _captions(app))
+    assert "Rs indicative — not decision-grade" in _status_bar(app)
+
+
+def test_a_candidate_the_fit_was_shown_carries_no_stamp_anywhere() -> None:
+    """The same screen inside the bracket at the scouting start: v0.1's, unstamped."""
+    app = _loaded(_QUIET_CANDIDATE)
+
+    assert "indicative" not in _panel(app, "Method summary")
+    assert not any("indicative, not decision-grade" in text for text in _messages(app)["error"])
+    assert "Rs indicative" not in _status_bar(app)
+
+
+def test_the_low_k0_badge_reaches_the_flags_column_and_the_selected_peak_panel() -> None:
+    """Three-peak run 7: 8 fires on Unknown-1 and nowhere else (SPEC §10 item 2)."""
+    app = _loaded(Programme.from_gradient(LAB_RUN7.gradient))
+
+    # The selected-peak panel opens on the first peak, which is the badged one, and
+    # paints the badge in full beside it.
+    assert any("Unknown-1: log₁₀ k0" in text for text in _messages(app)["warning"]), _messages(app)[
+        "warning"
+    ]
+
+    (flags,) = _flag_column(app)
+    assert set(flags.loc[flags[FLAGS].str.contains("low k0"), COMPOUND]) == {"Unknown-1"}
+
+
+def test_the_wash_eluted_badge_reaches_the_flags_column() -> None:
+    """Three-peak run 6 as the instrument ran it: 9 fires on Unknown-3 alone."""
+    app = _loaded(LAB_RUN6_PROGRAMME)
+    (flags,) = _flag_column(app)
+    marked = set(flags.loc[flags[FLAGS].str.contains("wash-eluted"), COMPOUND])
+
+    assert marked == {"Unknown-3"}
+
+
+# A candidate at the scouting start, inside the steepness bracket, whose later peaks are
+# brought off in a trailing hold: no method-level stamp, and a wash-eluted peak inside
+# the critical pair. The screen has to downgrade the Rs it leads with anyway (SPEC §6).
+_WASH_CANDIDATE = Programme(
+    phi0=0.05,
+    segments=(Segment(duration=12.0, phif=0.60), Segment(duration=30.0, phif=0.60)),
+    t_init=0.5,
+)
+
+
+def test_a_badged_critical_pair_downgrades_min_rs_with_no_method_level_stamp() -> None:
+    """SPEC §6 scopes a badge to its own peak's pairs — including the leading one."""
+    app = _loaded(_WASH_CANDIDATE)
+
+    # No method-level guard fired: the long sentence must not appear.
+    assert not any("indicative, not decision-grade" in text for text in _messages(app)["error"])
+
+    summary = _panel(app, "Method summary")
+    assert "Min. Rs (indicative)" in summary
+    assert "Critical pair (indicative)" in summary
+    assert "Rs indicative — not decision-grade" in _status_bar(app)
+    assert any("one of its peaks carries a badge" in caption for caption in _captions(app))
