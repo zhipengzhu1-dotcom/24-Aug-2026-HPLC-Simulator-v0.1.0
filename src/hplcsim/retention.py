@@ -11,9 +11,33 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
-from hplcsim.model import Gradient, Method, RetentionParams
+from hplcsim.model import (
+    Gradient,
+    Method,
+    MultiSegmentNotSupportedError,
+    Programme,
+    RetentionParams,
+    Target,
+    as_single_gradient,
+)
 
 Regime = Literal["isocratic_hold", "gradient", "post_gradient"]
+
+# Re-exported so a caller reaching for a prediction finds the target type and the
+# refusal beside the function that raises it; both are defined in :mod:`hplcsim.model`,
+# where the whole Gradient/Programme correspondence lives (SPEC §9).
+__all__ = [
+    "Gradient",
+    "MultiSegmentNotSupportedError",
+    "Programme",
+    "Regime",
+    "RetentionResult",
+    "Target",
+    "as_single_gradient",
+    "gradient_end_time",
+    "gradient_steepness",
+    "predict_retention",
+]
 
 
 def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
@@ -28,16 +52,23 @@ def gradient_steepness(method: Method, gradient: Gradient, s_e: float) -> float:
     return method.t0 * gradient.delta_phi * s_e / gradient.t_gradient
 
 
-def gradient_end_time(method: Method, gradient: Gradient) -> float:
+def gradient_end_time(method: Method, target: Target) -> float:
     """When the final composition φf reaches the detector (min from injection).
 
     The programmed ramp ends at the pump at ``t_init + t_gradient``; it reaches the
-    column head one dwell later and the detector one t0 after that. This is exactly the
-    boundary between the gradient and post-gradient regimes below — a band still on the
-    column at this instant finishes the run isocratically at φf — so the drawn marker
-    and the regime that classifies a peak read the same expression.
+    column head one dwell later and the detector one t0 after that. For a single ramp
+    this is exactly the boundary between the gradient and post-gradient regimes below —
+    a band still on the column at this instant finishes the run isocratically at φf — so
+    the drawn marker and the regime that classifies a peak read the same expression.
+
+    For a programme it is the end of the *last* segment, and only that: ``t_gradient``
+    sums every segment's duration, so the arithmetic is unchanged and a multi-segment
+    target is answered here rather than refused — where the programme finishes is not
+    something the walker has to solve. It stops being a regime boundary, though, as
+    soon as the last segment is a hold or descends; what classifies a peak under a
+    multi-segment programme is the walker's (#70), not this.
     """
-    return method.t_dwell + gradient.t_init + gradient.t_gradient + method.t0
+    return method.t_dwell + target.t_init + target.t_gradient + method.t0
 
 
 @dataclass(frozen=True)
@@ -57,10 +88,14 @@ class RetentionResult:
     low_confidence: bool = False
 
 
-def predict_retention(
-    params: RetentionParams, method: Method, gradient: Gradient
-) -> RetentionResult:
-    """Predict tR (min) for ``params`` run under ``gradient`` on ``method``."""
+def predict_retention(params: RetentionParams, method: Method, target: Target) -> RetentionResult:
+    """Predict tR (min) for ``params`` run under ``target`` on ``method``.
+
+    ``target`` is a v0.1 :class:`Gradient` or a v0.2 :class:`Programme`. A one-segment
+    programme is the gradient it converts to and takes exactly this path; two or more
+    segments raise :class:`MultiSegmentNotSupportedError` until the walker (#70) lands.
+    """
+    gradient = as_single_gradient(target)
     if method.t0 <= 0.0:
         raise ValueError(f"t0 must be positive, got {method.t0}")
     if gradient.t_gradient <= 0.0:

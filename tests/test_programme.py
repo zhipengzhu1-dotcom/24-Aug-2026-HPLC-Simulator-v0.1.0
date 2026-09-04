@@ -1,0 +1,260 @@
+"""The v0.2 gradient programme: the type, its validation, and the one-segment identity.
+
+Ticket #69 — the expand half of an expand–contract. What is asserted here is that the
+new type *is* the old one when it has a single segment (SPEC §10 item 4a, first half),
+that it refuses rather than guesses when it has more, and that its validation matches
+SPEC §4's posture. The piecewise walker that predicts two or more segments is #70.
+"""
+
+import math
+
+import pytest
+
+from hplcsim.fit import fit_peaks
+from hplcsim.model import (
+    Gradient,
+    MultiSegmentNotSupportedError,
+    Programme,
+    RetentionParams,
+    Segment,
+)
+from hplcsim.resolution import resolution_table
+from hplcsim.retention import gradient_end_time, predict_retention
+from hplcsim.width import peak_width
+from lab_data import (
+    LAB_METHOD,
+    LAB_PEAKS,
+    LAB_RUN1,
+    LAB_RUN2,
+    LAB_RUN3,
+    LAB_RUN4,
+    LAB_RUN5,
+    LAB_RUN6,
+    LAB_RUN7,
+)
+from validation2_data import (
+    VALIDATION2_METHOD,
+    VALIDATION2_PEAKS,
+    VALIDATION2_RUN1,
+    VALIDATION2_RUN2,
+    VALIDATION2_RUNS_BY_NAME,
+)
+
+# The four-peak sample is fixtured as measurements, not parameters; its LSS fit is the
+# same two-run fit the reality layer uses.
+_V2_PARAMS = [
+    fit.params
+    for fit in fit_peaks(VALIDATION2_PEAKS, VALIDATION2_METHOD, VALIDATION2_RUN1, VALIDATION2_RUN2)
+]
+
+# Both samples, every run either carries: the three-peak sample's scouting pair, its
+# held-out tG runs and campaign #27's φ-range arm, and the four-peak sample's whole set.
+# "Every fixture on both samples" in the ticket's first acceptance criterion is this.
+_LAB_CASES = [
+    (LAB_METHOD, LAB_PEAKS, run.gradient, f"three-peak {run.name}")
+    for run in (LAB_RUN1, LAB_RUN2, LAB_RUN3, LAB_RUN4, LAB_RUN5, LAB_RUN6, LAB_RUN7)
+]
+_V2_CASES = [
+    (VALIDATION2_METHOD, _V2_PARAMS, run.gradient, f"four-peak {name}")
+    for name, run in VALIDATION2_RUNS_BY_NAME.items()
+]
+FIXTURE_CASES = _LAB_CASES + _V2_CASES
+
+# A supplied N, so the identity test exercises the width path itself rather than
+# whichever fixture happens to carry column geometry.
+_PLATE_COUNT = 20_000.0
+
+
+# --- SPEC §10 item 4a: one segment is bitwise identical to the gradient it is ---
+
+
+@pytest.mark.parametrize(
+    ("method", "peaks", "gradient", "label"),
+    FIXTURE_CASES,
+    ids=[label for _, _, _, label in FIXTURE_CASES],
+)
+def test_one_segment_programme_predicts_bitwise_like_its_gradient(
+    method, peaks, gradient, label
+) -> None:
+    programme = Programme.from_gradient(gradient)
+    for params in peaks:
+        # Equality, not approx: a one-segment programme does not *reproduce* the v0.1
+        # path, it takes it, so any difference at all would mean the conversion lied.
+        assert predict_retention(params, method, programme) == predict_retention(
+            params, method, gradient
+        )
+        assert peak_width(params, method, programme, plate_count=_PLATE_COUNT) == peak_width(
+            params, method, gradient, plate_count=_PLATE_COUNT
+        )
+
+
+@pytest.mark.parametrize(
+    ("method", "peaks", "gradient", "label"),
+    FIXTURE_CASES,
+    ids=[label for _, _, _, label in FIXTURE_CASES],
+)
+def test_one_segment_programme_resolves_bitwise_like_its_gradient(
+    method, peaks, gradient, label
+) -> None:
+    programme = Programme.from_gradient(gradient)
+    assert resolution_table(peaks, method, programme, plate_count=_PLATE_COUNT) == (
+        resolution_table(peaks, method, gradient, plate_count=_PLATE_COUNT)
+    )
+
+
+@pytest.mark.parametrize(
+    ("method", "peaks", "gradient", "label"),
+    FIXTURE_CASES,
+    ids=[label for _, _, _, label in FIXTURE_CASES],
+)
+def test_gradient_end_time_matches_for_a_one_segment_programme(
+    method, peaks, gradient, label
+) -> None:
+    assert gradient_end_time(method, Programme.from_gradient(gradient)) == gradient_end_time(
+        method, gradient
+    )
+
+
+# --- the conversion, which lives in exactly one place ---
+
+
+@pytest.mark.parametrize(
+    ("method", "peaks", "gradient", "label"),
+    FIXTURE_CASES,
+    ids=[label for _, _, _, label in FIXTURE_CASES],
+)
+def test_gradient_round_trips_through_a_programme(method, peaks, gradient, label) -> None:
+    assert Programme.from_gradient(gradient).as_gradient() == gradient
+
+
+def test_as_gradient_is_none_for_two_or_more_segments() -> None:
+    programme = Programme(
+        phi0=0.05, segments=(Segment(10.0, 0.45), Segment(10.0, 0.95)), t_init=0.5
+    )
+    assert programme.as_gradient() is None
+
+
+# --- SPEC §4 validation posture ---
+
+
+@pytest.mark.parametrize("duration", [0.0, -1.0])
+def test_a_segment_duration_must_be_positive(duration: float) -> None:
+    with pytest.raises(ValueError, match="duration must be positive"):
+        Segment(duration=duration, phif=0.95)
+
+
+def test_a_programme_needs_at_least_one_segment() -> None:
+    with pytest.raises(ValueError, match="at least one segment"):
+        Programme(phi0=0.05, segments=())
+
+
+def test_an_initial_hold_may_not_be_negative() -> None:
+    with pytest.raises(ValueError, match="t_init must be non-negative"):
+        Programme(phi0=0.05, segments=(Segment(10.0, 0.95),), t_init=-0.1)
+
+
+def test_a_repeated_end_composition_is_a_hold() -> None:
+    programme = Programme(
+        phi0=0.05, segments=(Segment(10.0, 0.55), Segment(5.0, 0.55), Segment(10.0, 0.95))
+    )
+    assert [leg.is_hold for leg in programme.legs()] == [False, True, False]
+
+
+def test_a_flat_first_segment_is_a_hold_against_phi0() -> None:
+    programme = Programme(phi0=0.05, segments=(Segment(2.0, 0.05), Segment(10.0, 0.95)))
+    assert programme.legs()[0].is_hold
+
+
+def test_a_descending_segment_is_allowed_and_signed() -> None:
+    # Signed steepness is the walker's (#70); the type does not refuse the shape.
+    programme = Programme(phi0=0.05, segments=(Segment(10.0, 0.95), Segment(5.0, 0.35)))
+    assert programme.legs()[1].delta_phi == pytest.approx(-0.60)
+
+
+def test_legs_chain_entry_compositions_through_the_programme() -> None:
+    programme = Programme(
+        phi0=0.05, segments=(Segment(10.0, 0.40), Segment(5.0, 0.40), Segment(8.0, 0.95))
+    )
+    assert [(leg.phi_start, leg.phi_end) for leg in programme.legs()] == [
+        (0.05, 0.40),
+        (0.40, 0.40),
+        (0.40, 0.95),
+    ]
+    assert programme.phif == 0.95
+    assert programme.t_gradient == pytest.approx(23.0)
+
+
+# --- a typed, named refusal — never a wrong number ---
+
+
+def _two_segment_programme() -> Programme:
+    return Programme(phi0=0.05, segments=(Segment(10.0, 0.45), Segment(10.0, 0.95)), t_init=0.5)
+
+
+@pytest.mark.parametrize(
+    ("name", "call"),
+    [
+        ("predict_retention", lambda p, m, t: predict_retention(p, m, t)),
+        ("peak_width", lambda p, m, t: peak_width(p, m, t, plate_count=_PLATE_COUNT)),
+        (
+            "resolution_table",
+            lambda p, m, t: resolution_table([p], m, t, plate_count=_PLATE_COUNT),
+        ),
+    ],
+)
+def test_two_segments_are_refused_by_type_not_mispredicted(name: str, call) -> None:
+    programme = _two_segment_programme()
+    with pytest.raises(MultiSegmentNotSupportedError) as raised:
+        call(LAB_PEAKS[0], LAB_METHOD, programme)
+    # The refusal names the walker ticket, so the message is a route and not a wall.
+    assert "#70" in str(raised.value)
+    assert "2-segment" in str(raised.value)
+
+
+def test_the_refusal_is_not_the_first_segments_answer() -> None:
+    """The failure mode this ticket exists to prevent: a plausible, wrong number.
+
+    Truncating a two-segment programme to its first segment predicts perfectly happily —
+    a finite time, in the gradient regime, with nothing on the result to say it ignored
+    half the method. That is why the refusal has to be a raise and not a flag.
+    """
+    programme = _two_segment_programme()
+    truncated = Gradient(phi0=0.05, phif=0.45, t_gradient=10.0, t_init=0.5)
+
+    silent_wrong_answer = predict_retention(LAB_PEAKS[0], LAB_METHOD, truncated)
+    assert math.isfinite(silent_wrong_answer.t_r)
+
+    with pytest.raises(MultiSegmentNotSupportedError):
+        predict_retention(LAB_PEAKS[0], LAB_METHOD, programme)
+
+
+def test_gradient_end_time_answers_a_multi_segment_programme() -> None:
+    # Where the ramp finishes is arithmetic on the programme, not the walker's job.
+    programme = Programme(
+        phi0=0.05, segments=(Segment(10.0, 0.45), Segment(12.5, 0.95)), t_init=0.5
+    )
+    assert gradient_end_time(LAB_METHOD, programme) == pytest.approx(
+        LAB_METHOD.t_dwell + 0.5 + 22.5 + LAB_METHOD.t0
+    )
+
+
+def test_a_gradient_still_predicts_unchanged() -> None:
+    """No caller of the existing two-field gradient changes (the contract half)."""
+    params = RetentionParams(ln_k0=math.log(500.0), s_e=10.0, phi_ref=0.05)
+    gradient = Gradient(phi0=0.05, phif=0.95, t_gradient=20.0, t_init=0.5)
+    assert predict_retention(params, LAB_METHOD, gradient).regime == "gradient"
+
+
+def test_the_refusal_is_the_same_class_from_either_module() -> None:
+    """The re-export is a convenience, not a second type.
+
+    ``predict_retention`` raises it, so code that catches it will reach for it on
+    :mod:`hplcsim.retention`; it is defined on :mod:`hplcsim.model` with the rest of the
+    Gradient/Programme correspondence (SPEC §9). Two classes with one name would make
+    an ``except`` silently miss.
+    """
+    from hplcsim import model, retention
+
+    assert retention.MultiSegmentNotSupportedError is model.MultiSegmentNotSupportedError
+    assert retention.as_single_gradient is model.as_single_gradient
+    assert retention.Target is model.Target
