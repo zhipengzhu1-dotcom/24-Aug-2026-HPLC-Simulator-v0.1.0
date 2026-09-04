@@ -120,6 +120,18 @@ _PLATE_COUNT_RANGE = (100.0, 1_000_000.0)
 # candidate is a real method and a table cell holds it. Only %B is bounded, 0–100, by
 # the cells themselves.
 _PERCENT_B_RANGE = (0.0, 100.0)
+# A cell's step is also the precision it accepts: hundredths of a minute, tenths of %B.
+_TIME_STEP = 0.01
+_PERCENT_STEP = 0.1
+# The programme tables' column widths, in pixels. The scouting table's four add up to
+# the rail's table width at 1440 × 900 (303 px, measured in the browser); the
+# candidate's two share the same width less the dynamic-row selector Streamlit puts in
+# front of them.
+_ROW_NUMBER_PX = 36
+_TIME_PX = 84
+_PERCENT_PX = 64
+_CANDIDATE_TIME_PX = 120
+_CANDIDATE_PERCENT_PX = 90
 
 _MEASURED = "Measured marker"
 _ESTIMATED = "Geometry estimate"
@@ -888,19 +900,12 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     return read
 
 
-# The programme tables' column widths, in pixels. The scouting table's four add up to
-# the rail's table width at 1440 × 900 (303 px, measured); the candidate's two share the
-# same width less the dynamic-row selector Streamlit puts in front of them.
-_ROW_NUMBER_PX = 36
-_TIME_PX = 84
-_PERCENT_PX = 64
-_CANDIDATE_TIME_PX = 120
-_CANDIDATE_PERCENT_PX = 90
-
-
 def _time_column(width: int) -> object:
+    # A column's `step` is the precision a cell accepts as well as its keyboard step
+    # (Streamlit's own rule), so it matches the format: a method about to be written
+    # down is 24.35 min, not the nearest tenth.
     return st.column_config.NumberColumn(
-        min_value=0.0, step=0.1, format="%.2f", required=True, width=width
+        min_value=0.0, step=_TIME_STEP, format="%.2f", required=True, width=width
     )
 
 
@@ -908,7 +913,7 @@ def _percent_column(width: int) -> object:
     return st.column_config.NumberColumn(
         min_value=_PERCENT_B_RANGE[0],
         max_value=_PERCENT_B_RANGE[1],
-        step=1.0,
+        step=_PERCENT_STEP,
         format="%g",
         required=True,
         width=width,

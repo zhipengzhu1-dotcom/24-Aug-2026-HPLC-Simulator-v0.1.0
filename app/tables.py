@@ -295,13 +295,15 @@ def scouting_read_from_frame(frame: pd.DataFrame) -> ScoutingRead:
     t1 = [_number(value) for value in frame[T1]]
     t2 = [_number(value) for value in frame[T2]]
     percent = [_number(value) for value in frame[PERCENT_B]]
-    start = percent[0] if percent[0] is not None else 0.0
+    # A required cell cannot be committed blank in the editor; a blank that arrives
+    # anyway (a frame built elsewhere) reads as the start of the run.
+    start = _or_zero(percent[0])
     end = percent[2] if percent[2] is not None else start
-    hold = max(t1[1] or 0.0, 0.0)
+    hold = max(_or_zero(t1[1]), 0.0)
     notes = []
     gradient_times = []
     for run, end_time in (("run 1", t1[2]), ("run 2", t2[2])):
-        t_gradient = round((end_time or 0.0) - hold, 6)
+        t_gradient = round(_or_zero(end_time) - hold, 6)
         if t_gradient <= 0.0:
             notes.append(
                 f"**{run.capitalize()}'s ramp was typed to end before the hold does** — a "
@@ -319,6 +321,10 @@ def scouting_read_from_frame(frame: pd.DataFrame) -> ScoutingRead:
         t_gradient2=gradient_times[1],
     )
     return ScoutingRead(entry=entry, frame=scouting_frame(entry), notes=tuple(notes))
+
+
+def _or_zero(value: float | None) -> float:
+    return 0.0 if value is None else value
 
 
 def candidate_frame(points: Sequence[ProgrammePoint]) -> pd.DataFrame:

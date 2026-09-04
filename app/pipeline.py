@@ -534,26 +534,28 @@ def programme_from_points(points: Sequence[ProgrammePoint]) -> ProgrammeRead:
     (CLAUDE.md's warnings-over-blocks). With no segment at all there is nothing to
     predict, and that is the one thing said as a block.
     """
-    typed = [(index, point) for index, point in enumerate(points, start=1) if point.is_typed]
+    typed = [
+        (row, point.t_min, point.percent_b)
+        for row, point in enumerate(points, start=1)
+        if point.t_min is not None and point.percent_b is not None
+    ]
     if not typed:
         return ProgrammeRead(None, tuple(points), blocked=_NO_RAMP)
 
-    first_index, first = typed[0]
-    assert first.t_min is not None and first.percent_b is not None
+    first_row, _, start = typed[0]
     shown = list(points)
-    shown[first_index - 1] = replace(first, t_min=0.0)
+    shown[first_row - 1] = replace(shown[first_row - 1], t_min=0.0)
 
     t_init = 0.0
     segments: list[Segment] = []
     notes: list[str] = []
-    previous_t, previous_b = 0.0, first.percent_b
-    for position, (row, point) in enumerate(typed[1:], start=2):
-        assert point.t_min is not None and point.percent_b is not None
-        duration = round(point.t_min - previous_t, _TABLE_DECIMALS)
-        flat = point.percent_b == previous_b
+    previous_t, previous_b = 0.0, start
+    for position, (row, t_min, percent_b) in enumerate(typed[1:], start=2):
+        duration = round(t_min - previous_t, _TABLE_DECIMALS)
+        flat = percent_b == previous_b
         if duration < 0.0:
             notes.append(
-                f"Row {row} is at {point.t_min:g} min, before the row above it at "
+                f"Row {row} is at {t_min:g} min, before the row above it at "
                 f"{previous_t:g} min — a programme only moves forward, so the row is "
                 "left out until its time is later."
             )
@@ -562,22 +564,20 @@ def programme_from_points(points: Sequence[ProgrammePoint]) -> ProgrammeRead:
             if position == 2 and flat:
                 continue  # the hold row, holding for nothing
             notes.append(
-                f"Row {row} repeats the time above it ({point.t_min:g} min) — a step "
-                "needs a duration, however short (the instrument's own is 0.1 min), so "
-                "the row is left out until it has one."
+                f"Row {row} repeats the time above it ({t_min:g} min) — a step needs a "
+                "duration, however short (the instrument's own is 0.1 min), so the row "
+                "is left out until it has one."
             )
             continue
         if position == 2 and flat:
             t_init = duration
         else:
-            segments.append(Segment(duration=duration, phif=phi_from_percent_b(point.percent_b)))
-        previous_t, previous_b = point.t_min, point.percent_b
+            segments.append(Segment(duration=duration, phif=phi_from_percent_b(percent_b)))
+        previous_t, previous_b = t_min, percent_b
 
     if not segments:
         return ProgrammeRead(None, tuple(shown), tuple(notes), blocked=_NO_RAMP)
-    programme = Programme(
-        phi0=phi_from_percent_b(first.percent_b), segments=tuple(segments), t_init=t_init
-    )
+    programme = Programme(phi0=phi_from_percent_b(start), segments=tuple(segments), t_init=t_init)
     return ProgrammeRead(programme, tuple(shown), tuple(notes))
 
 

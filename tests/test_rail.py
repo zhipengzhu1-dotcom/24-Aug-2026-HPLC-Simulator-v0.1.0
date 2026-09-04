@@ -32,6 +32,7 @@ from app.tables import (
     T_CANDIDATE,
     candidate_frame,
     candidate_points_from_frame,
+    frames_agree,
     scouting_frame,
     scouting_read_from_frame,
 )
@@ -304,3 +305,20 @@ def test_the_candidate_frame_keeps_number_dtypes_so_the_editor_offers_number_cel
     assert str(frame[T_CANDIDATE].dtype) == "Float64"
     assert str(frame[PERCENT_B].dtype) == "Float64"
     assert str(scouting_frame(SCOUTING)[T1].dtype) == "Float64"
+
+
+def test_frames_agree_reads_cells_not_dtypes() -> None:
+    """The editor hands its frame back in the browser's dtypes; a put-back is decided on
+    what a cell reads, and a blank is a blank however it is spelled."""
+    shown = candidate_frame(points_from_programme(LAB_RUN6_PROGRAMME))
+    edited = shown.astype("float64")
+    assert frames_agree(shown, edited)
+
+    edited.loc[2, T_CANDIDATE] = 26.0
+    assert not frames_agree(shown, edited)
+
+    blank_na, blank_nan = shown.copy(), shown.astype("float64")
+    blank_na.loc[3, PERCENT_B] = pd.NA
+    blank_nan.loc[3, PERCENT_B] = float("nan")
+    assert frames_agree(blank_na, blank_nan)
+    assert not frames_agree(shown, shown.iloc[:-1])
