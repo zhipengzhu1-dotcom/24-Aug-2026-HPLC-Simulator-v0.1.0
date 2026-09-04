@@ -38,16 +38,23 @@ from lab_data import (
 )
 from validation2_data import (
     VALIDATION2_HELD_OUT,
+    VALIDATION2_HELD_OUT_2026_09_03,
     VALIDATION2_MEASURED_AREA,
     VALIDATION2_MEASURED_TR,
     VALIDATION2_MEASURED_W_HALF,
     VALIDATION2_METHOD,
     VALIDATION2_PEAKS,
+    VALIDATION2_REPEATABILITY_TR,
+    VALIDATION2_REPEATABILITY_W_HALF,
+    VALIDATION2_REPLICATE_BLOCK,
     VALIDATION2_RUN1,
     VALIDATION2_RUN2,
+    VALIDATION2_RUN3_DETERMINATIONS,
     VALIDATION2_RUNS_BY_NAME,
     VALIDATION2_SOURCE_FILES,
+    VALIDATION2_STAMPED,
     VALIDATION2_TR_GRANULARITY,
+    VALIDATION2_UNSTAMPED,
     VALIDATION2_W_HALF_ULP,
 )
 
@@ -930,13 +937,73 @@ def test_the_rs_bar_of_spec_10_is_still_unmet_with_fitted_plate_counts(
 # that would separate them: 5 → 85 %B at tG 20 shares φ0 with run3 and Δφ, tG and s*
 # with run4.
 
-_V2_RS_TRIPWIRE = 0.1
-_V2_TR_TRIPWIRE = {"run3": 0.15, "run4": 0.25}
-_V2_FITTED_WIDTH_BAND = (0.98, 1.02)
+# Every condition the fit never saw: SPEC §10's two (run3, run4) and #46's five. The
+# v0.1 claims (near-rigid residual, the dwell argument, the export-precision band) stay
+# on the first two; the coarse bar, Rs ± 0.3, the critical pair, the widths and the
+# pinned residual run on all seven.
+_V2_ALL_HELD_OUT = VALIDATION2_HELD_OUT + VALIDATION2_HELD_OUT_2026_09_03
+_V2_IDS = ["run3-tG-interpolation", "run4-phi0-shifted"]
+_V2_2026_09_03_IDS = [
+    "run5-trap-hold",
+    "run6-phi0-raised",
+    "E1-axis-test",
+    "run3-rep2",
+    "run3-rep3",
+]
+_V2_ALL_IDS = _V2_IDS + _V2_2026_09_03_IDS
+
+# Regression tripwires on mean |ΔtR| in percent, set just above where each run sits
+# (0.07 / 0.18 / 1.33 / 0.20 / 0.10 / 0.08 / 0.08 today), not at the 2 % contract.
+_V2_TR_TRIPWIRE = {
+    "run3": 0.15,
+    "run4": 0.25,
+    "run5": 1.5,
+    "run6": 0.25,
+    "E1": 0.15,
+    "run3_rep2": 0.15,
+    "run3_rep3": 0.15,
+}
+# #46 item 7: the worst Rs miss per run, pinned within half a hundredth of where it was
+# measured (0.050 / 0.046 / 0.011 / 0.088 / 0.028 / 0.050 / 0.035). run5 is the case where
+# the stamp is conservative: every pair within 0.011 while retention misses by 1.3 %.
+_V2_RS_TRIPWIRE = {
+    "run3": 0.055,
+    "run4": 0.05,
+    "run5": 0.015,
+    "run6": 0.09,
+    "E1": 0.03,
+    "run3_rep2": 0.055,
+    "run3_rep3": 0.04,
+}
+# Fitted-N widths against measured. On a ramp the fit lands within 1–3 % of every width;
+# in run5's hold it under-predicts every width by 6–9 % — the first measurement of the
+# width model at post-gradient elution, pinned as its own band so a fix would show.
+_V2_FITTED_WIDTH_BAND = {
+    "run3": (0.98, 1.02),
+    "run4": (0.98, 1.02),
+    "run5": (0.90, 0.95),
+    "run6": (0.98, 1.03),
+    "E1": (0.98, 1.02),
+    "run3_rep2": (0.98, 1.02),
+    "run3_rep3": (0.97, 1.02),
+}
+# #46 item 3, layer two: each run's mean signed residual, predicted − measured in
+# minutes, pinned where it was measured. run3 and run4 are research #52 §3's values.
+_V2_PINNED_MEAN_OFFSET = {
+    "run3": 0.0122,
+    "run4": 0.0277,
+    "run5": -0.4501,
+    "run6": 0.0339,
+    "E1": 0.0174,
+    "run3_rep2": 0.0130,
+    "run3_rep3": 0.0140,
+}
+# #46 item 5(b): no unstamped run exceeds this mean |ΔtR|, in percent. Provisional;
+# #55 re-pins it with the two guard thresholds. Largest unstamped today: E1 at 0.096 %.
+_V2_UNSTAMPED_CEILING_PERCENT = 0.4
 # How far the four per-peak tR offsets may spread within one run, in minutes.
 # run3 is rigid to within the 0.001 min export step; run4 carries a real slope.
 _V2_OFFSET_SPREAD = {"run3": 0.002, "run4": 0.004}
-_V2_IDS = ["run3-tG-interpolation", "run4-phi0-shifted"]
 
 
 def _v2_fits() -> list[FitResult]:
@@ -959,14 +1026,25 @@ def _v2_table(run_name: str) -> ResolutionTable:
     )
 
 
+def _v2_predicted_and_measured(run_name: str) -> tuple[list[float], list[float]]:
+    """Predicted and measured tR (min) at a held-out run, both in fixture order."""
+    gradient = VALIDATION2_RUNS_BY_NAME[run_name].gradient
+    predicted = [
+        predict_retention(fit.params, VALIDATION2_METHOD, gradient).t_r for fit in _v2_fits()
+    ]
+    measured = [VALIDATION2_MEASURED_TR[run_name][peak.name] for peak in VALIDATION2_PEAKS]
+    return predicted, measured
+
+
 def _v2_offsets(run_name: str) -> list[float]:
     """Predicted − measured tR (min) at a held-out run, in fixture order."""
-    measured = VALIDATION2_MEASURED_TR[run_name]
-    gradient = VALIDATION2_RUNS_BY_NAME[run_name].gradient
-    return [
-        predict_retention(fit.params, VALIDATION2_METHOD, gradient).t_r - measured[peak.name]
-        for fit, peak in zip(_v2_fits(), VALIDATION2_PEAKS, strict=True)
-    ]
+    predicted, measured = _v2_predicted_and_measured(run_name)
+    return [p - m for p, m in zip(predicted, measured, strict=True)]
+
+
+def _v2_mean_magnitude(run_name: str) -> float:
+    """Mean |ΔtR| in percent at a held-out run — the coarse bar's statistic."""
+    return fmean(abs(e) for e in _signed_percent_errors(*_v2_predicted_and_measured(run_name)))
 
 
 def _v2_measured_resolutions(run_name: str, *, width_offset: float = 0.0) -> list[float]:
@@ -1004,7 +1082,7 @@ def test_validation2_method_restates_the_parent_set() -> None:
     assert VALIDATION2_METHOD == LAB_METHOD
 
 
-@pytest.mark.parametrize("run_name", ["run1", "run2", "run3", "run4"])
+@pytest.mark.parametrize("run_name", sorted(VALIDATION2_SOURCE_FILES))
 def test_validation2_fixtures_match_the_source_csvs(run_name: str) -> None:
     """Every fixture cell, re-read from the CSV the instrument wrote.
 
@@ -1015,28 +1093,46 @@ def test_validation2_fixtures_match_the_source_csvs(run_name: str) -> None:
     the programme said 20, and a fixture trusted to the header would have scored the
     held-out run against the wrong gradient while every number still looked plausible.
     The header cannot identify run 4 at all — it and run 3 are both tG = 20.
+
+    Two shapes the 2026-09-03 files added: `E4_Run3.csv` carries two peak tables under
+    `Replicate-N` headings above one programme, so the block is chosen by name; and
+    run 5's programme rises again after its hold (the 95 %B wash), so the ramp ends at
+    the first plateau after it starts, not at the programme's maximum %B.
     """
     path = _VALIDATION2_DIR / VALIDATION2_SOURCE_FILES[run_name]
     text = path.read_text(encoding="utf-8-sig")
     rows = [line.strip().split(",") for line in text.splitlines() if line.strip(", ")]
 
-    peaks = {r[0]: r for r in rows if r[0].startswith("Unknown-")}
+    block = VALIDATION2_REPLICATE_BLOCK.get(run_name)
+    if block is not None:
+        start = next(i for i, r in enumerate(rows) if r[0] == block)
+        stop = next(
+            (i for i, r in enumerate(rows) if i > start and r[0].startswith("Replicate-")),
+            len(rows),
+        )
+        peaks = {r[0]: r for r in rows[start:stop] if r[0].startswith("Unknown-")}
+    else:
+        peaks = {r[0]: r for r in rows if r[0].startswith("Unknown-")}
     programme = [r for r in rows if r[0].isdigit()]
 
     # The gradient the run was actually acquired with: φ0 holds until the ramp starts,
-    # and the ramp ends where %B first reaches its maximum.
+    # and the ramp ends at the first step after which %B stops rising.
     times = [float(r[1]) for r in programme]
     percent_b = [float(r[4]) for r in programme]
     flows = {float(r[2]) for r in programme}
     ramp_start = next(i for i in range(len(percent_b)) if percent_b[i + 1] > percent_b[i])
-    ramp_end = percent_b.index(max(percent_b))
+    ramp_end = next(
+        i for i in range(ramp_start + 1, len(percent_b)) if percent_b[i + 1] <= percent_b[i]
+    )
     gradient = VALIDATION2_RUNS_BY_NAME[run_name].gradient
 
     assert flows == {VALIDATION2_METHOD.flow}
     assert gradient.t_init == pytest.approx(times[ramp_start], abs=0.0)
     assert gradient.t_gradient == pytest.approx(times[ramp_end] - times[ramp_start], abs=0.0)
-    assert gradient.phi0 * 100.0 == pytest.approx(percent_b[ramp_start], abs=0.0)
-    assert gradient.phif * 100.0 == pytest.approx(percent_b[ramp_end], abs=0.0)
+    # φ is a fraction internally and %B only at the boundary, so the file's %B is
+    # converted, not the fixture's φ: 0.55 × 100 is 55.00000000000001, 55 / 100 is 0.55.
+    assert gradient.phi0 == pytest.approx(percent_b[ramp_start] / 100.0, abs=0.0)
+    assert gradient.phif == pytest.approx(percent_b[ramp_end] / 100.0, abs=0.0)
 
     measured_t_r = VALIDATION2_MEASURED_TR.get(run_name) or {
         peak.name: (peak.t_r_run1 if run_name == "run1" else peak.t_r_run2)
@@ -1070,21 +1166,20 @@ def test_validation2_scouting_pair_fits_without_a_low_confidence_flag() -> None:
         assert fit.plate_count is not None, peak.name
 
 
-@pytest.mark.parametrize("run_name", VALIDATION2_HELD_OUT, ids=_V2_IDS)
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
 def test_validation2_held_out_runs_are_predicted_within_the_trust_bar(run_name: str) -> None:
-    """Fit tG = 15/40 at 5 → 95 %B, predict two runs the fit never saw.
+    """Fit tG = 15/40 at 5 → 95 %B, predict seven runs the fit never saw.
 
     run3 varies only tG and lands at 0.07% mean — the tightest held-out retention
     result in the project, against a 2% bar. run4 also moves φ0 to 15 %B, an axis the
-    scouting pair holds fixed, and costs a factor of 2.4 (0.18%). Both tripwires sit an
-    order of magnitude below the contract for the usual reason: a drift to 1.9% would
-    clear the bar with nobody noticing.
+    scouting pair holds fixed, and costs a factor of 2.4 (0.18%). The 2026-09-03 runs
+    (#46 item 3, layer one) follow: run6 at 25 %B (0.20%), E1 (0.10%), run3's two
+    replicates (0.08%), and run5, whose peaks the engine puts in the post-gradient hold
+    and flags low-confidence, still inside the bar at 1.33%. Every tripwire sits just
+    above its run for the usual reason: a drift to 1.9% would clear the contract with
+    nobody noticing.
     """
-    gradient = VALIDATION2_RUNS_BY_NAME[run_name].gradient
-    predicted = [
-        predict_retention(fit.params, VALIDATION2_METHOD, gradient).t_r for fit in _v2_fits()
-    ]
-    measured = [VALIDATION2_MEASURED_TR[run_name][peak.name] for peak in VALIDATION2_PEAKS]
+    predicted, measured = _v2_predicted_and_measured(run_name)
 
     magnitudes = [abs(error) for error in _signed_percent_errors(predicted, measured)]
     assert fmean(magnitudes) <= _LAB_AVERAGE_BAR
@@ -1194,30 +1289,33 @@ def test_validation2_offset_growth_is_not_explained_by_any_dwell_error() -> None
     assert shifted - baseline > 10.0 * VALIDATION2_TR_GRANULARITY, (baseline, shifted)
 
 
-@pytest.mark.parametrize("run_name", VALIDATION2_HELD_OUT, ids=_V2_IDS)
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
 def test_validation2_fitted_plate_counts_predict_the_held_out_widths(run_name: str) -> None:
-    """Widths at 0.988–1.009× measured, against the 0.99–1.16× the parent sample gives.
+    """Widths at 0.988–1.009× measured on runs 3 and 4, against the 0.99–1.16× the parent
+    sample gives.
 
     Rs needs the widths as much as the separations, so this is half the ±0.3 result.
-    The band is deliberately tighter than `_FITTED_WIDTH_BAND`: on this sample the
-    fitted N reproduces the held-out widths to within the export's own precision, and
-    recording that as 0.9–1.25× would throw the finding away.
+    The bands are deliberately tighter than `_FITTED_WIDTH_BAND`: on this sample the
+    fitted N reproduces the held-out widths to within the export's own precision on
+    runs 3, 4 and E1, and within 3 % on run6 and the replicates; recording that as
+    0.9–1.25× would throw the finding away. run5's band is a different fact: in the
+    55 %B hold every width comes out 6–9 % under, pinned as its own band.
     """
     ratios = {
         peak.name: peak.width.w_half / VALIDATION2_MEASURED_W_HALF[run_name][peak.name]
         for peak in _v2_table(run_name).peaks
     }
 
-    low, high = _V2_FITTED_WIDTH_BAND
+    low, high = _V2_FITTED_WIDTH_BAND[run_name]
     assert all(low <= ratio <= high for ratio in ratios.values()), ratios
 
 
-@pytest.mark.parametrize("run_name", VALIDATION2_HELD_OUT, ids=_V2_IDS)
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
 def test_validation2_critical_pair_is_identified_correctly(run_name: str) -> None:
     """The decision-relevant output: which pair a chromatographer has to work on.
 
-    Unknown-3/Unknown-4 is both the predicted and the measured minimum at both held-out
-    conditions, and it is a real contest here — the runner-up sits at 2.6, close enough
+    Unknown-3/Unknown-4 is both the predicted and the measured minimum at every held-out
+    condition, and it is a real contest here — the runner-up sits at 2.6, close enough
     that getting the ranking right is an actual claim rather than an artefact of one
     pair being 100× worse than the others.
     """
@@ -1233,9 +1331,9 @@ def test_validation2_critical_pair_is_identified_correctly(run_name: str) -> Non
     assert predicted_critical == min(range(len(measured)), key=lambda i: measured[i])
 
 
-@pytest.mark.parametrize("run_name", VALIDATION2_HELD_OUT, ids=_V2_IDS)
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
 def test_the_rs_bar_of_spec_10_is_met_on_the_near_critical_pair(run_name: str) -> None:
-    """SPEC §10's `Rs ± 0.3`, met at two held-out conditions on a near-critical pair.
+    """SPEC §10's `Rs ± 0.3`, met at seven held-out conditions on a near-critical pair.
 
     The counterpart of `test_the_rs_bar_of_spec_10_is_still_unmet_with_fitted_plate_counts`:
     that one pins why the Rs 30–116 sample cannot answer this question, this one answers
@@ -1245,8 +1343,13 @@ def test_the_rs_bar_of_spec_10_is_met_on_the_near_critical_pair(run_name: str) -
     and the critical pair itself sits at Rs 1.75–1.78, in the 1–2 band where ±0.3 is the
     tolerance a method decision actually turns on.
 
+    #46 item 7 extends it to a raised start (run6, 0.088 worst), a hold (run5, 0.011 —
+    peaks leaving in a hold move together, so a 1.3 % retention miss costs the Rs
+    nothing), the axis test (E1, 0.028) and run3's replicates; the worst miss per run is
+    pinned as a tripwire.
+
     Scope, so the SPEC sentence this backs is not read wider than the evidence: one
-    sample, two held-out conditions, one gradient axis and one composition axis.
+    sample, one gradient axis and one composition axis, one post-gradient hold.
     """
     table = _v2_table(run_name)
     measured = _v2_measured_resolutions(run_name)
@@ -1254,7 +1357,7 @@ def test_the_rs_bar_of_spec_10_is_met_on_the_near_critical_pair(run_name: str) -
     misses = [abs(pair.rs - m) for pair, m in zip(table.pairs, measured, strict=True)]
     assert all(miss <= _RS_BAR for miss in misses), misses
 
-    assert max(misses) <= _V2_RS_TRIPWIRE, misses
+    assert max(misses) <= _V2_RS_TRIPWIRE[run_name], misses
 
 
 def test_validation2_resolution_is_inside_the_measurement_band() -> None:
@@ -1284,3 +1387,125 @@ def test_validation2_resolution_is_inside_the_measurement_band() -> None:
                 low,
                 high,
             )
+
+
+# --- #46's bar on the 2026-09-03 runs (issue #53's bench session) ---
+#
+# Five more conditions the fit never saw, on the same sample and the same scouting pair:
+# the trap run (peaks in a hold), a raised start, the φ0-vs-Δφ axis test, and run3 twice
+# more. The coarse bar, Rs ± 0.3, the critical pair and the widths run on them above,
+# alongside runs 3 and 4. What is added here is the rest of #46's resolution, items 3, 5
+# and 10 — the pinned residual, the stamp's honesty, and the repeatability floor with the
+# Rs band it sets — each as a measurement. The *reading* of E1 (predominantly φ0) is
+# #55's, and which runs the app's diagnostics stamp is a fixture fact here, asserted
+# nowhere yet.
+
+
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
+def test_validation2_mean_residual_is_pinned_within_the_repeatability_floor(run_name: str) -> None:
+    """#46 item 3, layer two: each run's mean signed residual, pinned where it was measured.
+
+    Predicted − measured, mean over the four peaks, in minutes, within E4's floor of
+    0.002 min — so a change to the engine that moves any run by more than the instrument
+    can repeat is a failing test, whichever direction it moves. This is the tolerance
+    #46 item 10 says replaces the interim ± 0.10 %; on a 16 min peak 0.002 min is 0.012 %.
+    """
+    pinned = _V2_PINNED_MEAN_OFFSET[run_name]
+    assert fmean(_v2_offsets(run_name)) == pytest.approx(pinned, abs=VALIDATION2_REPEATABILITY_TR)
+
+
+def test_validation2_repeatability_floor_is_what_e4_measured() -> None:
+    """E4 (#53): run3's condition three times, and how far the instrument repeats itself.
+
+    Every peak's tR spread across the three determinations is at most 0.002 min, and
+    every W½ spread is at most one export step. The constants the other tests lean on are
+    asserted against the data here, not just typed in next to it. Before E4, every ratio
+    in the research rested on single injections and the floor was a literature ±0.002.
+    """
+
+    def spread(table: dict[str, dict[str, float]], name: str) -> float:
+        values = [table[run][name] for run in VALIDATION2_RUN3_DETERMINATIONS]
+        return max(values) - min(values)
+
+    t_r_spreads = [spread(VALIDATION2_MEASURED_TR, peak.name) for peak in VALIDATION2_PEAKS]
+    w_half_spreads = [spread(VALIDATION2_MEASURED_W_HALF, peak.name) for peak in VALIDATION2_PEAKS]
+
+    assert all(s <= VALIDATION2_REPEATABILITY_TR + 1e-12 for s in t_r_spreads), t_r_spreads
+    assert all(s <= VALIDATION2_REPEATABILITY_W_HALF + 1e-12 for s in w_half_spreads), (
+        w_half_spreads
+    )
+    # And the floor is real, not slack: at least one peak uses all of it.
+    assert max(t_r_spreads) == pytest.approx(VALIDATION2_REPEATABILITY_TR, abs=1e-12), t_r_spreads
+
+
+@pytest.mark.parametrize("run_name", _V2_ALL_HELD_OUT, ids=_V2_ALL_IDS)
+def test_validation2_resolution_is_inside_the_repeatability_band(run_name: str) -> None:
+    """#46 item 10: the width replicates set the band on every Rs tripwire.
+
+    `test_validation2_resolution_is_inside_the_measurement_band` asks whether the
+    prediction is inside what the *export's rounding* allows, and runs 5 and 6 are not
+    (run6 by 0.06–0.09 on every pair). This asks the question the instrument can
+    actually answer: inside what the *instrument's repeatability* allows — E4's 0.002 min
+    on tR and one export step on W½. Every predicted Rs at all seven held-out conditions
+    is, run6 included. So no Rs residual on this sample is resolvable above the noise the
+    replicates measured, which is the sharper form of "Rs ± 0.3 is met".
+    """
+    bands = _resolution_bands(
+        VALIDATION2_MEASURED_TR[run_name],
+        VALIDATION2_MEASURED_W_HALF[run_name],
+        width_ulp=VALIDATION2_REPEATABILITY_W_HALF,
+        t_r_ulp=VALIDATION2_REPEATABILITY_TR / 2.0,
+    )
+    for pair, (low, high) in zip(_v2_table(run_name).pairs, bands, strict=True):
+        assert low <= pair.rs <= high, (pair.earlier.name, pair.later.name, pair.rs, low, high)
+
+
+def test_validation2_residual_at_a_raised_phi0_is_not_below_the_scouting_phi0() -> None:
+    """#46 item 3's one structural claim per sample — and what it does not claim.
+
+    Starting above the scouting pair's 5 %B has not, on this sample, made the residual
+    smaller: run4 (15 %B) and run6 (25 %B) both sit above run3 (5 %B). The doubling rule
+    (×2.1 per 10 %B) is *not* asserted — it fails here (+0.07 / +0.18 / +0.20 %: one step
+    up, then flat) while holding on the three-peak sample, and the bar records only the
+    ordering both samples share.
+    """
+    baseline = fmean(_v2_offsets("run3"))
+    for run_name in ("run4", "run6"):
+        assert fmean(_v2_offsets(run_name)) >= baseline, (run_name, baseline)
+
+
+def test_validation2_trap_run_elutes_every_peak_in_the_hold_and_says_so() -> None:
+    """run5: the engine's regime flag, on the one run that exercises it.
+
+    15 → 55 %B at tG 25 puts s* 0.35 window-widths below the scouting bracket, and the
+    engine predicts all four peaks *after* the ramp ends, in the 55 %B hold, flagged
+    low-confidence. The measured file agrees: every apex is later than the 25.5 min the
+    ramp ends at. This is #46 item 4's regime row at the engine level; the app-level
+    diagnostics table is not asserted here.
+    """
+    gradient = VALIDATION2_RUNS_BY_NAME["run5"].gradient
+    ramp_end = gradient.t_init + gradient.t_gradient
+    for fit, peak in zip(_v2_fits(), VALIDATION2_PEAKS, strict=True):
+        result = predict_retention(fit.params, VALIDATION2_METHOD, gradient)
+        assert result.regime == "post_gradient", peak.name
+        assert result.low_confidence, peak.name
+        assert VALIDATION2_MEASURED_TR["run5"][peak.name] > ramp_end, peak.name
+
+
+def test_validation2_stamped_runs_miss_by_more_than_every_unstamped_run() -> None:
+    """#46 item 5: the falsifiable content of *indicative, not decision-grade*.
+
+    (a) Every run that draws the stamp has a mean |ΔtR| above every run that does not —
+    today 0.18 % (run4) against 0.096 % (E1) at the boundary — which is what makes the
+    stamp honest rather than decorative. (b) No unstamped run exceeds 0.4 % mean |ΔtR|,
+    provisional until #55 re-pins it with the two guard thresholds.
+
+    Which runs are stamped is a fixture fact (`VALIDATION2_STAMPED`), by the two guards
+    #44 decided. That the app's diagnostics draw it on exactly those runs is asserted
+    nowhere yet; #55 owns that.
+    """
+    stamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_STAMPED}
+    unstamped = {run: _v2_mean_magnitude(run) for run in VALIDATION2_UNSTAMPED}
+
+    assert min(stamped.values()) > max(unstamped.values()), (stamped, unstamped)
+    assert max(unstamped.values()) <= _V2_UNSTAMPED_CEILING_PERCENT, unstamped
