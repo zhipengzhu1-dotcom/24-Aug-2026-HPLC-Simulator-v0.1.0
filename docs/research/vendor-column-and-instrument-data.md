@@ -31,7 +31,10 @@ tabulated separately), so a shipped instrument record may carry a vendor figure 
 labelled upper bound with its definition attached, and the user still declares or measures.
 Four of the eight vendor sites block automated access outright (§9); every readable terms
 page forbids commercial redistribution, and two (Shimadzu, Thermo) forbid systematic
-retrieval or scraping in so many words (§5).
+retrieval or scraping in so many words (§5). **Second pass, same day (§10):** on the
+driver's instruction the blocked pages were fetched with a real browser; the product page
+shows Waters states the architecture as a spec field too, and Waters' own white paper
+reports the lab's 0.375 mL dwell as a *measured* H-Class PLUS figure.
 
 ---
 
@@ -63,18 +66,18 @@ own entry; "brand" means it is carried only by the product name.
 
 | Vendor / line | Read from | L, i.d., $d_p$ | Pore size | Phase, part no. | Architecture | $V_0$ / porosity |
 |---|---|---|---|---|---|---|
-| Waters CORTECS | product page **blocked**; KB + care manual (mirror) | in the part's title and URL slug | in title ("90Å") | yes | prose/brand ("solid-core"); not read as a field | **formula only** (KB WKB28079: 0.66 / 0.49); "empty column volume" table in care manual |
-| Agilent Poroshell 120 | product/store pages **blocked**; brochure 5990-5951EN (mirror) | ordering grid (size × phase) | per bonded phase (120 Å) | yes | prose ("superficially porous", 1.7 µm core + 0.5 µm shell) | none |
+| Waters CORTECS | product page **blocked** on the first pass, read in §10; KB + care manual (mirror, then direct) | fields on the product page (§10) | field (90 Å) | yes | **explicit field: "Particle Technology: Solid Core"** (§10) | **formula only** (KB WKB28079: 0.66 / 0.49); "empty column volume" table in care manual |
+| Agilent Poroshell 120 | family page read in §10; store page **blocked**; brochure 5990-5951EN (mirror) | ordering grid (size × phase) | per bonded phase (120 Å) | yes | prose ("superficially porous", 1.7 µm core + 0.5 µm shell) | none |
 | Phenomenex Kinetex | product page + family page, direct | fields | in title only | yes | family-page prose ("solid, non-porous silica core surrounded by a porous outer layer") | none |
 | Thermo Accucore | product page + technical manual, direct | fields | field (80 Å) | yes | **explicit field: "Particle Shape: Solid Core"**; manual: "Porous layer depth = 0.5 µm" | none |
-| Merck/Supelco Ascentis Express | site **unreachable**; 2008 catalogue (mirror) | ordering grid (i.d. × length × phase) | not in the grid | yes | prose ("1.7 μm solid core and a 0.5 μm porous shell") | none |
+| Merck/Supelco Ascentis Express | site **unreachable** on the first pass, product page read in §10; 2008 catalogue (mirror) | ordering grid; fields on the product page (§10) | field on the product page (90 Å; §10) | yes | **field: "Matrix: Fused-Core particle platform, superficially porous particle"** (§10); FAQ prose "1.7 μm solid core and a 0.5 μm porous shell" | none |
 | YMC-Triart | product list + product page, direct | table | table (120 Å) | yes | **not stated either way** | none |
 | Shimadzu Shim-pack Scepter | shop page, direct | fields | field (12 nm) | yes | prose ("Fully Porous Hybrid Particle Based Column Series") | none |
-| Tosoh TSKgel ODS-100V | product pages **blocked**; instruction manual (Asia site), direct | table (Part No., mm(I.D.) × cm(L)) | not in the manual | yes | not stated | none |
+| Tosoh TSKgel ODS-100V | product pages **blocked** on the first pass, read in §10; instruction manual (Asia site), direct | table in the manual; fields on the product page (§10) | field on the product page (10 nm; §10) | yes | not stated (page or manual) | none |
 
-[verified] for every cell whose source is named "direct" or "(mirror)"; the two "blocked"
-rows are [verified] only for what the KB, manual or brochure states, and the product page's
-own field list is **unread** (§8).
+[verified] for every cell whose source is named "direct" or "(mirror)"; cells marked §10
+are [verified] from the second pass. Only the Agilent store page's field list remains
+**unread** (§8, §10).
 
 ### 2.2 Per-vendor detail and the worked example
 
@@ -171,7 +174,10 @@ is a placeholder (§5.8).
 ### 2.3 What this means for the architecture field
 
 [derived] The field the $t_0$ estimator turns on (#24, #33) is *explicit* for exactly one
-vendor read (Thermo). For Waters, Agilent, Phenomenex and Supelco it is a brand-level
+vendor read on the first pass (Thermo); the second pass (§10) makes it **three** — Waters
+("Particle Technology: Solid Core") and Supelco ("Matrix: … superficially porous particle")
+state it as a field on the part's own page. For Agilent, Phenomenex and (in the mirrored
+catalogue) Supelco it is a brand-level
 sentence on a family page or brochure that a human must map to `core_shell`; for Shimadzu
 it is a brand-level sentence mapping to `fully_porous`; for YMC and Tosoh it is not stated
 at all in what was read. A shipped record therefore needs the architecture to carry its
@@ -231,10 +237,14 @@ the finding. None of this is legal advice; §5.11 marks what is judgement.
 
 ### 5.1 Waters — terms page blocked
 `https://www.waters.com/nextgen/us/en/legal/terms-of-use.html` → HTTP 403 (§9). The KB
-articles were served without a visible licence statement. **Unread.**
+articles were served without a visible licence statement. **Unread.** Second pass (§10):
+the URL is a Waters **404**, not a block; no Waters web terms text was located.
 
 ### 5.2 Agilent — terms page blocked; document notice read
-`https://www.agilent.com/home/terms-of-use` → HTTP 403. The Specification Compendium
+`https://www.agilent.com/home/terms-of-use` → HTTP 403. Second pass (§10): **read**; it
+authorises viewing "solely for non-commercial use within your organization" and forbids
+access "programmatically by macro, robot, or other automated means" — quoted in §10.3.
+The Specification Compendium
 (ref. 17, mirror) carries Agilent's standard notice [verified]:
 
 > No part of this manual may be reproduced in any form or by any means (including
@@ -271,7 +281,8 @@ The specification and case-study PDFs carry "© 2025 Thermo Fisher Scientific In
 rights reserved." / "© 2022 …" [verified].
 
 ### 5.5 Merck / Sigma-Aldrich — unreachable
-Product and terms URLs both timed out (§9). **Unread.** The 2008 catalogue (mirror) carries
+Product and terms URLs both timed out (§9). **Unread.** Second pass (§10): the product
+page reads; the terms URL now returns an Akamai 403. Terms still **unread**. The 2008 catalogue (mirror) carries
 "©2008 Sigma-Aldrich Co. All rights reserved." and nothing on reuse [verified].
 
 ### 5.6 YMC — *About Site* (ref. 21, read)
@@ -366,7 +377,9 @@ for a named mixer. The lab's 0.375 mL sits under that bound, and Thermo's compet
 (§6.2) independently quotes "Waters ACQUITY H-Class with 100 µL mixer: 380 µL". The lab's
 value is therefore the *instrument's own* figure in the sense the map already decided
 (#27 close-out), and consistent with the vendor's spec — but it is a bound, not a
-measurement, and the app should keep saying so.
+measurement, and the app should keep saying so. **Superseded in part by §10.2:** Waters'
+white paper 720005723 reports **0.375 mL** as the *measured* dwell of an ACQUITY UPLC
+H-Class PLUS (quaternary) in default configuration — the lab's number to three digits.
 
 **Agilent — 1290 Infinity II and 1260 Infinity II.** Every agilent.com host refused (§9).
 The *InfinityLab LC Series Specification Compendium* (manual part 01200-90062 Rev. C,
@@ -497,17 +510,26 @@ instruments, and never for $t_0$.
 1. The field list on the **Waters** product page for 186008694 (and the CORTECS family
    page's particle figures: core 1.1 µm, ρ 0.7, pore volume 0.26 cm³/g, 100 m²/g, carbon
    6.6 % — all seen only in a search-index snippet) — blocked. Driver to read by hand.
+   *Second pass (§10): product page read — carbon load is **6.4 %**, not 6.6 %; the family
+   page carries none of the particle-structure numbers, which remain unverified.*
 2. The field list on **Agilent**'s store page for 695775-902 and whether "superficially
    porous" appears there as a field — blocked; the 2012 brochure is what was read and may
-   not be the current edition.
+   not be the current edition. *Second pass (§10): store page still blocked; the family
+   page has a pore-size facet and prose only.*
 3. The **sigmaaldrich.com** product page for 53823-U and Merck's web terms — unreachable.
+   *Second pass (§10): product page read; terms still blocked.*
 4. Whether **Tosoh**'s product pages state pore size or architecture — Cloudflare challenge.
+   *Second pass (§10): read — pore size yes (10 nm), architecture no.*
 5. **Agilent's definition of delay volume** and the sampler's contribution — no Agilent
    page defining it was readable; the community-forum sentence is unverified.
+   *Second pass (§10): the forum sentence is verified as written by a forum member, not
+   as an Agilent statement; the module manuals are still blocked.*
 6. Any **Shimadzu LC-40 (Nexera X3/XR/XS)** system delay volume — not published on any page
    or PDF read; the 42 µL figure is the 2010 LC-30 generation.
 7. Waters' own **specification sheet 720003294** wording ("Dwell volume (total system)")
    — blocked; the KB articles carry the same numbers and were used instead.
+   *Second pass (§10): read — "Dwell volume (total system) <400 µL (includes standard
+   100 µL mixer)", verbatim.*
 8. Whether the mirrored PDFs (Agilent compendium Rev. C 2018, Poroshell brochure 2012,
    Supelco catalogue 2008, Waters BEH care manual 2004, Shimadzu C196-E095 2019 and
    C196-E071 2010) are the current editions — document numbers are given so the driver
@@ -518,7 +540,8 @@ instruments, and never for $t_0$.
 ## 9. Sites that refused automated access
 
 For the driver to fetch by hand. Failure mode as observed with WebFetch and with `curl`
-(desktop user-agent, HTTP/1.1 and HTTP/2 tried).
+(desktop user-agent, HTTP/1.1 and HTTP/2 tried). **§10 records a second pass with a real
+browser on the driver's instruction; the table below is the first-pass finding.**
 
 | Host | URL tried | Result |
 |---|---|---|
@@ -542,6 +565,186 @@ Reachable without incident: support.waters.com, phenomenex.com (and its blob sto
 thermofisher.com and documents.thermofisher.com, ymc.co.jp and ymcamerica.com,
 shimadzu.com, ssi.shimadzu.com and shopshimadzu.com, separations.asia.tosohbioscience.com
 (PDFs), hplccolumns.org, hplc.eu, and the mirrors named in the references.
+
+## 10. Second pass: the blocked pages, fetched with a real browser
+
+**Posture change, recorded.** §1 said "nothing was worked around". The same day, the
+driver granted the session a browser (`.claude/settings.local.json`: Playwright with
+`playwright-stealth`) and asked for the §9 list to be fetched. Each URL was opened once
+in the installed Google Chrome, headless, with the stealth patches; page text was saved
+and read; PDFs were saved and text-extracted. No site was crawled and no listing was
+walked. What that means under each vendor's terms is in §10.3 — Agilent's terms forbid
+exactly this, and the driver should weigh that before any repeat.
+
+### 10.1 What the second pass returned
+
+| URL (first-pass row in §9) | Second pass |
+|---|---|
+| waters.com product page 186008694 | **200**, full spec table (§10.2) |
+| waters.com CORTECS family page | **200**; prose only, no particle-structure numbers |
+| waters.com terms of use | **404** (Waters' own "page can't be found"), not a block |
+| waters.com 720003294 H-Class spec sheet | **200**, PDF (AES-encrypted; opens without a password) |
+| waters.com 720005723 dwell white paper | **200**, PDF (encrypted, same) |
+| waters.com 720004750 CORTECS care manual | **200**, PDF |
+| help.waters.com 715005049 H-Class system guide | **200**, PDF, 116 pages |
+| help.waters.com 720008980 care and use manual | **200**, PDF |
+| agilent.com store page 695775-902 | **403** still |
+| agilent.com Poroshell 120 family page | **200** |
+| agilent.com terms of use | **200** |
+| agilent.com `/cs/library` brochure, ordering guide, G7112B and G7104A manuals | **403** still, every path |
+| lc.help.agilent.com G7120A page | **403** still (S3 "AccessDenied") |
+| community.agilent.com thread | **200**, full thread |
+| sigmaaldrich.com 53823-U product page | **200** |
+| sigmaaldrich.com terms of use | **403** (Akamai) — a block now, not a timeout |
+| tosohbioscience.com ODS-100V product page | **200**; the Cloudflare challenge cleared |
+| fishersci.com CORTECS and Ascentis listings | **200**, spec fields rendered |
+| glsciencesinc.com equivalents chart | **200** |
+
+Playwright with real Chrome and stealth gets past Akamai on waters.com and sigmaaldrich.com
+product pages and past Cloudflare on tosohbioscience.com; it does **not** get past
+Akamai on agilent.com's store and document paths, or on sigmaaldrich.com's legal path. A
+third pass would need the driver's own browser session; given §10.3, hand-reading is the
+right tool there anyway.
+
+### 10.2 What the pages say, and what it changes above
+
+**Waters product page 186008694 (ref. 41) [verified].** A "Specifications" table with
+these fields, in this order: Chemistry C18; Separation Mode Reversed Phase; Particle
+Substrate Silica; pH Range Min 2 / Max 8; Temperature Limits 45 C; Maximum Pressure
+18000 psi (1240 Bar); Endcapped Yes; Bonding Technology Shield RP18; Silanol Activity Low;
+Particle Shape Spherical; Particle Size 1.6 µm; Endfitting Type Parker-style; Pore Size
+90 Å; Format Column; Surface Area 100 (no unit shown); System UPLC, UHPLC; **Particle
+Technology Solid Core**; USP Classification L1; Inner Diameter 2.1 mm; Length 100 mm;
+Carbon Load **6.4 %**; eCord Yes; UNSPSC 41115709; Brand CORTECS; Units per Package 1 pk.
+The product description adds, in prose, "The solid core particle morphology offers high
+efficiency and lower backpressures when compared to fully porouse [sic] particles".
+
+[derived] Three corrections to the first pass. (i) Waters states the architecture as a
+**field**, so §2.3's count of vendors with an explicit field rises from one to three
+(Thermo, Waters, Supelco — next paragraph). (ii) Geometry, particle size and pore size are
+fields, not only title tokens. (iii) The search-index snippet's carbon load (6.6 %, §8
+item 1) was wrong; the page says 6.4 %. The particle-structure numbers from that snippet
+(core 1.1 µm, ρ 0.7, pore volume, 100 m²/g) are **not** on the product page or the family
+page; only "Surface Area 100" survives, unit unstated. §3 item 3 stands as "unverified".
+
+**Sigma-Aldrich 53823-U (ref. 51) [verified].** Fields: *L × i.d. 10 cm × 2.1 mm; Particle
+size 2.7 μm; Matrix active group C18 (RP18), C18 (octadecyl) phase; Pore size 90 Å;
+Matrix Fused-Core particle platform, superficially porous particle*; and under
+properties *surface area 135 m2/g, impurities <5 ppm metals*. The page's FAQ says "The
+Fused-Core particle consists of a 1.7 μm solid core and a 0.5 μm porous shell" and, on
+carbon load, that "%Carbon … can not be compared to traditional porous particles"; the
+coverage is given as 3.5 µmol/m². [derived] So for Supelco, pore size *is* a field on the
+part page (the 2008 grid lacked it) and the architecture is a field ("Matrix"), which
+§2.1 and §2.3 now say.
+
+**Tosoh 0021940 (ref. 52) [verified].** This URL is the 4.6 mm × 10 cm part, not the lab
+example's 2.0 × 10 (0021938). Fields: *Column Diameter (mm) 4.6; Column Length (cm) 10;
+Housing Material Stainless Steel; Particle Size (µm) 3; Pore Size (nm) 10; Mode Reversed
+Phase; Base Material Silica*. Nothing on architecture. [derived] Pore size is a field, in
+nm like Shimadzu's; the "unstated" third state for `architecture` (§7 item 5) is still
+needed for Tosoh.
+
+**Agilent Poroshell 120 family page (ref. 48) [verified].** A family page with a
+"Pore Size" filter facet and a part list ("InfinityLab Poroshell 120 Aq-C18 2.1 x 100 mm,
+2.7 µm", …); the architecture is prose: "Superficially porous, core-shell particles that
+provide both improved throughput and higher resolution". No per-part spec table here; the
+store page that would hold one is still blocked. §2.1's Agilent row is unchanged in
+substance.
+
+**Waters specification sheet 720003294EN, June 2016 (ref. 43) [verified].** Under
+"ACQUITY UPLC H-Class System Features": "Dwell volume (total system)  <400 µL (includes
+standard 100 µL mixer)". §8 item 7 is resolved: the KB wording and the spec sheet agree.
+
+**Waters white paper 720005723EN, April 2018 (ref. 44) [verified].** Definition: "Dwell
+volume is the volume required for the change in a gradient to reach the column, or the
+volume difference between the point of mixing and the head of the column", "also commonly
+referred to as gradient delay volume". Method: 0–100 % B step with 10 mg/L caffeine in B,
+273 nm, a restrictor in place of the column, systems "in [their] default configuration".
+Figure 2, "System Dwell Volume (VD) (mL)": Alliance HPLC (Quaternary) 1.15; ACQUITY Arc
+(Quaternary) 1.19 (Path 1) / 0.770 (Path 2); **ACQUITY UPLC H-Class PLUS (Quaternary)
+0.375**; ACQUITY UPLC I-Class PLUS (Binary) 0.073; with the caveat "Values may vary from
+system to system based on column heater, tubing, and flow cell configuration". Table 1,
+extra-column band broadening measured with a zero-dead-volume union in place of the
+column, 40 Hz: ACQUITY UPLC H-Class PLUS with CH-A and ACQUITY PDA detector **8 µL at 5σ,
+7 µL at 4σ**; I-Class PLUS SM-FTN 7.5 / 5; Arc 25 / 19; Alliance 43–45 / 30–34.
+
+[derived] This is the most consequential page of the pass. The lab's dwell, 0.375 mL,
+recorded in `validation/method.csv` as "from instrument spec sheet, NOT measured", is
+Waters' **measured** figure for a representative H-Class PLUS in default configuration —
+identical to three digits, so that is almost certainly where the lab's number came from.
+It is neither the "<400 µL" bound (§6.1) nor a measurement on *this* instrument. The
+profile schema in §7 item 3 therefore needs a fourth `dwell_source` state,
+`vendor_measured_representative` (vendor's bench, vendor's configuration, cited document),
+between `vendor_spec` and `measured`; the lab's own record should carry that state, ref.
+44, and the configuration caveat. The 7–8 µL extra-column figure is the instrument-side
+input #101's budget needs and was not available anywhere on the first pass. None of this
+moves the value: 0.375 mL stays the instrument's own number, per the #27 close-out.
+
+**Waters care manuals 720004750EN (CORTECS, December 2022; ref. 45) and 720008980EN
+(July 2025; ref. 47) [verified].** Both carry the same "Table 1. Empty Column Volumes in
+mL (multiply by 10 for flush solvent volumes)" as the 2004 BEH manual (§2.2): 2.1 mm ×
+100 mm → 0.4 mL. Geometric volume, not $V_0$; §3 item 2 stands, now from the CORTECS
+document itself.
+
+**Waters H-Class system guide 715005049 Rev. C, August 2016 (ref. 46) [verified].** No
+dwell figure. It says "the dwell volumes of the ACQUITY UPLC H-Class system are far
+smaller than those of a conventional HPLC system, often a gradient hold is required", and
+recommends a pre-injector volume "to maintain a constant dwell volume to column volume
+ratio on both systems" for transfer. Nothing for the schema.
+
+**Agilent community thread (ref. 50) [verified].** The sentence quoted in §6.1 is real and
+is by a forum member ("ankugler"), replying to the question: "It always depends on the way
+you are calculating or defining your delay volume. The volumes that are provided in the
+manuals typically represent only the physical contribution just of the module itself".
+The same reply gives capillary volumes per 100 mm (0.17 mm i.d. 2.27 µL; 0.12 mm 1.13 µL;
+0.075 mm 0.44 µL) and a 6-port valve's port-to-port volume of about 0.51 µL. [derived]
+This supports §6.1's reading of Agilent's numbers as module-only, but as a member's
+statement, not Agilent's; §8 item 5 is narrowed, not closed.
+
+**Fisher Scientific listings and the GL Sciences chart [verified].** Fisher's CORTECS
+listing (50-138-4990) carries "Length 100 mm, Diameter 2.1 mm" fields plus Waters' prose;
+its Ascentis listing carries "Diameter (Metric) 2.1 mm, Length (Metric) 10 cm". The GL
+Sciences page is an interactive cross-reference ("51 equivalents") with no geometry. §4's
+conclusion — no machine-readable catalogue — is unchanged.
+
+### 10.3 Terms, second pass
+
+**Agilent (ref. 49) [verified].** "Agilent Technologies, Inc. ("Agilent") authorizes you
+to view and download the materials at this website ("Site") solely for non-commercial
+use within your organization to acquire, use, and support Agilent products and services
+… You may not modify the materials at this Site in any way or reproduce or publicly
+display, perform, or distribute or otherwise use them for any public or commercial
+purpose. For purposes of these Terms, any use of these materials on any other website or
+networked computer environment for any purpose is prohibited." And under Restrictions:
+"You may not access, scrape, search, crawl or otherwise attempt to use or extract data
+from this Site in any manner other than as expressly permitted by these Terms. You may
+only access and use this Site by manual request and not programmatically by macro,
+robot, or other automated means … (v) use any device, hardware or software to bypass any
+security system on this Site".
+
+[derived] Two consequences. The second pass itself — a scripted browser with detection
+evasion — is what this clause names, so agilent.com should be read by hand from here on
+and the two Agilent facts above are recorded for the driver to re-confirm that way. And
+for the seed library, "any other website or networked computer environment" is the
+Fisher clause in Agilent's words (§5.9): typed facts with a citation, not copied
+material, remain the posture in §7 item 4.
+
+**Waters.** No web terms text found (the URL is a 404); the documents read carry only
+"©20xx Waters Corporation" lines. **Sigma-Aldrich.** Terms still blocked. **Tosoh.** The
+terms page is still lorem ipsum (§5.8).
+
+### 10.4 Net effect on §7
+
+- Item 1: `architecture` comes as a field from three vendors (Thermo, Waters, Supelco),
+  as prose from Agilent, Phenomenex and Shimadzu, and not at all from YMC and Tosoh. The
+  provenance rule is unchanged; the seed for the lab's own CORTECS part can now cite the
+  product page's field rather than a family-page sentence.
+- Item 3: add `vendor_measured_representative` to `dwell_source`, and record the lab's
+  0.375 mL under it with ref. 44 and its configuration caveat. Ship the 7–8 µL H-Class
+  PLUS extra-column figure to #101 as the same kind of provenance.
+- Item 4: Agilent's terms make hand-reading the only compliant route for agilent.com;
+  the process sentence in item 1 ("the driver reads the page by hand") is now a terms
+  requirement for that vendor, not just a workaround for a 403.
 
 ## References
 
@@ -629,6 +832,31 @@ document read from a non-vendor host; "listing only" = seen in a search index, p
 40. Valenta, A., "Understanding Your HPLC System: Dead Volume, Dwell Volume, and Extra Column Volume", Thermo Fisher AnalyteGuru blog, 2022-02-28 —
     https://www.thermofisher.com/blog/analyteguru/understanding-your-hplc-system-dead-volume-dwell-volume-and/ — read.
 
-**Blocked** (listed in §9): Waters 720003294, 715005049, 720005723, 720004750; Agilent
-store, product, terms, brochure, ordering guide and user-manual URLs; sigmaaldrich.com;
-tosohbioscience.com product pages; fishersci.com product pages; glsciencesinc.com.
+**Blocked on the first pass** (listed in §9): Waters 720003294, 715005049, 720005723,
+720004750; Agilent store, product, terms, brochure, ordering guide and user-manual URLs;
+sigmaaldrich.com; tosohbioscience.com product pages; fishersci.com product pages;
+glsciencesinc.com. Those read on the second pass are refs. 41–52.
+
+**Second pass (§10), all accessed 2026-09-04 with a real browser**
+
+41. Waters, product page 186008694 "CORTECS Shield RP18 Column, 90Å, 1.6 µm, 2.1 mm X 100 mm, 1/pk" — ref. 1's URL — read.
+42. Waters, "CORTECS Solid Core C18 Columns" family page — https://www.waters.com/nextgen/us/en/products/columns/cortecs-columns.html — read.
+43. Waters, *ACQUITY UPLC H-Class System* specification sheet, 720003294EN, June 2016 —
+    https://www.waters.com/content/dam/waters/en/library/specifications/2016/waters-specification-ACQUITYUPLCH-ClassSystem-720003294 — read.
+44. Waters, *Dwell Volume and Extra-Column Volume: What Are They and How Do They Impact Method Transfer* (white paper), 720005723EN, April 2018 —
+    https://www.waters.com/webassets/cms/library/docs/720005723en.pdf — read.
+45. Waters, *CORTECS Columns Care and Use Manual*, 720004750EN, December 2022 —
+    https://www.waters.com/webassets/cms/support/docs/720004750en.pdf — read.
+46. Waters, *ACQUITY UPLC H-Class System Guide*, 715005049 Rev. C, August 2016 —
+    https://help.waters.com/content/dam/waters/en/support/usermanuals/2016/715005049/715005049rc.pdf — read.
+47. Waters, column *Care and Use Manual*, 720008980EN Rev. A, July 2025 —
+    https://help.waters.com/content/dam/waters/en/support/usermanuals/2025/720008980/720008980.pdf — read.
+48. Agilent, "InfinityLab and Altura Poroshell 120 HPLC Columns" family page —
+    https://www.agilent.com/en/product/small-molecule-columns/reversed-phase-hplc-columns/infinitylab-poroshell-120 — read.
+49. Agilent, *Website Terms of Use* — https://www.agilent.com/home/terms-of-use — read.
+50. Agilent Community, "Low Delay Volume Configuration" (forum thread, replies by member "ankugler") —
+    https://community.agilent.com/technical/lc/f/forum/8637/low-delay-volume-configuration — read.
+51. Sigma-Aldrich, product page 53823-U "Ascentis® Express C18 (2.7 μm) HPLC Column L × I.D. 10 cm × 2.1 mm" —
+    https://www.sigmaaldrich.com/US/en/product/supelco/53823u — read.
+52. Tosoh Bioscience, product page 0021940 "TSKgel ODS-100V, 3 µm" —
+    https://www.tosohbioscience.com/EU-EN-separations/products/tskgel-ods-100v-3-m/0021940 — read; Fisher Scientific listings 50-138-4990 and 111007163 and the GL Sciences equivalents chart (§9 URLs) — read, nothing cited.
