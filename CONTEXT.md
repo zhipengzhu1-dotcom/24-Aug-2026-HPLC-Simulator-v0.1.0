@@ -75,3 +75,17 @@ _Avoid_: crossover, inversion, swap
 **Co-elution zone**:
 The interval of gradient time around an order flip where the flipping pair's resolution is below the Rs target. Shaded on the map so a chromatographer sees the interval to avoid, not only the point.
 _Avoid_: dead zone, trough
+
+### Profiles and seed records
+
+**Profile**:
+The selectable object a method's constants come from: a column profile (geometry and packing architecture) or an instrument profile (dwell, and whatever else is the system's), chosen independently. Carries what the user owns — a measured t0, a declared dwell — with its provenance. The destination of the profiles map (#103).
+_Avoid_: preset, template, column record (when the app object is meant)
+
+**Seed record**:
+One vendor-stated fact set for a column part or a published dwell figure, hand-typed from a cited public page with URL, read date and provenance. Never carries t0, V0, porosity, or a measurement of the lab's own. A profile may be seeded from a record; a record is never a profile.
+_Avoid_: profile, library entry, catalogue entry, vendor data
+
+**Provenance**:
+Of a fact on a record or profile: how it was stated (a vendor spec-table field, vendor prose, unstated, or declared by a named person) together with where and when it was read. A bare enum without it is not decision-grade.
+_Avoid_: source (alone), citation (alone)
