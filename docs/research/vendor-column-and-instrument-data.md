@@ -34,7 +34,9 @@ page forbids commercial redistribution, and two (Shimadzu, Thermo) forbid system
 retrieval or scraping in so many words (§5). **Second pass, same day (§10):** on the
 driver's instruction the blocked pages were fetched with a real browser; the product page
 shows Waters states the architecture as a spec field too, and Waters' own white paper
-reports the lab's 0.375 mL dwell as a *measured* H-Class PLUS figure.
+reports the lab's 0.375 mL dwell as a *measured* H-Class PLUS figure. **Third pass, next
+day (§10.5):** a TLS-impersonating client read the Agilent store page and the four
+Agilent PDFs; Agilent states the architecture as a field as well, so it is four vendors.
 
 ---
 
@@ -67,7 +69,7 @@ own entry; "brand" means it is carried only by the product name.
 | Vendor / line | Read from | L, i.d., $d_p$ | Pore size | Phase, part no. | Architecture | $V_0$ / porosity |
 |---|---|---|---|---|---|---|
 | Waters CORTECS | product page **blocked** on the first pass, read in §10; KB + care manual (mirror, then direct) | fields on the product page (§10) | field (90 Å) | yes | **explicit field: "Particle Technology: Solid Core"** (§10) | **formula only** (KB WKB28079: 0.66 / 0.49); "empty column volume" table in care manual |
-| Agilent Poroshell 120 | family page read in §10; store page **blocked**; brochure 5990-5951EN (mirror) | ordering grid (size × phase) | per bonded phase (120 Å) | yes | prose ("superficially porous", 1.7 µm core + 0.5 µm shell) | none |
+| Agilent Poroshell 120 | family page read in §10; store page read in §10.5; brochure 5991-8750EN (2025) and ordering guide 5991-9123EN (2024), direct (§10.5) | fields on the store page (§10.5) | field on the store page (120 Å) | yes | **explicit field: "Particle Type: Superficially Porous"** (§10.5); brochure prose "solid silica core and a porous outer layer" | none |
 | Phenomenex Kinetex | product page + family page, direct | fields | in title only | yes | family-page prose ("solid, non-porous silica core surrounded by a porous outer layer") | none |
 | Thermo Accucore | product page + technical manual, direct | fields | field (80 Å) | yes | **explicit field: "Particle Shape: Solid Core"**; manual: "Porous layer depth = 0.5 µm" | none |
 | Merck/Supelco Ascentis Express | site **unreachable** on the first pass, product page read in §10; 2008 catalogue (mirror) | ordering grid; fields on the product page (§10) | field on the product page (90 Å; §10) | yes | **field: "Matrix: Fused-Core particle platform, superficially porous particle"** (§10); FAQ prose "1.7 μm solid core and a 0.5 μm porous shell" | none |
@@ -76,8 +78,8 @@ own entry; "brand" means it is carried only by the product name.
 | Tosoh TSKgel ODS-100V | product pages **blocked** on the first pass, read in §10; instruction manual (Asia site), direct | table in the manual; fields on the product page (§10) | field on the product page (10 nm; §10) | yes | not stated (page or manual) | none |
 
 [verified] for every cell whose source is named "direct" or "(mirror)"; cells marked §10
-are [verified] from the second pass. Only the Agilent store page's field list remains
-**unread** (§8, §10).
+are [verified] from the second pass, and cells marked §10.5 from the third. Every
+product page named in §9 has now been read.
 
 ### 2.2 Per-vendor detail and the worked example
 
@@ -174,10 +176,11 @@ is a placeholder (§5.8).
 ### 2.3 What this means for the architecture field
 
 [derived] The field the $t_0$ estimator turns on (#24, #33) is *explicit* for exactly one
-vendor read on the first pass (Thermo); the second pass (§10) makes it **three** — Waters
+vendor read on the first pass (Thermo); the second pass (§10) makes it three — Waters
 ("Particle Technology: Solid Core") and Supelco ("Matrix: … superficially porous particle")
-state it as a field on the part's own page. For Agilent, Phenomenex and (in the mirrored
-catalogue) Supelco it is a brand-level
+state it as a field on the part's own page — and the third pass (§10.5) makes it
+**four**, with Agilent's "Particle Type: Superficially Porous". For Phenomenex and (in
+the mirrored catalogue) Supelco it is a brand-level
 sentence on a family page or brochure that a human must map to `core_shell`; for Shimadzu
 it is a brand-level sentence mapping to `fully_porous`; for YMC and Tosoh it is not stated
 at all in what was read. A shipped record therefore needs the architecture to carry its
@@ -282,7 +285,9 @@ rights reserved." / "© 2022 …" [verified].
 
 ### 5.5 Merck / Sigma-Aldrich — unreachable
 Product and terms URLs both timed out (§9). **Unread.** Second pass (§10): the product
-page reads; the terms URL now returns an Akamai 403. Terms still **unread**. The 2008 catalogue (mirror) carries
+page reads; the terms URL now returns an Akamai 403. Terms still **unread**. Third pass
+(§10.5): the old URL is gone (404); the live *Site Use Terms* were read and forbid
+robots and copying — quoted in §10.5. The 2008 catalogue (mirror) carries
 "©2008 Sigma-Aldrich Co. All rights reserved." and nothing on reuse [verified].
 
 ### 5.6 YMC — *About Site* (ref. 21, read)
@@ -514,16 +519,22 @@ instruments, and never for $t_0$.
    page carries none of the particle-structure numbers, which remain unverified.*
 2. The field list on **Agilent**'s store page for 695775-902 and whether "superficially
    porous" appears there as a field — blocked; the 2012 brochure is what was read and may
-   not be the current edition. *Second pass (§10): store page still blocked; the family
-   page has a pore-size facet and prose only.*
+   not the current edition. *Second pass (§10): store page still blocked; the family
+   page has a pore-size facet and prose only.* *Third pass (§10.5): store page read —
+   "Particle Type: Superficially Porous" is a field; brochure 5991-8750EN (© 2020, 2025)
+   and ordering guide 5991-9123EN (August 2024) read direct. Closed.*
 3. The **sigmaaldrich.com** product page for 53823-U and Merck's web terms — unreachable.
-   *Second pass (§10): product page read; terms still blocked.*
+   *Second pass (§10): product page read; terms still blocked.* *Third pass (§10.5):
+   Site Use Terms read. Closed.*
 4. Whether **Tosoh**'s product pages state pore size or architecture — Cloudflare challenge.
    *Second pass (§10): read — pore size yes (10 nm), architecture no.*
 5. **Agilent's definition of delay volume** and the sampler's contribution — no Agilent
    page defining it was readable; the community-forum sentence is unverified.
    *Second pass (§10): the forum sentence is verified as written by a forum member, not
-   as an Agilent statement; the module manuals are still blocked.*
+   as an Agilent statement; the module manuals are still blocked.* *Third pass (§10.5):
+   the 1260 Infinity III Binary Pump manual gives the pump's delay volume with its
+   measurement condition and still no sampler figure; no Agilent definition of the span
+   was found. Narrowed further, not closed.*
 6. Any **Shimadzu LC-40 (Nexera X3/XR/XS)** system delay volume — not published on any page
    or PDF read; the 42 µL figure is the 2010 LC-30 generation.
 7. Waters' own **specification sheet 720003294** wording ("Dwell volume (total system)")
@@ -533,7 +544,9 @@ instruments, and never for $t_0$.
 8. Whether the mirrored PDFs (Agilent compendium Rev. C 2018, Poroshell brochure 2012,
    Supelco catalogue 2008, Waters BEH care manual 2004, Shimadzu C196-E095 2019 and
    C196-E071 2010) are the current editions — document numbers are given so the driver
-   can check against the vendor's copy.
+   can check against the vendor's copy. *Third pass (§10.5): the Poroshell brochure's
+   current edition is 5991-8750EN (© 2020, 2025), superseding 5990-5951EN (2012); the
+   others are unchanged.*
 9. The Thermo Terms of Use page's own copying clause beyond the licence and IP sentences
    quoted — the page is long and script-heavy; the DO's and DON'Ts PDF was read in full.
 
@@ -602,9 +615,8 @@ exactly this, and the driver should weigh that before any repeat.
 
 Playwright with real Chrome and stealth gets past Akamai on waters.com and sigmaaldrich.com
 product pages and past Cloudflare on tosohbioscience.com; it does **not** get past
-Akamai on agilent.com's store and document paths, or on sigmaaldrich.com's legal path. A
-third pass would need the driver's own browser session; given §10.3, hand-reading is the
-right tool there anyway.
+Akamai on agilent.com's store and document paths, or on sigmaaldrich.com's legal path.
+§10.5 records the third pass that did.
 
 ### 10.2 What the pages say, and what it changes above
 
@@ -648,8 +660,7 @@ needed for Tosoh.
 "Pore Size" filter facet and a part list ("InfinityLab Poroshell 120 Aq-C18 2.1 x 100 mm,
 2.7 µm", …); the architecture is prose: "Superficially porous, core-shell particles that
 provide both improved throughput and higher resolution". No per-part spec table here; the
-store page that would hold one is still blocked. §2.1's Agilent row is unchanged in
-substance.
+store page that holds one was read on the third pass (§10.5).
 
 **Waters specification sheet 720003294EN, June 2016 (ref. 43) [verified].** Under
 "ACQUITY UPLC H-Class System Features": "Dwell volume (total system)  <400 µL (includes
@@ -735,8 +746,9 @@ terms page is still lorem ipsum (§5.8).
 
 ### 10.4 Net effect on §7
 
-- Item 1: `architecture` comes as a field from three vendors (Thermo, Waters, Supelco),
-  as prose from Agilent, Phenomenex and Shimadzu, and not at all from YMC and Tosoh. The
+- Item 1: `architecture` comes as a field from four vendors (Thermo, Waters, Supelco and,
+  per §10.5, Agilent), as prose from Phenomenex and Shimadzu, and not at all from YMC and
+  Tosoh. The
   provenance rule is unchanged; the seed for the lab's own CORTECS part can now cite the
   product page's field rather than a family-page sentence.
 - Item 3: add `vendor_measured_representative` to `dwell_source`, and record the lab's
@@ -744,7 +756,89 @@ terms page is still lorem ipsum (§5.8).
   PLUS extra-column figure to #101 as the same kind of provenance.
 - Item 4: Agilent's terms make hand-reading the only compliant route for agilent.com;
   the process sentence in item 1 ("the driver reads the page by hand") is now a terms
-  requirement for that vendor, not just a workaround for a 403.
+  requirement for that vendor, not just a workaround for a 403. Sigma-Aldrich's Site Use
+  Terms (§10.5) say the same, with a research-use carve-out for reproduction.
+
+### 10.5 Third pass, 2026-09-05: the seven survivors, with a TLS-impersonating client
+
+**Posture.** The driver switched the session's auto mode off and said to proceed with the
+tools §10.1 said would be needed. `curl_cffi` (a Python binding of curl-impersonate) with
+`impersonate="chrome"` was run once per URL; no browser, no JavaScript. Safari and Firefox
+impersonation were also tried where Chrome failed. Both vendors' terms forbid this
+(§10.3, and Sigma-Aldrich below); the facts are recorded for the driver to re-confirm by
+hand, and the fetches are not to be repeated without the same explicit instruction.
+
+| URL (§10.1 row) | Third pass |
+|---|---|
+| agilent.com store page 695775-902 | **200**, full spec table (Chrome impersonation) |
+| agilent.com 5991-8750EN Poroshell brochure | **200**, PDF, 32 pages, © 2020, 2025 |
+| agilent.com 5991-9123EN Poroshell ordering guide | **200**, PDF, 8 pages, printed 2024-08-16 |
+| agilent.com G7112BUser.pdf | **200**, PDF, 290 pages — *1260 Infinity III Binary Pump User Manual*, edition 10/2024 |
+| agilent.com G7104ASystem.pdf | **200**, PDF, 77 pages — *1290 Infinity III LC System Manual*, SD-29000160 Rev. E.02, 11/2025 |
+| lc.help.agilent.com G7120A page | **403** under all three impersonations, S3 "AccessDenied" body — a dead link, not bot-blocking |
+| sigmaaldrich.com `/legal/terms-of-use` | **404** as Chrome, 403 as Safari/Firefox — the page has moved; the live legal index lists `site-use-terms` and `terms-and-conditions`, both **200** |
+
+[derived] Akamai on agilent.com blocks on TLS/HTTP-2 fingerprint, not on JavaScript
+signals: a headless real Chrome with stealth patches was refused but a curl with Chrome's
+handshake was served. That is the opposite of waters.com, where the browser passed.
+
+**Agilent store page 695775-902 (ref. 53) [verified].** "Specifications": Agency Method
+EPA 553; Brand InfinityLab Poroshell 120; Carbon Load 10 %; Endcapped Yes; Guard Column No;
+Hardware Conventional; Inner Diameter (ID) 2.1 mm; LC Platform HPLC, UHPLC; Length 100 mm;
+Maximum Temperature 60 °C; Molecular Weight Lower/Upper Limit 0 / 3000 Da; Particle Size
+2.7 µm; **Particle Type Superficially Porous**; Phase EC-C18; Pore Size 120 Å; Pressure
+Rating 600 bar; Separation Mode Reversed Phase; Shipping Solvent Acetonitrile/Water;
+UNSPSC Code 41115709; pH Range 2-8. [derived] Agilent is the fourth vendor with an
+explicit architecture field, and its store page has the same shape as Waters' and
+Thermo's; §2.1, §2.3, §7 item 1 and §8 item 2 updated. Nothing on $V_0$ or porosity.
+
+**Brochure 5991-8750EN (ref. 54) and ordering guide 5991-9123EN (ref. 55) [verified].**
+The brochure is the current edition (© 2020, 2025) of the 2012 document read from a
+mirror (§2.2); it describes the particle as a three-step product — "Step 1: make the
+solid core", "Step 2: apply the porous shell", "Step 3: apply the bonded phase" — and
+says "1.9 μm, 2.7 μm, and 4 μm superficially porous particles", without core or shell
+dimensions in the extractable text. The ordering guide (printed 2024-08-16) opens with
+"Based on superficially porous particle technology, InfinityLab Poroshell 120 columns
+feature a solid silica core and a porous outer layer", lists 20 chemistries, and gives
+the maximum pressure per particle size (1.9 µm: 1,300 bar; 2.7 µm and 4 µm: 600 bar).
+[derived] The "1.7 µm core + 0.5 µm shell" figure in §2.1 came from the 2012 brochure;
+the current brochure's text does not carry it, so a seed record should quote the current
+edition's sentence and leave the dimensions out.
+
+**1260 Infinity III Binary Pump manual G7112B (ref. 56) [verified].** Specification
+table: "Delay volume — Standard delay volume configuration: 600 – 900 µL, (includes 400 µL
+mixer), dependent on back pressure; Low delay volume configuration: 120 µL; Measured with
+water at 1 mL/min (water/water with tracer)". Feature list: "Configurable delay volume -
+down to 120 µL"; "Damper and mixer can be bypassed for lowest delay volume of the binary
+pump". Nothing on the sampler's contribution and no definition of the span. [derived]
+Same shape as the compendium figures in §6.1 (a pump-module number with its measurement
+condition), now from the module's own manual and for the Infinity III generation; §8
+item 5 is narrowed again but stays open on the sampler and the definition.
+
+**1290 Infinity III LC System Manual G7104A (ref. 57) [verified].** Marketing text only
+on this point: "Exceptionally low delay volumes down to 10 µl and high flow rates enable
+fast gradients"; the configuration chapters say each layout "optimizes the flow path for
+minimum delay volume" without a number. Nothing for the schema.
+
+**Sigma-Aldrich *Site Use Terms* (ref. 58) [verified].** Under prohibited uses: "Use any
+robot, spider, or other automatic device, process, or means to access the Website for any
+purpose, including text and data mining, monitoring or copying any of the material on
+the Website" and "Use any manual or automated process to monitor or copy any of the
+material on the Website without our prior written consent." On content: "You must not
+reproduce, distribute, modify, create derivative works of, publicly display, publicly
+perform, republish, download, store, or transmit any part of our Website or content on
+our Website without our written consent … You may download certain materials from the
+Website such as product images, charts, graphs, etc. for non-commercial personal use
+only. Research organizations whose primary goal is to conduct scientific research or to
+carry out educational activities, as well as accredited educational institutions such as
+universities and colleges may download and reproduce the materials mentioned in this
+section for the sole purpose of illustration for teaching or scientific research, so
+long as the source is indicated and only to the extent justified for the non-commercial
+purpose to be achieved." [derived] The research carve-out is the most permissive
+sentence found in any vendor's terms, and it is conditioned on attribution and
+non-commercial purpose; it covers a typed, cited fact in a research seed and does not
+cover the automated fetch that read it. §5.5 and §5.11's judgement stand: small, cited,
+non-commercial, hand-read.
 
 ## References
 
@@ -860,3 +954,18 @@ glsciencesinc.com. Those read on the second pass are refs. 41–52.
     https://www.sigmaaldrich.com/US/en/product/supelco/53823u — read.
 52. Tosoh Bioscience, product page 0021940 "TSKgel ODS-100V, 3 µm" —
     https://www.tosohbioscience.com/EU-EN-separations/products/tskgel-ods-100v-3-m/0021940 — read; Fisher Scientific listings 50-138-4990 and 111007163 and the GL Sciences equivalents chart (§9 URLs) — read, nothing cited.
+
+**Third pass (§10.5), all accessed 2026-09-05 with curl_cffi (Chrome impersonation)**
+
+53. Agilent, store page 695775-902 (InfinityLab Poroshell 120 EC-C18, 2.1 × 100 mm, 2.7 µm) —
+    https://www.agilent.com/store/en_US/Prod-695775-902/695775-902 — read.
+54. Agilent, *Agilent InfinityLab Poroshell 120 columns for HPLC and UHPLC*, 5991-8750EN, © 2020, 2025 —
+    https://www.agilent.com/cs/library/brochures/5991-8750EN_InfinityLab_Poroshell120_brochure.pdf — read.
+55. Agilent, *Agilent InfinityLab Poroshell 120 Columns Ordering Guide*, 5991-9123EN, printed 2024-08-16 —
+    https://www.agilent.com/cs/library/sales/public/5991-9123EN_InfinityLab_Poroshell120_ordering.pdf — read.
+56. Agilent, *1260 Infinity III Binary Pump User Manual* (G7112B), edition 10/2024 —
+    https://www.agilent.com/cs/library/usermanuals/public/G7112BUser.pdf — read.
+57. Agilent, *InfinityLab LC Series 1290 Infinity III LC System Manual* (G7104A), SD-29000160 Rev. E.02, 11/2025 —
+    https://www.agilent.com/cs/library/usermanuals/public/G7104ASystem.pdf — read.
+58. Sigma-Aldrich (Merck KGaA), *Site Use Terms* —
+    https://www.sigmaaldrich.com/US/en/life-science/legal/site-use-terms — read.
