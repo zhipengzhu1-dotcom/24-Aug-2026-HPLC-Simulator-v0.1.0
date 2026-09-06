@@ -40,6 +40,14 @@ _Avoid_: duplicate, repeat, timing noise
 A quantity the retention model is fitted against. In v0.3 there is one, mobile-phase composition; the gradient specifies how mobile-phase composition changes over time. Temperature is a method constant, not a factor, until a model form for it exists.
 _Avoid_: parameter (reserved for the fitted S_e and ln k0), variable, axis
 
+**Fit residual**:
+For one peak and one run in its design, the predicted retention time minus the measured one, in minutes. The fit makes the sum of their squares smallest across the design. With two runs every residual is zero and there is nothing to check; with more, the residuals say where the one straight LSS line misses. A residual names a run, never a cause.
+_Avoid_: error, curvature (as the residual's name), misfit, deviation
+
+**Repeatability floor**:
+The retention-time spread a fit residual is compared against. It is the observed spread of replicates in the run table when there are any, otherwise a method constant the chromatographer types for their instrument. A residual inside the floor is consistent with repeatability; one outside it is not, and the floor does not say why.
+_Avoid_: timing noise (as a mechanism), tolerance, error bar
+
 ### Resolution and the optimizer
 
 **Critical pair**:
