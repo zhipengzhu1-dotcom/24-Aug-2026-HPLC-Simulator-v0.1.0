@@ -1,14 +1,44 @@
 # hplcsim
 
-The domain language of the HPLC gradient simulator: two scouting runs in, fitted retention parameters, predictions for any candidate linear gradient, and (v0.2) an optimizer over a swept range of candidates. Started during the v0.2 map; earlier terms are in SPEC.md and will migrate here as they are touched.
+The domain language of the HPLC gradient simulator: scouting runs in (two in v0.1/v0.2, a run table of N from v0.3), fitted retention parameters, predictions for any candidate linear gradient, and (v0.2) an optimizer over a swept range of candidates. Started during the v0.2 map; earlier terms are in SPEC.md and will migrate here as they are touched.
 
 ## Language
 
 ### The peak table
 
 **Untracked row**:
-A non-blank peak table row missing one or both retention times. Visible and counted (SPEC §5), never sent to the fit, the prediction or the resolution table. It is a `PeakRow` that yields no `Peak` — not a separate kind of thing.
+A peak row with fewer than two explicitly paired, usable retention times. Visible and counted (SPEC §5), never sent to the fit, the prediction or the resolution table. It is a `PeakRow` that yields no `Peak` — not a separate kind of thing. A blank cell means no usable measurement for that peak in that run; it is never read as evidence the peak did not elute.
 _Avoid_: incomplete peak, partial peak, half-paired peak (a row, not a peak)
+
+### The run table
+
+**Scouting run**:
+A named record of one scouting acquisition and its linear gradient, including hold. Method constants belong to the method and apply to every run.
+_Avoid_: injection, sample, condition, method
+
+**Run table**:
+The scouting runs entered for one method, sharing one block of method constants. What the chromatographer loads and pairs against. A table can contain one run; every peak is then visibly unfitted.
+_Avoid_: dataset, design matrix, training set
+
+**Design** (of a peak):
+The scouting runs with an explicitly paired, usable retention time for that peak. It exists before fitting and still applies if the fit fails. Each peak has its own; its steepness spread and start-composition spread are computed on it. A fit needs at least two different gradients within the design — a different gradient elsewhere in the table is insufficient.
+_Avoid_: calibration set, subset, coverage
+
+**Steepness spread**:
+Largest s* over smallest s* across a peak's design (s* = t0·Δφ/tG). Reproduces the two-run spacing ratio when only gradient time varies; the 2.5 and 1.2 warning tiers carry over. Unavailable when any run has zero steepness. It does not measure start %B or hold differences.
+_Avoid_: β (in prose), spacing ratio, tG ratio
+
+**Start-composition spread**:
+The difference between the highest and lowest starting %B across a peak's design, in percentage points. A separate hazard from steepness spread; warned whenever it is non-zero, pointing at the per-run residuals.
+_Avoid_: φ0 range, start range
+
+**Replicate**:
+A run whose complete gradient, hold included, equals another run's in the same table. Shows observed repeatability. Replicates can be entered in any table; they do not by themselves make a peak fittable.
+_Avoid_: duplicate, repeat, timing noise
+
+**Factor**:
+A quantity the retention model is fitted against. In v0.3 there is one, mobile-phase composition; the gradient specifies how mobile-phase composition changes over time. Temperature is a method constant, not a factor, until a model form for it exists.
+_Avoid_: parameter (reserved for the fitted S_e and ln k0), variable, axis
 
 ### Resolution and the optimizer
 
@@ -35,7 +65,7 @@ _Avoid_: optimum (ambiguous with goal-seek), max-min point
 ### Composition freedom
 
 **Calibrated composition window**:
-For one peak, the interval between the compositions it eluted at in the two scouting runs. The fit pinned that peak's retention line at exactly those two points; nowhere else. Every peak has its own window, the windows are narrow, and they need not overlap, so there is no method-level window.
+For one peak, the interval between the lowest and highest compositions the peak eluted at across its design. The fit pinned that peak's retention line at exactly those points; nowhere else. Every peak has its own window, the windows are narrow, and they need not overlap, so there is no method-level window.
 _Avoid_: φ range (which is the gradient's sweep, not the calibration), composition range
 
 **Window-width**:
@@ -61,7 +91,7 @@ One gradient in the sweep. Recommendations are always a swept condition, never a
 _Avoid_: grid point, sample
 
 **Scouting bracket**:
-The interval between the two scouting runs' steepness values (s*, the normalised slope t0·Δφ/tG). A candidate inside it puts every peak at an elution composition the fit was pinned at; outside it the fit is extrapolated. While the candidate keeps the scouting %B range, this is the same interval as the one between the two scouting gradient times, which is how v0.1 stated it.
+The interval between the smallest and largest steepness values across a peak's design (s*, the normalised slope t0·Δφ/tG). Explicitly per peak. A candidate inside it puts the peak at an elution composition the fit was pinned at; outside it the fit is extrapolated. While the candidate keeps the scouting %B range, this is the same interval as the one between the scouting gradient times, which is how v0.1 stated it. The bracket is an interval; steepness spread is a ratio.
 _Avoid_: calibrated range, training range, tG bracket (when the s* interval is meant)
 
 **Extrapolation zone**:
