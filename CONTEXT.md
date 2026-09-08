@@ -75,3 +75,21 @@ _Avoid_: crossover, inversion, swap
 **Co-elution zone**:
 The interval of gradient time around an order flip where the flipping pair's resolution is below the Rs target. Shaded on the map so a chromatographer sees the interval to avoid, not only the point.
 _Avoid_: dead zone, trough
+
+### Temperature
+
+**Scouting temperature**:
+The column temperature the scouting pair was run at. The fitted ln k0 and S_e are anchored there, so a session with no temperature series is the fixed-temperature model unchanged.
+_Avoid_: reference temperature (say which), base temperature, T_ref
+
+**Temperature series**:
+A set of scouting pairs that are the scouting programme with only the column temperature changed, one of them the scouting pair itself. It is what lets the fit move a peak to another temperature; three pairs is the smallest series that can test the form rather than assume it.
+_Avoid_: temperature study, temperature scan, T-series
+
+**Temperature point**:
+One pair of the temperature series at one column temperature, optionally with its own measured t0. Each point is fitted on its own by the two-run solve before any temperature line is drawn.
+_Avoid_: temperature level, set-point (which is the instrument's instruction, not the datum)
+
+**Van 't Hoff slope**:
+For one peak, the fitted slope of ln k0, or of S_e, against reciprocal kelvin temperature through the temperature points. Two per peak; a peak from a session without a series has none.
+_Avoid_: temperature coefficient, enthalpy (a reading of the ln k0 slope, not its name), dH
