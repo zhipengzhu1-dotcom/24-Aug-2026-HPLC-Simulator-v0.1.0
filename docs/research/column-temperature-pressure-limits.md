@@ -149,3 +149,41 @@ exhausted WebSearch quota) rather than anything resolvable by more querying with
   `www.waters.com`'s CORTECS product page and the Acquity H-Class product page, plus a direct
   request to Waters technical support for the CORTECS Columns Care and Use Manual PDF, since neither
   a plain fetch nor open web search reached it in two independent passes in this environment.
+
+## Third pass (orchestrator, 2026-09-08): a Waters primary source held locally
+
+The two web passes above found nothing because waters.com would not serve a page. A Waters
+primary document was already on the driver's disk: the **Waters Columns, Analytical Standards
+& Reagents Selection Guide** wallchart, document **720002241EN Rev. E**, "©2026 Waters
+Corporation. March 26-15086" (local copy: `Exploration/waters-wallchart-WatersColumnsAnalyticalStandardsReagentsSelectionGuide-720002241.pdf`,
+untracked, not in the repository). Text extracted with `pdftotext -layout`; the CORTECS
+table is on page 1 under "CORTECS™ UPLC™, UHPLC, and HPLC Columns".
+
+### What the wallchart says, verbatim, for the Shield RP18 row
+
+| Column | Ligand density | Carbon load | Endcapped | USP class | pH range | Temperature limits | Surface area | Particles |
+|---|---|---|---|---|---|---|---|---|
+| CORTECS Shield RP18 | 3.2 µmol/m² | 6.4 % | Yes | L1 | **2–8** | **Low pH = 60 ˚C, High pH = 45 ˚C** | 100 m²/g | UPLC 1.6 µm, UHPLC/HPLC 2.7 µm |
+
+Bonding text on the same row: "Monofunctional embedded polar C18, fully endcapped, bonded to
+a silica solid-core substrate." The same two temperature figures (60 ˚C at low pH, 45 ˚C at
+high pH) appear on every CORTECS reversed-phase row on the chart (C18, C18+, T3, C8, Phenyl);
+only the HILIC row differs (45 ˚C at both).
+
+### What this settles and what it does not
+
+- **Temperature limit, verified.** 60 ˚C at low pH, 45 ˚C at high pH. The chart does not define
+  where "low" ends and "high" begins; the pH range column says 2–8.
+- **Pressure limit: still not verified.** The wallchart carries no pressure column.
+- **H-Class heater range: still not verified.** Not an item the wallchart covers.
+- **The lab's mobile-phase pH is not recorded in `validation/method.csv`.** `validation/PROTOCOL.md`'s
+  worked example assumes A = 0.1 % formic acid in water, which is low pH; if that is the lab
+  method, the 60 ˚C figure is the bound. The modifier should be recorded in `method.csv` before the
+  temperature series is designed (raise on the bench-design ticket).
+
+### What this bounds for the 25–80 ˚C series
+
+Assuming a low-pH mobile phase: **25, 30, 35, 40, 45, 50, 55, 60 ˚C are inside the stated limit**;
+65, 70, 75 and 80 ˚C are above it and would be run against the vendor's stated bound. At a
+high-pH mobile phase the inside set shrinks to 25–45 ˚C. The wallchart gives no margin
+guidance, so none is claimed here.
