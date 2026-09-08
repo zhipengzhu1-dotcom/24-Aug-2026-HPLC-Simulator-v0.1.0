@@ -187,3 +187,161 @@ Assuming a low-pH mobile phase: **25, 30, 35, 40, 45, 50, 55, 60 ˚C are inside 
 65, 70, 75 and 80 ˚C are above it and would be run against the vendor's stated bound. At a
 high-pH mobile phase the inside set shrinks to 25–45 ˚C. The wallchart gives no margin
 guidance, so none is claimed here.
+
+## Fourth pass (2026-09-08): stealth-browser pass on waters.com
+
+The driver authorized a stealth-browser pass (`playwright` + `playwright-stealth`,
+`p.chromium.launch(channel="chrome", headless=True)`) against `www.waters.com` and
+`support.waters.com` to resolve the two remaining open points: the CORTECS Shield RP18
+column's maximum operating pressure, and the Acquity UPLC H-Class column-heater/Column
+Manager temperature range. This pass succeeded on both counts, using a Waters primary
+source in each case.
+
+### How the documents were found
+
+A direct stealth-browser fetch of the CORTECS product page,
+`https://www.waters.com/nextgen/us/en/products/columns/cortecs-columns.html` (2026-09-08),
+returned HTTP 200 (previous passes had timed out on this domain; a real Chrome instance
+with stealth patches was not blocked). The rendered page's "Support" section names Waters'
+document-search API directly in its markup
+(`data-base-url="https://prodservices.waters.com/api/waters/v1/search"`,
+`data-search-v2-url="https://prodservices.waters.com/api/waters/v2/search"`). Calling that
+same API in-page (`fetch(...)` executed via `page.evaluate`, so it ran with the site's own
+session/cookies) with `keyword=CORTECS Care and Use Manual` returned Waters' own search
+index, including the current CORTECS Care and Use Manual's PDF path. The same API, queried
+with `keyword=Acquity UPLC H-Class specifications`, returned the current Acquity UPLC
+H-Class System Specifications PDF path. Both PDFs were then fetched with
+`context.request.get(url)` inside the same browser context (having first navigated to a
+waters.com page to establish a session) — a plain, unauthenticated `curl`/`fetch` of the
+same PDF URLs (tried in the third pass, for unrelated document numbers) had returned an
+Akamai "Access Denied" page, so the browser context was necessary here too. Both PDFs
+downloaded as valid, readable `application/pdf` bytes (1,936,240 bytes and 279,861 bytes
+respectively) and needed no decryption workaround — `pdftotext -layout` extracted their
+text directly.
+
+### URLs fetched and access date (2026-09-08)
+
+| URL | What it is | Result |
+|---|---|---|
+| `https://www.waters.com/nextgen/us/en/products/columns/cortecs-columns.html` | CORTECS product page | HTTP 200 via stealth browser (previously timed out) |
+| `https://prodservices.waters.com/api/waters/v2/search?keyword=CORTECS%20Care%20and%20Use%20Manual&isocode=en_US&page=1&rows=10` | Waters document-search API | HTTP 200, JSON, 1,709 matches; top hit is the current CORTECS manual |
+| `https://prodservices.waters.com/api/waters/v1/search?keyword=Acquity%20UPLC%20H-Class%20specifications&isocode=en_US&page=1&rows=10` | Waters document-search API | HTTP 200, JSON, 5,470 matches; top hit is the current H-Class spec document |
+| `https://www.waters.com/content/dam/waters/en/support/usermanuals/2025/720008932/720008932.pdf` | CORTECS and CORTECS Premier Care and Use Manual (PDF) | Downloaded, 1,936,240 bytes, `application/pdf`, text extracted with `pdftotext -layout` |
+| `https://www.waters.com/content/dam/waters/en/support/usermanuals/2010/USRM10144203/acquity_h-class_h-class_bio_system_spec.pdf` | ACQUITY UPLC H-Class and H-Class Bio System Specifications (PDF) | Downloaded, 279,861 bytes, `application/pdf`, 10 pages, text extracted with `pdftotext -layout` |
+
+### Fact 1 — CORTECS Shield RP18 maximum operating pressure: verified
+
+**Source:** *CORTECS and CORTECS Premier Columns Care and Use Manual*, document
+**720008932EN, Rev. A**, "©2025 Waters Corporation. June 25-14178" (Waters Corporation, 34
+Maple Street, Milford, MA 01757). This is the exact "CORTECS Columns Care and Use Manual"
+the original task named as the expected primary source, and which the first three passes
+could not locate.
+
+Verbatim, section "e. Pressure":
+
+> "Table 2 summarizes the pressure limits of CORTECS and CORTECS Premier Columns based on
+> particle size and column internal diameter.
+> Note: Working at the extremes of pressure, pH and/or temperature will result in shorter
+> column lifetimes."
+
+Table 2 ("Maximum Tolerated Operating Pressures for CORTECS and CORTECS Premier Columns"),
+verbatim, the row for the CORTECS Shield RP18's particle size and column i.d.:
+
+> "Particle Size: 1.6 µm | Column i.d.: 2.1 mm and 3.0 mm | Maximum Tolerated Operating
+> Pressure: 18,000 psi (1241 bar or 124 MPa)"
+
+This is a particle-size/i.d.-keyed limit shared across the whole CORTECS and CORTECS
+Premier line (it is not stated separately per bonded phase), so it applies to the CORTECS
+UPLC Shield RP18, 1.6 µm, 2.1 x 100 mm column named in the task. The figure is consistent
+with the generic marketing claim already seen on the CORTECS product page in this same
+pass ("sub-2-µm particles at 1241 bar pressures with UPLC Columns").
+
+### Fact 2 — Acquity UPLC H-Class column-heater / Column Manager temperature range: verified
+
+**Source:** *ACQUITY UPLC H-Class and H-Class Bio System Specifications*, document id
+**USRM10144203, Revision B**, "Copyright © Waters Corporation 2010".
+
+Verbatim, section "Column heater" (covering "the ACQUITY UPLC H-Class CH-A, H-Class 30-cm
+column heater with active pre-heater (CH-30A), H-Class bioCH-A, and H-Class bioCH-30A"),
+from the "Column heater performance specifications" table:
+
+> "Column compartment temperature range: CH-A/CH-30A: 20 to 90 °C, in increments of 0.1 °C
+> (control requires a setpoint of greater than ambient temperature +5 °C)"
+
+Verbatim, section "Column manager" (covering "the ACQUITY UPLC H-Class CM-A, H-Class
+auxiliary column manager (CM-Aux), H-Class bioCM-A, and H-Class bioCM-Aux"), from the
+"Column manager performance specifications" table:
+
+> "Column compartment temperature range (settable): 4 to 90 °C, in increments of 0.1 °C.
+> Troughs are independently settable. Derating: The minimum achievable column compartment
+> temperature set point must not be greater than 25 °C below ambient temperature."
+
+So the H-Class family offers two distinct column-thermostatting modules with two different
+settable ranges: the column heater (CH-A/CH-30A), 20–90 °C, and the column manager
+(CM-A/CM-Aux), 4–90 °C — both subject to a derating clause tying the achievable low end to
+ambient temperature (heater: setpoint must exceed ambient +5 °C; manager: setpoint must not
+be more than 25 °C below ambient). Which module a given H-Class instrument is fitted with
+is a configuration choice not stated in this document; this needs to be checked against the
+lab's actual instrument configuration before it is used to bound the bench series. This same
+document separately states the overall instrument's environmental operating temperature
+(distinct from the column-heater/-manager range, and not to be confused with it): "Operating
+temperature: 4 to 40 °C (39.2 to 104 °F)."
+
+### Pressure-related wording near the temperature limits
+
+The task asked that any pressure-related wording near the temperature limits be recorded
+(e.g. reduced limits at elevated temperature). The CORTECS Care and Use Manual's temperature
+section, verbatim ("f. Temperature"):
+
+> "The maximum recommended temperature for CORTECS Columns is 60 º C. Higher temperatures
+> can be used but may result in shorter column lifetimes. When operating with mobile phases
+> that are close to the pH limits, lower temperatures are recommended to avoid short column
+> lifetimes."
+
+No numeric reduced pressure limit at elevated temperature is stated anywhere in this manual
+— the only linkage given between pressure and temperature is the qualitative note quoted
+under Fact 1 above ("Working at the extremes of pressure, pH and/or temperature will result
+in shorter column lifetimes") and the qualitative statement just above (elevated temperature
+near the pH limits shortens lifetime). Neither ties a numeric pressure derating to a
+numeric temperature. The pressure table (Table 2) and the temperature statement are two
+separate, independently-stated limits in this document, not a joint pressure-temperature
+curve.
+
+### A discrepancy with the third pass's wallchart figure, noted for the record
+
+The third pass (above) read a **60 °C at low pH / 45 °C at high pH** split for the CORTECS
+Shield RP18 row from the *Waters Columns, Analytical Standards & Reagents Selection Guide*
+wallchart (720002241EN Rev. E). This fourth pass's primary source — the CORTECS Care and Use
+Manual itself, 720008932EN Rev. A, dated 2025 — states a single, undifferentiated figure
+instead: **"The maximum recommended temperature for CORTECS Columns is 60 º C,"** with no
+pH-dependent split anywhere in its temperature section or its pH-limits table (Table 3,
+which gives a flat pH range of 2–8 for the Shield RP18 with no accompanying temperature
+column). This report does not attempt to resolve the discrepancy between the two Waters
+documents; it records both, verbatim, with their document identifiers, so a human reader can
+weigh the Care and Use Manual (the document type the original task named, and the more
+recent of the two) against the wallchart's more specific-looking low-pH/high-pH split.
+
+### What remains unverified (updated)
+
+- **Column maximum operating pressure: now verified** — 18,000 psi (1241 bar / 124 MPa) for
+  1.6 µm particles at 2.1 mm i.d., per the CORTECS Care and Use Manual, 720008932EN Rev. A.
+- **H-Class column-heater/Column Manager temperature range: now verified**, but as two
+  ranges rather than one — the CH-A/CH-30A column heater (20–90 °C) and the CM-A/CM-Aux
+  column manager (4–90 °C), per the ACQUITY UPLC H-Class and H-Class Bio System
+  Specifications, USRM10144203 Rev. B. **Which module is installed on the lab's actual
+  H-Class instrument is not recorded anywhere in this repository and is not stated in this
+  document** — this must be confirmed (e.g. from the instrument's own configuration label or
+  purchase record) before either range is used as the instrument-side bound for the bench
+  temperature series.
+- **Column temperature limit: two Waters documents disagree** (60 °C flat, per the 2025 Care
+  and Use Manual, vs. 60 °C low-pH / 45 °C high-pH, per the wallchart) — not resolved in this
+  pass; see the discrepancy note above. The mobile-phase pH still is not recorded in
+  `validation/method.csv` (carried over from the third pass), so which of the two readings
+  (if either differs by application) would even apply is still unresolved on the lab-data
+  side regardless of which document is preferred.
+- **pH-dependence of the pressure limit specifically:** not addressed by either document —
+  the pressure table (Table 2) is keyed only to particle size and column i.d., with no pH
+  column, and no statement was found anywhere in the Care and Use Manual tying the pressure
+  limit itself to pH or to temperature.
+- No further Waters URLs were left unfetched for these two specific facts in this pass;
+  the stealth-browser route resolved both.
