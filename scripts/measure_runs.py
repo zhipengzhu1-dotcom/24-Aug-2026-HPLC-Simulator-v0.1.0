@@ -168,25 +168,6 @@ RUNS: tuple[Run, ...] = (
             "Not pre-registered."
         ),
     ),
-    Run(
-        raw="08-Sep-2026 Gradients/Export Data Points23054_75% Nitroso.arw",
-        nm=254.0,
-        sample="three-peak",
-        start_b=75,
-        out_peaks="validation/run9.csv",
-        out_trace="validation/traces/run9-254.0824nm.csv",
-        reference=THREE_PEAK_SCOUTING,
-        assigned=(),
-        note=(
-            "75 -> 95 %B over tG 20. No peak is assigned: nothing elutes near the void "
-            "where the fit puts Unknown-1 and Unknown-2, and no later peak matches a "
-            "scouting spectrum above 0.99 at a plausible time. The run contributes no "
-            "retention residual and is evidence about where retention ends on this "
-            "sample, not about the LSS line. s* = 0.00525, which SPEC section 6 item 1's "
-            "log_beta measure puts 0.63 window-widths below the scouting bracket, just "
-            "past the 0.6 boundary. Not pre-registered."
-        ),
-    ),
 )
 
 
