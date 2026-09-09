@@ -26,16 +26,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app import wording
 from app.entry import Entry
 from app.pipeline import Cockpit, CockpitInputs, run_cockpit
-from hplcsim.dead_time import (
-    EXTRA_COLUMN_VOLUME_TYPICAL_ML,
-    POROSITY_PLAUSIBLE,
-    DeadTimeCheck,
-    check_measured_t0,
-    classify_marker,
-)
-from hplcsim.fit import BETA_STRONG, BETA_WARNING, LOW_K0_LOG10, FitResult, classify_spacing
+from hplcsim.dead_time import DeadTimeCheck, check_measured_t0, classify_marker
+from hplcsim.fit import LOW_K0_LOG10, FitResult, classify_spacing
 from hplcsim.model import (
     Gradient,
     Leg,
@@ -92,13 +87,8 @@ STRONG_WINDOW_WIDTHS = 0.6
 # sits between 0 and +10 %B, so the tier is untested below it.
 STRONG_PHI0_DEPARTURE = 0.10
 
-# What was *observed* on this instrument from scouting pairs starting at 5 %B — mean
-# |ΔtR| at the scouting start, at +10 %B and at +20 %B, both samples, at t0 = 0.525
-# (SPEC §6 item 7, #55). Quoted in the message as an observation, never evaluated for
-# the candidate: a rule right on one sample is wrong on the other.
-_LADDER_THREE_PEAK = (0.42, 0.82, 1.67)
-_LADDER_FOUR_PEAK = (0.11, 0.23, 0.26)
-_LADDER_SCOUTING_START_PERCENT_B = 5.0
+# The ladders those tiers are *described* by live in `app.wording`: they are quoted and
+# never compared, and SPEC §6 item 7 turns on their never being evaluated.
 
 # The method-level guards whose strong tier drives the indicative stamp (SPEC §6 items 1
 # and 7), and the per-peak badges that downgrade only a peak's own Rs pairs (items 8, 9).
@@ -110,9 +100,6 @@ _PAIR_DOWNGRADING_BADGES: frozenset[str] = frozenset({"low_k0", "wash_eluted"})
 # peak whose share grows and so the more conservative reading of "relative change".
 AREA_SHARE_THRESHOLD = 0.30
 
-# The extra-column volume is a display quantity in µL: the engine keeps it in mL (CLAUDE.md's
-# units), and this is the one place the conversion happens, like %B in `app.entry`.
-_UL_PER_ML = 1000.0
 
 # Research doc §4.3's other early-eluter test, beside t'R < t0: "Report a low-confidence
 # flag when k_e at the fitted parameters is below ~1". The engine already sets
@@ -418,38 +405,29 @@ def _steepness_extrapolation(
         t_lo, t_hi = scouting_bracket(run1, run2)
         factor = single.t_gradient / t_hi if single.t_gradient > t_hi else t_lo / single.t_gradient
         longer = "longer" if single.t_gradient > t_hi else "shorter"
-        head = (
-            f"**Candidate tG {single.t_gradient:g} min is {factor:.2f}× outside the "
-            f"{t_lo:g}–{t_hi:g} min scouting bracket** ({longer} than either scouting run) — "
-            f"{widths:.2f} window-widths past the calibrated composition window of every peak."
+        head = wording.steepness_head_gradient(
+            t_gradient=single.t_gradient,
+            factor=factor,
+            t_lo=t_lo,
+            t_hi=t_hi,
+            longer=longer,
+            widths=widths,
         )
     else:
         which = f"segment {worst + 1}" if len(legs) > 1 else "the candidate"
-        head = (
-            f"**The steepness of {which}, s* = {s_star:.4f}, is {widths:.2f} window-widths "
-            f"{where} than the scouting bracket** (s* {lo:.4f}–{hi:.4f}), past the "
-            "calibrated composition window of every peak that elutes on it."
+        head = wording.steepness_head_segment(
+            which=which, s_star=s_star, widths=widths, where=where, lo=lo, hi=hi
         )
     if widths > STRONG_WINDOW_WIDTHS:
         return Diagnostic(
             code="steepness_extrapolation",
             severity="strong",
-            message=(
-                f"{head} That is well past the point where the fit is a prediction: "
-                "outside the bracket the LSS line is being extended, and log k against "
-                "%B is genuinely curved. Confirm by injection before committing to this "
-                "method, or move a scouting run out to meet it."
-            ),
+            message=wording.steepness_strong(head),
         )
     return Diagnostic(
         code="steepness_extrapolation",
         severity="info",
-        message=(
-            f"{head} Modest extrapolation of this kind holds up on the validation "
-            "dataset — its held-out tG = 60 min run sits 0.26 window-widths outside a "
-            "15–45 min bracket and predicted to 0.34%. Treat it as a prediction to "
-            "confirm, not as a reason to stop."
-        ),
+        message=wording.steepness_info(head),
     )
 
 
@@ -482,51 +460,23 @@ def _phi0_departure(programme: Programme, scouting: Gradient) -> Diagnostic | No
     sign = "+" if departure > 0.0 else "−"
     start = percent_b_from_phi(programme.phi0)
     scout = percent_b_from_phi(scouting.phi0)
-    head = (
-        f"**The candidate starts at {start:g} %B, a {sign}{abs(start - scout):g} %B departure "
-        f"from the scouting start of {scout:g} %B.** The fit was never shown a run starting "
-        "anywhere else."
-    )
+    head = wording.phi0_head(start=start, sign=sign, delta=abs(start - scout), scout=scout)
     if departure < 0.0:
         return Diagnostic(
             code="phi0_departure",
             severity="info",
-            message=(
-                f"{head} Lowering the start is a departure too, and there is no data either "
-                "way: no run on file started below its scouting start. Read the prediction "
-                "as one to confirm."
-            ),
+            message=wording.phi0_lowered(head),
         )
-    three = _LADDER_THREE_PEAK
-    four = _LADDER_FOUR_PEAK
-    observed = (
-        "What was observed on this instrument, from scouting pairs starting at "
-        f"{_LADDER_SCOUTING_START_PERCENT_B:g} %B: the first 10 %B above the scouting start "
-        f"roughly doubled the retention error on both samples ({three[0]:.2f} → {three[1]:.2f} % "
-        f"on the three-peak sample, {four[0]:.2f} → {four[1]:.2f} % on the four-peak); beyond "
-        f"that, one sample kept doubling ({three[2]:.2f} % at +20 %B) and the other flattened "
-        f"({four[2]:.2f} %). An observation, not a rule. No correction is fitted and no "
-        "multiplier is evaluated for this candidate — the ladders were measured from "
-        f"{_LADDER_SCOUTING_START_PERCENT_B:g} %B starts, so a pair scouted elsewhere has the "
-        "guard and not the numbers."
-    )
     if departure >= STRONG_PHI0_DEPARTURE:
         return Diagnostic(
             code="phi0_departure",
             severity="strong",
-            message=(
-                f"{head} {observed} At +10 %B the retention error already stood at over one "
-                "peak width (λ = 1.58) on the three-peak sample: confirm by injection before "
-                "committing to this method."
-            ),
+            message=wording.phi0_raised_strong(head),
         )
     return Diagnostic(
         code="phi0_departure",
         severity="info",
-        message=(
-            f"{head} {observed} No run sits between the scouting start and +10 %B, so the "
-            "tier below +10 %B is untested: treat the prediction as one to confirm."
-        ),
+        message=wording.phi0_raised_info(head),
     )
 
 
@@ -543,23 +493,16 @@ def _indicative(candidate: Sequence[Diagnostic]) -> Diagnostic | None:
     strong = [d for d in candidate if d.code in _STAMPING_GUARDS and d.severity == "strong"]
     if not strong:
         return None
-    reasons = []
-    for guard in strong:
-        if guard.code == "steepness_extrapolation":
-            reasons.append("the candidate's steepness is far outside the scouting bracket")
-        else:
-            reasons.append("the candidate starts well above the scouting start")
+    reasons = [
+        wording.INDICATIVE_REASON_STEEPNESS
+        if guard.code == "steepness_extrapolation"
+        else wording.INDICATIVE_REASON_PHI0
+        for guard in strong
+    ]
     return Diagnostic(
         code="indicative",
         severity="strong",
-        message=(
-            "**Rs and the critical pair are indicative, not decision-grade** at this "
-            f"candidate: {_and_list(reasons)}, so the LSS line was never pinned where "
-            "these peaks are being predicted. The retention times stay shown as numbers "
-            "and nothing here is a curvature-corrected accuracy claim — two parameters "
-            "cannot see curvature. Confirm by injection before a method decision rests "
-            "on this resolution."
-        ),
+        message=wording.indicative(reasons),
     )
 
 
@@ -628,36 +571,21 @@ def _beta_spacing(run1: Run, run2: Run) -> Diagnostic | None:
     tier = classify_spacing(beta)
     if tier == "ok":
         return None
-    head = (
-        f"**Scouting runs are only β = {beta:.2f} apart** "
-        f"(tG {run1.gradient.t_gradient:g} and {run2.gradient.t_gradient:g} min)."
-    )
-    tail = (
-        "Every peak is still fitted — this is a warning about how much the two runs "
-        "can tell you, not a refusal. About 3× is the usual recommendation. A narrow β "
-        "also narrows every peak's calibrated composition window, ln β / S_e — about "
-        "10 %B per peak on the 5 → 95 %B scouting pairs on file, and disjoint between "
-        "peaks."
+    head = wording.beta_head(
+        beta=beta,
+        t_gradient1=run1.gradient.t_gradient,
+        t_gradient2=run2.gradient.t_gradient,
     )
     if tier == "strong":
         return Diagnostic(
             code="beta_spacing",
             severity="strong",
-            message=(
-                f"{head} Below β = {BETA_STRONG:g} the two runs elute each peak at "
-                "nearly the same %B, so S is the ratio of two small differences: 0.6 s "
-                "of timing error moves it about 2% at β = 1.2 and about 9% by β = 1.05. "
-                f"Re-run one of the scouting gradients further away. {tail}"
-            ),
+            message=wording.beta_strong(head),
         )
     return Diagnostic(
         code="beta_spacing",
         severity="warning",
-        message=(
-            f"{head} Under β = {BETA_WARNING:g} the fit starts amplifying ordinary "
-            "timing noise into visible error in S — about 0.3% at β = 2, against 0.13% "
-            f"at β = 3. {tail}"
-        ),
+        message=wording.beta_warning(head),
     )
 
 
@@ -678,15 +606,7 @@ def _estimated_t0(method: Method) -> Diagnostic | None:
     return Diagnostic(
         code="estimated_t0",
         severity="warning",
-        message=(
-            f"**t0 = {method.t0:.4g} min is a geometry estimate, not a measured marker.** "
-            "Two things follow, and they differ by a factor of forty. The retention times "
-            "predicted for *these* gradients barely move — about 0.005% per 1% of t0 "
-            "error, because the two-run fit absorbs t0 into k0. The fitted S, k0 and N "
-            "do not: they carry roughly a quarter of the t0 error as a systematic shift, "
-            "so read them as indicative and never transfer them to another flow rate or "
-            "column. Inject an unretained marker and enter the measured time when you can."
-        ),
+        message=wording.estimated_t0(method.t0),
     )
 
 
@@ -719,32 +639,21 @@ def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
     expected ordering; the gap is the instrument's extra-column volume, measured from
     numbers already on screen. The tiers are `hplcsim.dead_time`'s; this is the wording.
     """
-    porosity = f"ε_total = {check.implied_porosity:.3f}"
-    lo, hi = POROSITY_PLAUSIBLE
-    typical_lo, typical_hi = (v * _UL_PER_ML for v in EXTRA_COLUMN_VOLUME_TYPICAL_ML)
+    porosity = wording.porosity_phrase(check.implied_porosity)
 
     if check.finding == "impossible_porosity":
         return Diagnostic(
             code="dead_time_check",
             severity="strong",
-            message=(
-                f"**Your measured t0 implies {porosity} — more mobile phase than an empty "
-                f"tube of this column's size ({check.column_volume_ml:.3f} mL) would "
-                "hold.** That is not a property any packed column can have. Check the flow "
-                "rate, the column dimensions and their units, and whether the time entered "
-                "is the marker's and in minutes."
+            message=wording.dead_time_impossible_porosity(
+                porosity=porosity, column_volume_ml=check.column_volume_ml
             ),
         )
     if check.finding == "implausible_porosity":
         return Diagnostic(
             code="dead_time_check",
             severity="warning",
-            message=(
-                f"**Your measured t0 implies {porosity}, outside the {lo:.2f}–{hi:.2f} a "
-                "packed column can have.** Check the flow rate, the column dimensions and "
-                "their units — and whether the marker is retained, or excluded from the "
-                "pores."
-            ),
+            message=wording.dead_time_implausible_porosity(porosity),
         )
 
     geometry = check.geometry
@@ -752,53 +661,44 @@ def _dead_time_readout(check: DeadTimeCheck) -> Diagnostic:
         return Diagnostic(
             code="dead_time_check",
             severity="info",
-            message=(
-                f"**Your measured t0 implies {porosity}** for a "
-                f"{check.column_volume_ml:.3f} mL column. Declare the packing architecture "
-                "above to see how much of that is extra-column volume — without it there "
-                "is no geometry estimate to compare against."
+            message=wording.dead_time_no_geometry(
+                porosity=porosity, column_volume_ml=check.column_volume_ml
             ),
         )
 
-    v_ec = check.extra_column_volume_ml * _UL_PER_ML
     band_lo, band_hi = geometry.t0_band
-    against = (
-        f"against the {geometry.porosity.label} geometry estimate of {geometry.t0:.3f} min "
-        f"(ε_total {geometry.porosity.value:.2f}, band {band_lo:.3f}–{band_hi:.3f} min)"
+    against = wording.geometry_phrase(
+        label=geometry.porosity.label,
+        t0=geometry.t0,
+        porosity_value=geometry.porosity.value,
+        band_lo=band_lo,
+        band_hi=band_hi,
     )
     if check.finding == "below_geometry":
         return Diagnostic(
             code="dead_time_check",
             severity="warning",
-            message=(
-                f"**Your measured t0 is below the geometry estimate** — {v_ec:.0f} µL of "
-                f"extra-column volume {against}, which is impossible: geometry leaves the "
-                "plumbing out, so the marker cannot leave before the mobile phase does. "
-                "Usually the packing architecture is mis-declared (a core–shell column "
-                "entered as fully porous); otherwise check the column dimensions, the flow "
-                "rate, or whether the marker is excluded from the pores."
+            message=wording.dead_time_below_geometry(
+                extra_column_ml=check.extra_column_volume_ml, against=against
             ),
         )
     if check.finding == "marker_retained":
         return Diagnostic(
             code="dead_time_check",
             severity="warning",
-            message=(
-                f"**Your measured t0 implies {v_ec:.0f} µL of extra-column volume** "
-                f"({porosity}, {against}) — above the {typical_lo:.0f}–{typical_hi:.0f} µL "
-                "a UHPLC system measures injector to detector. The marker is probably "
-                "retained, or the time includes something that is not plumbing: the wrong "
-                "point of the disturbance, or a delayed injection."
+            message=wording.dead_time_marker_retained(
+                extra_column_ml=check.extra_column_volume_ml,
+                porosity=porosity,
+                against=against,
             ),
         )
     return Diagnostic(
         code="dead_time_check",
         severity="info",
-        message=(
-            f"**Your measured t0 implies {porosity} and {v_ec:.0f} µL of extra-column "
-            f"volume** (typical {typical_lo:.0f}–{typical_hi:.0f} µL), {against}. Geometry "
-            "leaves the plumbing out, so a marker time above the estimate is the expected "
-            "order — this is your system volume, measured."
+        message=wording.dead_time_measured(
+            porosity=porosity,
+            extra_column_ml=check.extra_column_volume_ml,
+            against=against,
         ),
     )
 
@@ -809,26 +709,11 @@ def _marker_check(marker: str | None) -> Diagnostic | None:
     if kind == "compound":
         return None
     if kind == "absent":
-        message = (
-            "**No t0 marker recorded.** A measured dead time without its marker has no "
-            "provenance — note what was injected and which point of its trace was read "
-            "(apex, or first baseline disturbance), so the number can be checked later."
-        )
+        message = wording.marker_absent()
     elif kind == "solvent_disturbance":
-        message = (
-            f"**t0 was read from a solvent disturbance** ({marker}), not from a compound. "
-            "Solvent peaks are complex to interpret and depend on the eluent's ionic "
-            "strength, and injecting them as hold-up markers is strongly discouraged. "
-            "Confirm with uracil or another unretained compound when you can, and record "
-            "which point of the disturbance was read."
-        )
+        message = wording.marker_solvent_disturbance(marker)
     else:
-        message = (
-            f"**The t0 marker is an inorganic salt** ({marker}). At the dilute "
-            "concentrations injected, its ions are excluded from the pores and the time "
-            "measures the interstitial volume only — about 40% low on a fully porous "
-            "column. Use uracil or another permeating, unretained compound."
-        )
+        message = wording.marker_inorganic(marker)
     return Diagnostic(code="t0_marker", severity="warning", message=message)
 
 
@@ -939,14 +824,12 @@ def _area_share_disagreements(entry: Entry, threshold: float) -> list[Diagnostic
             Diagnostic(
                 code="area_share",
                 severity="warning",
-                message=(
-                    f"**{name}: area share moves {change:.0%} between the scouting "
-                    f"runs** ({share1:.1%} → {share2:.1%}, past the {threshold:.0%} "
-                    "tracking check). A compound is the same fraction of the sample in "
-                    "both runs, so either these two rows are not the same peak, or one "
-                    "run's integration of it is not measuring the same thing. Confirm "
-                    "the pairing before trusting this row's fit — and treat its W½ in "
-                    "that run with the same suspicion."
+                message=wording.area_share(
+                    name=name,
+                    change=change,
+                    share1=share1,
+                    share2=share2,
+                    threshold=threshold,
                 ),
                 peaks=(name,),
             )
@@ -977,29 +860,17 @@ def _early_eluters(
         if not in_the_hold and t_r_prime >= method.t0 and not barely_retained:
             continue
         if in_the_hold:
-            reason = (
-                "never meets the gradient — it leaves the column while the eluent is "
-                f"still at the starting %B, {tau:.3g} min of dwell and hold"
-            )
+            reason = wording.early_reason_never_meets(tau)
         elif t_r_prime < method.t0:
-            reason = (
-                f"leaves {t_r_prime:.3g} min after the gradient reaches the column, "
-                f"inside one t0 ({method.t0:g} min) of it"
-            )
+            reason = wording.early_reason_inside_t0(t_r_prime=t_r_prime, t0=method.t0)
         else:
-            reason = (
-                f"leaves the column at k = {peak.retention.k_e:.2f}, below the k = "
-                f"{_MIN_RETENTION_FACTOR:g} the model needs to mean much"
+            reason = wording.early_reason_barely_retained(
+                k_e=peak.retention.k_e, floor=_MIN_RETENTION_FACTOR
             )
         found[peak.name] = Diagnostic(
             code="early_eluter",
             severity="warning",
-            message=(
-                f"**{peak.name} elutes early**: it {reason}. Its retention time is the "
-                "least reliable in the chromatogram — the LSS model assumes k ≫ 1 and "
-                "this peak is nowhere near it. Raise the starting %B, shorten the hold, "
-                "or read this peak's position as indicative."
-            ),
+            message=wording.early_eluter(name=peak.name, reason=reason),
             peaks=(peak.name,),
         )
     return found
@@ -1025,14 +896,10 @@ def _low_k0_at_start(cockpit: Cockpit, programme: Programme) -> dict[str, Diagno
         found[peak.name] = Diagnostic(
             code="low_k0",
             severity="warning",
-            message=(
-                f"**{peak.name}: log₁₀ k0 = {log10_k0:.2f} at the candidate's "
-                f"{percent_b_from_phi(programme.phi0):g} %B start, below the {LOW_K0_LOG10:g} "
-                "floor** the LSS closed form needs. The one measured crossing on this "
-                "instrument — three-peak run 7 Unknown-1 at log₁₀ k0 ≈ 1.7 — had the "
-                "dataset's worst retention error in peak-width units (λ = 1.90). Read "
-                "this peak's position, and every Rs pair it is in, as indicative; a lower "
-                "starting %B brings it back inside the model."
+            message=wording.low_k0(
+                name=peak.name,
+                log10_k0=log10_k0,
+                percent_b=percent_b_from_phi(programme.phi0),
             ),
             peaks=(peak.name,),
         )
@@ -1060,20 +927,13 @@ def _wash_eluted(peaks: Sequence[PredictedPeak], programme: Programme) -> dict[s
         composition = programme.phif if index is None else legs[index].phi_end
         percent_b = percent_b_from_phi(composition)
         if index is None:
-            where = f"after the programme ends, isocratically at its final {percent_b:g} %B"
+            where = wording.wash_where_after_end(percent_b)
         else:
-            where = f"in the hold at {percent_b:g} %B (segment {index + 1})"
+            where = wording.wash_where_hold(percent_b=percent_b, segment=index + 1)
         found[peak.name] = Diagnostic(
             code="wash_eluted",
             severity="warning",
-            message=(
-                f"**{peak.name} is brought off {where}**, not on a ramp: its retention time "
-                f"rests on k at {percent_b:g} %B, a composition the fit never saw, "
-                "extrapolated along the LSS line. The one "
-                "such case measured — three-peak run 6 Unknown-3, 46.8 min against a "
-                "pre-registered 47.0 — held; it was unmarked, which is why this badge "
-                "exists. Read the Rs pairs this peak is in as indicative."
-            ),
+            message=wording.wash_eluted(name=peak.name, where=where, percent_b=percent_b),
             peaks=(peak.name,),
         )
     return found
@@ -1105,13 +965,7 @@ def _prediction_crossings(cockpit: Cockpit) -> dict[str, Diagnostic]:
         name: Diagnostic(
             code="prediction_crossing",
             severity="warning",
-            message=(
-                f"**{name} changes places with {_and_list(crossed)}** at this candidate: "
-                "its elution order here is not the order it came out in the scouting "
-                "runs. That is gradient-time optimisation working, and also its main "
-                "hazard — confirm which peak is which before reading anything off this "
-                "trace, and expect resolution to pass through zero somewhere between."
-            ),
+            message=wording.prediction_crossing(name=name, crossed=crossed),
             peaks=(name, *crossed),
         )
         for name in predicted
@@ -1134,12 +988,6 @@ def _swapped_pairs(order: Sequence[str], other: Sequence[str]) -> Iterable[tuple
                 yield earlier, later
 
 
-def _and_list(names: Sequence[str]) -> str:
-    if len(names) < 2:
-        return names[0]
-    return f"{', '.join(names[:-1])} and {names[-1]}"
-
-
 # --- SPEC §5: the scouting runs disagreeing about elution order ---------------------------
 
 
@@ -1155,13 +1003,7 @@ def _entry_crossings(tracked: Sequence[Peak]) -> list[Diagnostic]:
         Diagnostic(
             code="entry_crossing",
             severity="warning",
-            message=(
-                f"**{earlier} and {later} swap elution order between the scouting "
-                "runs** — confirm they are paired correctly. Peaks with different S do "
-                "cross as tG changes, so this can be real; but it is also exactly what "
-                "a mis-paired row looks like, and a pair matched by elution order when "
-                "it actually crossed gives two fits that are both wrong."
-            ),
+            message=wording.entry_crossing(earlier=earlier, later=later),
             peaks=(earlier, later),
         )
         for earlier, later in _swapped_pairs(_order_by(tracked, 0), _order_by(tracked, 1))
@@ -1170,19 +1012,8 @@ def _entry_crossings(tracked: Sequence[Peak]) -> list[Diagnostic]:
 
 # --- diagnostic 5: widths and Rs resting on a column estimate of N ------------------------
 
-# SPEC §6 diagnostic 5, scoped to peaks whose N is the column estimate. The numbers are
-# research docs `gradient-elution-math.md` §6 and `plate-count-from-widths.md` §0.2, and
-# the wording is ticket #19's — moved here verbatim when #20 gave the other five
-# diagnostics a home, so that all six are computed in one place and placed in another.
-_DEFAULTED_WIDTH = (
-    "**Widths and resolution below rest on a column estimate of N for {names}.** Those "
-    "peaks carry no measured W½, so their plate count is column geometry — not this "
-    "instrument's efficiency. Against the validation dataset that estimate draws peaks "
-    "at 0.69–0.92× their measured width and reads resolution 18–39% high, where an N "
-    "fitted from a peak's own scouting widths lands at 0.99–1.16× and −4 to −10%. Enter "
-    "a W½ for a peak in either scouting run to have its N fitted. The **critical pair is "
-    "identified correctly either way**; it is the absolute Rs that is optimistic."
-)
+# SPEC §6 diagnostic 5, scoped to peaks whose N is the column estimate. The sentence is
+# `app.wording.defaulted_widths`.
 
 
 def _defaulted_widths(names: Sequence[str]) -> Diagnostic | None:
@@ -1192,6 +1023,6 @@ def _defaulted_widths(names: Sequence[str]) -> Diagnostic | None:
     return Diagnostic(
         code="defaulted_width",
         severity="warning",
-        message=_DEFAULTED_WIDTH.format(names=", ".join(names)),
+        message=wording.defaulted_widths(names),
         peaks=tuple(names),
     )

@@ -76,6 +76,18 @@ _Avoid_: crossover, inversion, swap
 The interval of gradient time around an order flip where the flipping pair's resolution is below the Rs target. Shaded on the map so a chromatographer sees the interval to avoid, not only the point.
 _Avoid_: dead zone, trough
 
+### Diagnostics and the screen
+
+**Wording**:
+The sentence a diagnostic says, independent of where it is painted. Lives in
+`app/wording.py`; the *placement* — badge, banner, stamp, notice — is `streamlit_app.py`'s,
+and the decision to say anything at all is `app/diagnostics.py`'s. A constant that is only
+quoted lives with the wording that quotes it; a constant that is compared lives with the
+check that compares it, so the observed φ0 ladders sit in `app/wording.py` and
+`STRONG_PHI0_DEPARTURE` does not. A constant in `app/wording.py` that appears in an `if` is
+a bug.
+_Avoid_: message (the `Diagnostic` field, not the concept), copy, text, string
+
 ### Temperature
 
 **Scouting temperature**:
