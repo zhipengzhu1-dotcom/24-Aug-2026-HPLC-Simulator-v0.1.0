@@ -768,11 +768,13 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     """
     st.markdown("### Candidate — predicted")
     seed = tables.candidate_frame(points_from_programme(_seed_programme(scouting)))
-    touched = screen_state.get(Keys.CANDIDATE_TOUCHED, False)
-    base = screen_state.get(Keys.CANDIDATE_FRAME)
-    if base is None or (not touched and not tables.frames_agree(base, seed)):
-        _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, seed)
-        base = seed
+    base = screen_state.follow(
+        Keys.CANDIDATE_FRAME,
+        seed,
+        touched_key=Keys.CANDIDATE_TOUCHED,
+        same=tables.frames_agree,
+        nonce_key=Keys.CANDIDATE_NONCE,
+    )
     edited = st.data_editor(
         base,
         key=screen_state.claim(Keys.candidate_table(screen_state.nonce(Keys.CANDIDATE_NONCE))),
@@ -787,11 +789,11 @@ def _candidate_table(scouting: ScoutingEntry) -> ProgrammeRead:
     )
     if not tables.frames_agree(edited, base):
         # The reader has typed: from here on the table is theirs, not the scouting's.
-        screen_state.put(Keys.CANDIDATE_TOUCHED, True)
+        screen_state.take_over(Keys.CANDIDATE_TOUCHED)
     read = programme_from_points(tables.candidate_points_from_frame(edited))
     shown = tables.candidate_frame(read.points)
     if not tables.frames_agree(shown, edited):
-        screen_state.put(Keys.CANDIDATE_TOUCHED, True)
+        screen_state.take_over(Keys.CANDIDATE_TOUCHED)
         _replace_frame(Keys.CANDIDATE_FRAME, Keys.CANDIDATE_NONCE, shown)
         st.rerun()
     caption, reset = st.columns([3.2, 1.0], vertical_alignment="center")
@@ -843,7 +845,7 @@ def _replace_frame(frame_key: str, nonce_key: str, frame: object) -> None:
 
 def _reset_candidate() -> None:
     """Back to following the scouting table. A callback, so it lands before the redraw."""
-    screen_state.put(Keys.CANDIDATE_TOUCHED, False)
+    screen_state.release(Keys.CANDIDATE_TOUCHED)
     screen_state.pop(Keys.CANDIDATE_FRAME)
     screen_state.bump_nonce(Keys.CANDIDATE_NONCE)
 
@@ -1172,7 +1174,7 @@ def _chromatogram(
 
 def _axis_request() -> chromatogram.AxisRequest:
     """What the reader asked of the axes — nothing, until they have touched a box."""
-    if not screen_state.get(Keys.AXIS_TOUCHED, False):
+    if not screen_state.taken_over(Keys.AXIS_TOUCHED):
         return chromatogram.AxisRequest()
     return chromatogram.AxisRequest(
         x_start=screen_state.get(Keys.X_AXIS_START),
@@ -1195,7 +1197,6 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
     a longer candidate grows the window with it. Once touched, the entries stay put —
     a pinned window is what the reader asked for — until Reset.
     """
-    touched = screen_state.get(Keys.AXIS_TOUCHED, False)
     y_step = view.run_y[1] / 20.0 or 0.05
     boxes = (
         ("x start (min)", Keys.X_AXIS_START, view.run_x[0], 0.1, "%.2f"),
@@ -1207,12 +1208,11 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
     # value as the widget's default — but a keyed widget's default is only ever the value
     # for a key the browser does not already hold, and the browser holds it across the
     # rerun. So the window stayed the length of an earlier candidate, and a longer one
-    # then drew its late peaks outside the axis. Writing the run's value into the key is
-    # what pushes it to the browser; with the key always written, the widget takes its
-    # value from state and is not given a default at all.
+    # then drew its late peaks outside the axis. `follow` writes the run's value into the
+    # key instead, which is what pushes it to the browser; the widget takes its value from
+    # state and is not given a default at all.
     for _label, key, value, _step, _fmt in boxes:
-        if not touched or not screen_state.has(key):
-            screen_state.put(key, float(value))
+        screen_state.follow(key, float(value), touched_key=Keys.AXIS_TOUCHED)
     cols = st.columns([0.9, 1.0, 1.0, 1.0, 1.0, 0.7], vertical_alignment="bottom")
     with cols[0]:
         st.markdown(
@@ -1235,7 +1235,7 @@ def _axis_controls(view: chromatogram.AxisView) -> None:
 
 def _mark_axis_touched() -> None:
     """From here on the boxes are the reader's, not the run's."""
-    screen_state.put(Keys.AXIS_TOUCHED, True)
+    screen_state.take_over(Keys.AXIS_TOUCHED)
 
 
 def _reset_axis_range() -> None:
@@ -1247,7 +1247,7 @@ def _reset_axis_range() -> None:
     not re-pushed by a widget default, and leaving that call here would keep the bug one
     refactor away from coming back on the Reset path.
     """
-    screen_state.put(Keys.AXIS_TOUCHED, False)
+    screen_state.release(Keys.AXIS_TOUCHED)
 
 
 def _stamp_caption(diagnostics: Diagnostics) -> None:

@@ -32,6 +32,9 @@ which is why ``PLATE_COUNT_RANGE`` is here and the plate count's own default is 
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import streamlit as st
 
 from app import tables
@@ -140,7 +143,6 @@ class Keys:
     X_AXIS_END = "x_axis_end"
     Y_AXIS_START = "y_axis_start"
     Y_AXIS_END = "y_axis_end"
-    AXIS_KEYS = (X_AXIS_START, X_AXIS_END, Y_AXIS_START, Y_AXIS_END)
     # Whether the reader has touched any of the four. Until they have, the boxes follow
     # the run — a keyed widget keeps its first value across reruns otherwise, and the
     # window would silently stay the length of the *previous* candidate's run.
@@ -233,6 +235,70 @@ def nonce(key: str) -> int:
 def bump_nonce(key: str) -> None:
     """Move a table's nonce on, so its editor is rebuilt from the frame beside it."""
     put(key, nonce(key) + 1)
+
+
+def taken_over(touched_key: str) -> bool:
+    """Whether the reader has taken a control over from the source it follows."""
+    return bool(get(touched_key, False))
+
+
+def take_over(touched_key: str) -> None:
+    """From here on the control is the reader's, not its source's."""
+    put(touched_key, True)
+
+
+def release(touched_key: str) -> None:
+    """Reset: the control follows its source again.
+
+    Only the flag. What else a Reset needs is the control's own business — a frame's
+    identity has to move with it, and the axis keys must deliberately *not* be popped
+    (#57: a key the browser still holds is not re-pushed by a widget default).
+    """
+    put(touched_key, False)
+
+
+def follow(
+    key: str,
+    source: object,
+    *,
+    touched_key: str,
+    same: Callable[[Any, Any], bool] | None = None,
+    nonce_key: str | None = None,
+) -> object:
+    """Seed ``key`` from ``source`` unless the reader has taken the control over.
+
+    One rule for both controls that follow something (SPEC §7): the candidate table
+    follows the scouting seed, the axis boxes follow the run's computed range. Seed when
+    the key is missing, or when the control is still following and what is on screen
+    differs from the source — ``missing or (following and differs)``. Returns what is in
+    state afterwards, so the caller need not read it back.
+
+    ``same`` compares two values when ``==`` will not do it (two frames differ in dtype
+    without reading differently — :func:`app.tables.frames_agree`). ``nonce_key`` moves a
+    table's nonce whenever the frame is replaced, so the editor is rebuilt from it rather
+    than showing the new frame with the old edits layered over.
+
+    It reads ``key`` before it writes it, so any control it seeds is inside
+    :func:`restore`'s ordering guard — which bites on the candidate frame, a key a loaded
+    file does write. It does not bite on the axis boxes: SPEC §8 keeps the session file to
+    inputs, the axis view is not one, and ``restore`` writes nothing there to conflict with.
+    That is also why a restored session takes the candidate table over and leaves the boxes
+    following — the file has a candidate programme in it and no window.
+    """
+    if not has(key):
+        return _seed(key, source, nonce_key)
+    current = get(key)
+    if taken_over(touched_key):
+        return current
+    agrees = same(current, source) if same is not None else current == source
+    return current if agrees else _seed(key, source, nonce_key)
+
+
+def _seed(key: str, source: object, nonce_key: str | None) -> object:
+    put(key, source)
+    if nonce_key is not None:
+        bump_nonce(nonce_key)
+    return source
 
 
 def restore(session: Session) -> None:

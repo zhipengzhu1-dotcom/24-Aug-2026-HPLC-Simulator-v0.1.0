@@ -10,6 +10,7 @@ ignored the state written after it.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -171,12 +172,16 @@ def test_every_widget_key_in_the_entry_point_is_claimed() -> None:
     every named widget key reaches Streamlit; the axis boxes pass a loop variable and
     are covered by the accessor read directly above them.
     """
+    # `key=Keys.X` is a widget taking a key. `touched_key=Keys.X` and `nonce_key=Keys.X`
+    # are arguments to `screen_state.follow` naming state no widget ever takes, and they
+    # end in the same four characters — so the match is anchored on what precedes `key`.
+    binds_a_widget_key = re.compile(r"(?<!\w)key=Keys\.")
     unclaimed = [
         f"{number}: {line.strip()}"
         for number, line in enumerate(
             (ROOT / "streamlit_app.py").read_text(encoding="utf-8").splitlines(), 1
         )
-        if "key=Keys." in line and "claim(" not in line
+        if binds_a_widget_key.search(line) and "claim(" not in line
     ]
 
     assert not unclaimed, (
@@ -184,3 +189,148 @@ def test_every_widget_key_in_the_entry_point_is_claimed() -> None:
         "`key=screen_state.claim(Keys.X)` — so restore()'s ordering guard can see the "
         "widget take it."
     )
+
+
+# --- the takeover rule: a control that follows a source until the reader takes it over ---
+#
+# One rule for the two controls that follow something (SPEC §7): the candidate table
+# follows the scouting seed, the axis boxes follow the run's computed range. Before it was
+# one rule it was two spellings — `not touched and differs` on the table, `not touched or
+# missing` on the boxes — and nothing compared them. These pin the unified rule, including
+# the one case where the two old spellings differed.
+
+
+def test_follow_seeds_a_key_that_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing on screen yet: the source is what the control starts from."""
+    state = _screen(monkeypatch)
+
+    result = screen_state.follow(Keys.X_AXIS_END, 12.0, touched_key=Keys.AXIS_TOUCHED)
+
+    assert result == pytest.approx(12.0)
+    assert state[Keys.X_AXIS_END] == pytest.approx(12.0)
+
+
+def test_follow_leaves_a_taken_over_control_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Once the reader has typed, the source stops writing — that is the whole rule."""
+    state = _screen(monkeypatch)
+    screen_state.put(Keys.X_AXIS_END, 3.0)
+    screen_state.take_over(Keys.AXIS_TOUCHED)
+
+    result = screen_state.follow(Keys.X_AXIS_END, 12.0, touched_key=Keys.AXIS_TOUCHED)
+
+    assert result == pytest.approx(3.0), "the reader's value, not the run's"
+    assert state[Keys.X_AXIS_END] == pytest.approx(3.0)
+
+
+def test_follow_reseeds_a_following_control_when_the_source_moves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#57's frozen window, in one assertion: a longer run must widen an untouched box."""
+    state = _screen(monkeypatch)
+    screen_state.put(Keys.X_AXIS_END, 3.0)
+
+    result = screen_state.follow(Keys.X_AXIS_END, 12.0, touched_key=Keys.AXIS_TOUCHED)
+
+    assert result == pytest.approx(12.0)
+    assert state[Keys.X_AXIS_END] == pytest.approx(12.0)
+
+
+def test_follow_does_not_write_when_the_source_has_not_moved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one case the two old spellings disagreed on — and it is a no-op either way.
+
+    The axis boxes used to re-write the run's value into the key on every rerun while the
+    control was following, whether or not it had changed; the candidate table only wrote
+    when the frame differed. Unifying on the table's rule means the boxes now skip a write
+    that put the same value back, so nothing a reader can observe changes.
+    """
+    state = _screen(monkeypatch)
+    held: list[float] = [12.0]
+    screen_state.put(Keys.X_AXIS_END, held)
+
+    result = screen_state.follow(Keys.X_AXIS_END, [12.0], touched_key=Keys.AXIS_TOUCHED)
+
+    assert result is held, "equal to the source, so the stored value is left where it is"
+    assert state[Keys.X_AXIS_END] is held
+
+
+def test_follow_moves_a_frames_nonce_only_when_it_replaces_the_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced frame needs a new editor identity; an unreplaced one must not get one."""
+    state = _screen(monkeypatch)
+    screen_state.put(Keys.CANDIDATE_FRAME, "old")
+    screen_state.put(Keys.CANDIDATE_NONCE, 4)
+
+    screen_state.follow(
+        Keys.CANDIDATE_FRAME,
+        "new",
+        touched_key=Keys.CANDIDATE_TOUCHED,
+        nonce_key=Keys.CANDIDATE_NONCE,
+    )
+    assert state[Keys.CANDIDATE_FRAME] == "new"
+    assert state[Keys.CANDIDATE_NONCE] == 5, "the editor is rebuilt from the new frame"
+
+    screen_state.follow(
+        Keys.CANDIDATE_FRAME,
+        "new",
+        touched_key=Keys.CANDIDATE_TOUCHED,
+        nonce_key=Keys.CANDIDATE_NONCE,
+    )
+    assert state[Keys.CANDIDATE_NONCE] == 5, "no replacement, so no new identity"
+
+
+def test_follow_uses_the_comparison_it_is_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two frames differ in dtype without reading differently — `==` is the wrong test."""
+    state = _screen(monkeypatch)
+    screen_state.put(Keys.CANDIDATE_FRAME, "1.0")
+
+    screen_state.follow(
+        Keys.CANDIDATE_FRAME,
+        "1",
+        touched_key=Keys.CANDIDATE_TOUCHED,
+        same=lambda left, right: float(left) == float(right),
+    )
+
+    assert state[Keys.CANDIDATE_FRAME] == "1.0", "the comparison said they agree"
+
+
+def test_follow_arms_the_guard_for_the_key_it_seeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`follow` reads before it writes, so what it seeds is inside `restore`'s guard.
+
+    It bites on the candidate frame, which a loaded file writes. It does not bite on the
+    axis boxes, and cannot: SPEC §8 keeps the file to inputs, the axis view is not one,
+    and `restore` writes nothing there to conflict with — which is the same fact that
+    makes a restored session take the table over and leave the boxes following.
+    """
+    _screen(monkeypatch)
+
+    screen_state.follow(Keys.CANDIDATE_FRAME, "seed", touched_key=Keys.CANDIDATE_TOUCHED)
+
+    with pytest.raises(ScreenStateError) as raised:
+        screen_state.restore(_SESSION)
+    assert Keys.CANDIDATE_FRAME in str(raised.value)
+
+
+def test_restore_does_not_write_the_axis_boxes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The asymmetry in `restore`, pinned as the persistence fact it follows from."""
+    state = _screen(monkeypatch)
+
+    screen_state.restore(_SESSION)
+
+    assert state[Keys.CANDIDATE_TOUCHED] is True, "the file's candidate, not the seed's"
+    assert Keys.AXIS_TOUCHED not in state, "no window in the file, so nothing to pin"
+    assert Keys.X_AXIS_END not in state
+
+
+def test_take_over_and_release_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reset puts a control back to following its source."""
+    _screen(monkeypatch)
+    assert screen_state.taken_over(Keys.AXIS_TOUCHED) is False
+
+    screen_state.take_over(Keys.AXIS_TOUCHED)
+    assert screen_state.taken_over(Keys.AXIS_TOUCHED) is True
+
+    screen_state.release(Keys.AXIS_TOUCHED)
+    assert screen_state.taken_over(Keys.AXIS_TOUCHED) is False

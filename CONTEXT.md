@@ -88,6 +88,15 @@ check that compares it, so the observed φ0 ladders sit in `app/wording.py` and
 a bug.
 _Avoid_: message (the `Diagnostic` field, not the concept), copy, text, string
 
+**Taken over**:
+A control that follows a source until the reader edits it, after which it holds until
+Reset. The candidate table follows the scouting seed; the axis boxes follow the run's
+computed range. One rule, in `screen_state.follow`: seed when the key is missing, or when
+the control is still following and what is on screen differs from the source. Restoring a
+session takes the candidate table over but not the axis boxes — not an inconsistency:
+SPEC §8 keeps the file to inputs, so it carries a candidate programme and no window.
+_Avoid_: touched (the flag's name, not the concept), dirty, pinned, frozen
+
 ### Temperature
 
 **Scouting temperature**:
