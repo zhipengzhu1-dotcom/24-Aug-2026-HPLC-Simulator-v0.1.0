@@ -105,6 +105,8 @@ class Row:
     start: float
     end: float
     rs_to_next: float | None
+    usp_rs_to_next: float | None
+    area_pct: float
     best_name: str
     best_score: float
     all_scores: dict[str, float]
@@ -126,6 +128,8 @@ def load(label: str) -> tuple[list[float], list[float], list[dict[str, object]],
     scores = similarity_matrix(queries, reference)
 
     rs_next = {id(pair.earlier): pair.rs for pair in result.pairs}
+    usp_next = {id(pair.earlier): pair.usp_resolution for pair in result.pairs}
+    total = sum(peak.area for peak in result.peaks) or 1.0
     rows: list[dict[str, object]] = []
     for peak, score_row in zip(result.peaks, scores, strict=True):
         by_name = {name: float(v) for name, v in zip(ref_names, score_row, strict=True)}
@@ -142,6 +146,8 @@ def load(label: str) -> tuple[list[float], list[float], list[dict[str, object]],
                     start=peak.start_time,
                     end=peak.end_time,
                     rs_to_next=rs_next.get(id(peak)),
+                    usp_rs_to_next=usp_next.get(id(peak)),
+                    area_pct=100.0 * peak.area / total,
                     best_name=best,
                     best_score=by_name.get(best, 0.0),
                     all_scores=by_name,
@@ -402,9 +408,9 @@ def main() -> None:
     if "decisions" not in st.session_state:
         st.session_state.decisions = read_decisions()
 
-    current = st.query_params.get("variant", "A").upper()
+    current = st.query_params.get("variant", "D").upper()
     if current not in VARIANTS:
-        current = "A"
+        current = "D"
 
     st.title("Peak sign-off — PROTOTYPE")
     st.caption(
@@ -430,5 +436,121 @@ def main() -> None:
 
     switcher(current)
 
+
+# ------------------------------------------------- D: chromatogram over a proper table
+INTEGRATION_METHOD = """
+**Apex-first — the ApexTrack family, not Traditional.**
+
+*Detection* finds apices by prominence on a smoothed trace; Traditional integration
+instead detects on a slope threshold with timed events, and no slope threshold is used
+here to detect anything. *Limits* are walked outward from each apex to liftoff and
+touchdown — ApexTrack's shape, though ApexTrack proper takes both from the second
+derivative where this uses prominence for the apex and a flank criterion for the limits
+(steep, then flattened; or a valley more than 3× the noise above the lowest point the
+walk reached). *Baseline and splitting* are Empower's default and common to both
+algorithms: one straight baseline per cluster between its outer limits, perpendicular
+drop at the interior valleys — chosen so the cross-check against the instrument's own
+report is like-for-like.
+
+Every value is measured on the **unsmoothed** trace; smoothing serves detection and
+slopes only. Rs is Δt/(2(σ₁+σ₂)) with σ from W½ — the definition the engine predicts in.
+USP Rs is built from real inflection tangents struck down to the baseline, and is
+recorded, never asserted.
+"""
+
+
+def variant_d(label, times, signal, rows, names) -> None:
+    """The unit is the RUN, read through a table. B's chromatogram over C's columns."""
+    selected = st.session_state.get(f"d-sel-{label}", 0)
+    selected = min(selected, max(0, len(rows) - 1))
+
+    st.plotly_chart(
+        trace_figure(times, signal, rows, 0.0, max(times), height=380, selected=selected),
+        use_container_width=True,
+        key=f"d-full-{label}",
+    )
+
+    table = [
+        {
+            "#": index + 1,
+            "RT (min)": round(row["t_r"], 3),
+            "Area": round(row["area"]),
+            "% Area": round(row["area_pct"], 2),
+            "Height": round(row["height"]),
+            "W½ (min)": round(row["w_half"], 4),
+            "Tailing": None if row["tailing"] is None else round(row["tailing"], 2),
+            "Rs → next": None if row["rs_to_next"] is None else round(row["rs_to_next"], 2),
+            "USP Rs → next": (
+                None if row["usp_rs_to_next"] is None else round(row["usp_rs_to_next"], 2)
+            ),
+            "k′": round(row["k_prime"], 2),
+            "Match": row["best_name"],
+            "Score": round(row["best_score"], 3),
+            "Name": st.session_state.decisions.get(decision_key(label, index), {}).get("name", ""),
+        }
+        for index, row in enumerate(rows)
+    ]
+
+    event = st.dataframe(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key=f"d-table-{label}",
+        column_config={
+            "Area": st.column_config.NumberColumn(format="%d", help="µAU·s"),
+            "Height": st.column_config.NumberColumn(format="%d", help="µAU"),
+            "k′": st.column_config.NumberColumn(help="below 1 the peak is in the void"),
+            "Score": st.column_config.NumberColumn(
+                format="%.3f", help="cosine similarity to the scouting spectrum"
+            ),
+        },
+    )
+    picked = event.selection.rows
+    if picked:
+        selected = picked[0]
+        st.session_state[f"d-sel-{label}"] = selected
+
+    row = rows[selected]
+    left, right = st.columns([3, 2])
+    with left:
+        pad = max(0.15, (row["end"] - row["start"]) * 2.0)
+        st.plotly_chart(
+            trace_figure(
+                times,
+                signal,
+                rows,
+                row["start"] - pad,
+                row["end"] + pad,
+                height=240,
+                selected=selected,
+            ),
+            use_container_width=True,
+            key=f"d-zoom-{label}",
+        )
+    with right:
+        st.markdown(
+            f"**Peak {selected + 1} — {row['t_r']:.3f} min**"
+            + (
+                "  ·  ⚠︎ before the void"
+                if row["k_prime"] < 0
+                else ("  ·  k′ < 1, in the void" if row["k_prime"] < 1 else "")
+            )
+        )
+        st.caption(f"integrated {row['start']:.3f} → {row['end']:.3f} min")
+        for name, score in sorted(row["all_scores"].items(), key=lambda kv: -kv[1]):
+            st.progress(max(0.0, min(1.0, score)), text=f"{name}  {score:.3f}")
+        namer(label, selected, row, names, "d")
+
+    with st.expander("Integration method"):
+        st.markdown(INTEGRATION_METHOD)
+
+
+# Registered here rather than in the dict above: `variant_d` is defined after it.
+VARIANTS = {
+    "D": ("Chromatogram over a table — the layout the driver asked for", variant_d),
+    **VARIANTS,
+}
 
 main()
