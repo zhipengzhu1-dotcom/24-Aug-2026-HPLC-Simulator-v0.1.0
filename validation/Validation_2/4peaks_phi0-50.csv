@@ -1,0 +1,16 @@
+﻿tG_min,20,,,
+compound,tR_min,area_pct,W_half_min,
+Unknown-1,8.309,669348,0.052,
+Unknown-2,8.545,456650,0.049,
+Unknown-3,9.018,829082,0.054,
+Unknown-4,9.185,659587,0.050,
+,,,,
+Gradient,,,,
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,50,50
+2,0.5,0.4,50,50
+3,20.5,0.4,5,95
+,,,,
+"NOTE: Held-out start, run 2026-09-08 from the 08-Sep-2026 Gradients sequence (.arw export 23045). tG 20 and 0.5 min initial hold are the driver's confirmation 2026-09-09; flow, column, t0 and dwell are ../method.csv. NO RUN SHEET WAS WRITTEN BEFORE THIS INJECTION - the prediction grid was instead posted to issue #134 before the gradient time was known, and the tG 20 row of that grid is what this file is scored against.",,,,
+"NOTE2: The wash and re-equilibration steps after the ramp were not recorded. The .arw export runs 28.005 min total, which leaves 7.5 min of tail after the ramp ends at 20.5 min; how it was split between wash, return and re-equilibration is unknown. The engine reads only phi0, phif, tG and the initial hold, so the tail does not enter the tR above.",,,,
+"NOTE3: All four bands elute at 64.9-66.8 %B, inside the 63.7-74.7 %B the scouting pair covered, and s* = 0.0118 sits exactly on the scouting bracket's shallow edge. Every in-bracket diagnostic the engine has reports this run as interpolated, and no peak is flagged low-confidence - yet the mean |dtR| is 2.81 %, above SPEC 10's 2 % bar. The departure from the scouting start of 5 %B is +45 %B.",,,,
