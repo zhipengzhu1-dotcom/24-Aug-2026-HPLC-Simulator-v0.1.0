@@ -1,0 +1,36 @@
+tG_min,20,,,
+sample,four-peak,,,
+compound,tR_min,area,area_pct,height,W_half_min,USP_tailing,USP_resolution_to_next,rs_to_next,k_prime,spectral_match,w_half_basis
+,0.476,265427,9.49,167719,0.0257,1.08,2.75,1.37,-1.88,0.927,both flanks
+,0.802,12703,0.45,923,0.2558,3.29,55.33,28.81,-1.26,0.849,both flanks
+Unknown-1,8.309,625965,22.39,154748,0.0510,0.67,2.69,2.72,13.04,1.000,both flanks
+Unknown-2,8.544,455938,16.31,123563,0.0507,0.73,5.38,5.45,13.49,1.000,both flanks
+Unknown-3,9.018,811571,29.03,197151,0.0516,0.66,1.92,1.94,14.39,1.000,both flanks
+Unknown-4,9.184,624410,22.33,192834,0.0497,0.88,,,14.71,1.000,both flanks
+
+Gradient
+#,Time,Flow (mL/min),%A,%B
+1,0,0.4,50,50
+2,0.5,0.4,50,50
+3,20.5,0.4,5,95
+4,23.5,0.4,5,95
+5,23.6,0.4,50,50
+6,27,0.4,50,50
+
+PROVENANCE
+source_file,Export Data Points23045-50%_Cannabinoid.arw
+source_sha256,dbf7dff80374423947a3c12ee6607ee29094941d127a4c480ea3eb3bd1742b98
+channel_nm,219.8182
+nominal_nm,220
+units,area µAU·s; height µAU; times min
+sampling_hz,20.008
+trace,validation/traces/4peaks_run7-219.8182nm.csv
+integrator,scripts/integrate.py at 9ba9e11
+t0_min,0.525
+dwell_min,0.9375
+noise_AU,3.986e-05
+rs_convention,"rs = dt / (2(sigma1 + sigma2)), sigma = W_half / sqrt(8 ln 2)"
+usp_convention,"2 dt / (W1 + W2), inflection tangents extended to baseline"
+measured_before_prediction,yes
+
+"NOTE: Raised start, 50 -> 95 %B over tG 20. s* = 0.0118, on the shallow edge of this sample's scouting bracket (0.0118-0.0315). All four peaks on the ramp, order as in the scouting run. Not pre-registered: the injections were made on 2026-09-08 before any run sheet existed (#134 checklist step 1 skipped)."
