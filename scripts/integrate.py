@@ -4,6 +4,27 @@ Pure functions over an :class:`~scripts.arw.Trace`; no file is read or written h
 
 Conventions, all settled with the driver on 2026-09-09 and none of them free choices:
 
+* **Detection is apex-first.** Apices come from :func:`scipy.signal.find_peaks` on the
+  smoothed trace at a prominence of ``min_prominence_noise`` x the trace's own noise. No
+  slope threshold detects anything, which is what puts this in the ApexTrack family rather
+  than Empower's Traditional integration. Two further gates then drop an apex silently: a
+  height below ``min_height_noise`` x noise, and a non-positive area once the baseline is
+  subtracted -- a wobble on a baseline drifting late in a gradient run, which is not a
+  compound. A peak absent from a result was refused by one of those three thresholds, so
+  name them when explaining an absence.
+* **Limits are walked outward** from each apex to liftoff and touchdown on the smoothed
+  trace: outward while the flank has been steep and has since flattened to
+  ``limit_slope_fraction`` of that peak's own steepest slope, stopping where the trace
+  turns back up by more than ``valley_rise_noise`` x noise, which is a neighbouring peak
+  rather than baseline. ApexTrack proper takes both apex and limits from the second
+  derivative; this takes the apex from prominence and the limits from that flank criterion.
+* **Which trace each number comes off.** The two are not interchangeable and this has been
+  got wrong before. The *smoothed* trace and its Savitzky-Golay first derivative only ever
+  *locate*: apices, prominence bases, the limits walk, the perpendicular-drop valleys, and
+  the inflection points of the USP tangents. Every reported *value* is read off the raw
+  trace after baseline subtraction -- height, area, the W-half crossings. Two are mixed on
+  purpose: a retention time is a raw time read at a smoothed-located apex, and a USP
+  tangent width strikes raw ordinates down smoothed slopes.
 * **Baseline and splitting** follow Empower's default so the cross-check against the
   instrument's own report is like-for-like: one straight baseline per *cluster* of
   peaks that never return to it, drawn between the cluster's outer limits, and a
@@ -49,8 +70,9 @@ class Settings:
     # serves traces that differ by three orders of magnitude in absorbance.
     min_prominence_noise: float = 12.0
     min_height_noise: float = 15.0
-    # Smoothing is used for detection and for slopes only; every reported value is
-    # measured on the unsmoothed trace.
+    # Smoothing only ever locates -- apices, limits, valleys, inflection points -- and is
+    # never itself the source of a reported value; those are read off the raw trace. The
+    # module docstring carries the full split, which is easy to state backwards.
     smooth_points: int = 11
     smooth_polyorder: int = 2
     # A peak's limits are walked out from its apex until the slope has fallen to this
