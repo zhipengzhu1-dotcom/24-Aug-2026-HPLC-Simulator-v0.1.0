@@ -138,8 +138,10 @@ RUNS: tuple[Run, ...] = (
             "75 -> 95 %B over tG 20. Every peak elutes at k' 0.6-1.1, essentially in the "
             "void, so the retention residual here tests the void volume rather than the "
             "retention model; peaks below k' 1 are excluded from residual statistics. "
-            "s* = 0.00525, 0.33 window-widths BELOW the scouting bracket, so this run "
-            "varies the start and the steepness together and isolates neither. Empower's "
+            "s* = 0.00525, which SPEC section 6 item 1's log_beta measure puts "
+            "0.83 window-widths BELOW the scouting bracket -- past the 0.6 boundary, so "
+            "diagnostic 1 fires STRONG and the run varies start and steepness together, "
+            "isolating neither. Empower's "
             "report for this run lists a fifth peak at 25.525 min carrying 94.8 % of the "
             "area; that is the baseline step where the gradient returns to 75 %B, not a "
             "compound, and it is not integrated here. Not pre-registered."
@@ -180,8 +182,9 @@ RUNS: tuple[Run, ...] = (
             "where the fit puts Unknown-1 and Unknown-2, and no later peak matches a "
             "scouting spectrum above 0.99 at a plausible time. The run contributes no "
             "retention residual and is evidence about where retention ends on this "
-            "sample, not about the LSS line. s* = 0.00525, 0.25 window-widths below the "
-            "scouting bracket. Not pre-registered."
+            "sample, not about the LSS line. s* = 0.00525, which SPEC section 6 item 1's "
+            "log_beta measure puts 0.63 window-widths below the scouting bracket, just "
+            "past the 0.6 boundary. Not pre-registered."
         ),
     ),
 )

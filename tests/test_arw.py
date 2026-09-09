@@ -21,6 +21,7 @@ import pytest
 from numpy.typing import NDArray
 
 from scripts.arw import Channel, Trace, nearest_channel, read_channel, read_spectra
+from scripts.assign import Fingerprint, fingerprints, similarity_matrix
 from scripts.integrate import Settings, capacity_factor, estimate_noise, measure
 
 _STEP_MIN = 1.0 / (20.0 * 60.0)  # the instrument's 20 Hz
@@ -332,6 +333,70 @@ class TestTailing:
         # A tailing peak's tangent width exceeds the Gaussian relation to its W½.
         assert peak.w_tangent is not None
         assert peak.w_tangent > 1.699 * peak.w_half
+
+
+class TestSpectralFingerprints:
+    """What a spectrum can and cannot settle about a peak's identity.
+
+    The PDA baseline climbs steeply through a gradient — the mobile phase absorbs — so a
+    raw apex spectrum is the compound *plus* wherever in the gradient it happened to
+    elute. Subtracting the spectrum at the foot of the same peak is what makes two runs
+    comparable, and it is the step that a check on the raw apex would not notice was
+    missing.
+    """
+
+    def _run(self, tmp_path: Path, shapes: list[NDArray[np.float64]]) -> tuple[Path, Trace]:
+        """One synthetic run: each peak given its own spectral shape, on a rising eluent."""
+        times = _times(10.0)
+        matrix = np.zeros((times.size, len(_AXIS)), dtype=np.float64)
+        # An eluent background that climbs through the run and is not any compound.
+        matrix += np.outer(0.5 * times / times[-1], np.linspace(1.0, 3.0, len(_AXIS)))
+        for index, shape in enumerate(shapes):
+            matrix += np.outer(_gaussian(times, 2.0 + 2.0 * index, 0.2, 0.02), shape)
+        path = tmp_path / f"run{len(shapes)}.arw"
+        _write_arw(path, times, matrix)
+        return path, read_channel(path, 220.0)
+
+    def test_the_eluent_background_is_subtracted_and_not_fingerprinted(
+        self, tmp_path: Path
+    ) -> None:
+        """Two runs, same compounds, different gradient positions: same fingerprints."""
+        shape = np.linspace(3.0, 1.0, len(_AXIS))
+        first, trace = self._run(tmp_path, [shape])
+        peaks = measure(trace).peaks
+        prints = fingerprints(first, peaks, trace.times)
+
+        assert len(prints) == 1
+        assert prints[0].spectrum == pytest.approx(shape / np.linalg.norm(shape), abs=0.02)
+        assert float(np.linalg.norm(prints[0].spectrum)) == pytest.approx(1.0, abs=1e-9)
+
+    def test_a_compound_matches_itself_and_not_a_different_one(self, tmp_path: Path) -> None:
+        same = np.linspace(3.0, 1.0, len(_AXIS))
+        other = np.linspace(1.0, 3.0, len(_AXIS))
+        path, trace = self._run(tmp_path, [same, other])
+        prints = fingerprints(path, measure(trace).peaks, trace.times)
+
+        scores = similarity_matrix(prints, prints)
+
+        assert scores[0][0] == pytest.approx(1.0, abs=1e-9)
+        assert scores[1][1] == pytest.approx(1.0, abs=1e-9)
+        assert scores[0][1] < 0.95
+        assert scores[0][1] == pytest.approx(scores[1][0])
+
+    def test_axes_of_different_length_compare_on_the_shared_channels(self) -> None:
+        """The exports carry 115, 148 and 309 channels of one grid; the short one wins."""
+        long = Fingerprint(t_r=1.0, spectrum=np.linspace(1.0, 2.0, 309))
+        short = Fingerprint(t_r=1.0, spectrum=np.linspace(1.0, 2.0, 309)[:115])
+
+        assert similarity_matrix([long], [short])[0][0] == pytest.approx(1.0, abs=1e-9)
+
+    def test_nothing_to_compare_is_an_empty_matrix_rather_than_an_error(self) -> None:
+        one = Fingerprint(t_r=1.0, spectrum=np.ones(115))
+        assert similarity_matrix([], [one]).shape == (0, 1)
+        assert similarity_matrix([one], []).shape == (1, 0)
+
+    def test_no_peaks_yields_no_fingerprints_without_reading_the_file(self) -> None:
+        assert fingerprints(Path("does-not-exist.arw"), [], _times(1.0)) == ()
 
 
 def test_capacity_factor_counts_the_dwell_the_gradient_had_to_travel() -> None:

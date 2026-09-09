@@ -22,13 +22,37 @@ All numbers at the measured t0 = 0.525 min and the instrument's dwell of 0.375 m
 | run | file | φ0 departure | s\* | vs the scouting bracket |
 |---|---|---|---|---|
 | four-peak 7 | `Validation_2/4peaks_run7.csv` | +45 %B | 0.011813 | exactly the shallow edge (0.011813–0.0315) |
-| four-peak 8 | `Validation_2/4peaks_run8.csv` | +70 %B | 0.005250 | 0.333 window-widths below |
+| four-peak 8 | `Validation_2/4peaks_run8.csv` | +70 %B | 0.005250 | **0.827** window-widths below |
 | three-peak 8 | `run8.csv` | +45 %B | 0.011813 | inside (0.0105–0.0315) |
-| three-peak 9 | `run9.csv` | +70 %B | 0.005250 | 0.250 window-widths below |
+| three-peak 9 | `run9.csv` | +70 %B | 0.005250 | **0.631** window-widths below |
+
+Window-widths are SPEC §6 item 1's measure, log_β(s\*_edge / s\*_cand), taken from the
+engine's own `app.diagnostics.window_widths_outside` — not a linear ratio of the bracket,
+which is a different and smaller number.
 
 Diagnostic 7 is strong on all four (it is strong from +10 %B), so every number is stamped
-indicative. The 75 %B runs carry diagnostic 1 as well: they move the start *and* leave the
-steepness bracket, so neither isolates φ0 and neither can be read as a clean φ0 point.
+indicative. The 75 %B runs carry diagnostic 1 as well, and at its **strong** tier: they
+move the start *and* leave the steepness bracket, so neither isolates φ0 and neither can
+be read as a clean φ0 point.
+
+### These are the first real data on diagnostic 1's strong tier
+
+SPEC §6 item 1 says of the 0.6 window-width boundary:
+
+> **The strong tier is untested by real data** and stays so until a run beyond 0.6
+> window-widths elutes on the ramp.
+
+Both 75 %B runs are beyond 0.6 — 0.827 and 0.631 — and in each the engine predicts a peak
+eluting on the ramp segment (four-peak Unknown-4, three-peak Unknown-3), so diagnostic 1 is
+not silent under #58's rule. That sentence in SPEC is therefore falsified by these runs.
+
+What the runs say about the tier is a weaker thing than it looks, and is **not** proposed
+as a SPEC amendment here. The four-peak run misses the retention bar at 4.44 % mean
+|ΔtR| — consistent with a strong warning — but it is confounded twice over: φ0 moves +70 %B
+at the same time, and every peak elutes at k′ 0.6–1.1, where the residual is reporting the
+void rather than the model. The three-peak run assigns no peak at all. So the tier now has
+data, and the data cannot separate the steepness overshoot from the two other things wrong
+with these runs. Raised as its own ticket rather than settled here.
 
 ## Retention
 

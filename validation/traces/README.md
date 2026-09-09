@@ -20,8 +20,9 @@ uv run python -m scripts.measure_runs --raw-root "<folder holding the .arw files
 ```
 
 That writes the traces, the peak tables and this manifest. `scripts/arw.py` reads the
-export, `scripts/integrate.py` measures the peaks and `scripts/assign.py` proposes
-identities from apex spectra; `tests/test_arw.py` is their gate.
+export, `scripts/integrate.py` measures the peaks and `scripts/assign.py` scores each
+peak's apex spectrum against the scouting run's — evidence towards an identity, never a
+verdict, since the driver names the peaks. `tests/test_arw.py` gates all three.
 
 ## Channels
 

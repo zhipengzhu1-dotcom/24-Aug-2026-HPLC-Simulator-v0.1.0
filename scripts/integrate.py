@@ -33,8 +33,9 @@ from scipy.signal import find_peaks, peak_prominences, savgol_filter
 
 from scripts.arw import Trace
 
-# W-half = sqrt(8 ln 2) x sigma. SPEC section 6 is explicit that the exact constant is
-# used and not the 2.355 rounding, which would cost ~0.04% on every Rs.
+# W-half = sqrt(8 ln 2) x sigma. The research doc (gradient-elution-math.md) section 6 is
+# explicit that the exact constant is used and not the 1.178 or 2.355 roundings the
+# literature quotes, which cost ~0.04% on every Rs. Same citation as hplcsim.resolution.
 _W_HALF_PER_SIGMA = float(np.sqrt(8.0 * np.log(2.0)))
 
 _TAILING_HEIGHT_FRACTION = 0.05

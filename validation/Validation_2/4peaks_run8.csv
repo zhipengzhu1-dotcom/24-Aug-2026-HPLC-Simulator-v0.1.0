@@ -27,7 +27,7 @@ nominal_nm,220
 units,area µAU·s; height µAU; times min
 sampling_hz,20.008
 trace,validation/traces/4peaks_run8-219.8182nm.csv
-integrator,scripts/integrate.py at 9ba9e11
+integrator,scripts/integrate.py at 93aba33
 t0_min,0.525
 dwell_min,0.9375
 noise_AU,5.670e-05
@@ -35,4 +35,4 @@ rs_convention,"rs = dt / (2(sigma1 + sigma2)), sigma = W_half / sqrt(8 ln 2)"
 usp_convention,"2 dt / (W1 + W2), inflection tangents extended to baseline"
 measured_before_prediction,yes
 
-"NOTE: 75 -> 95 %B over tG 20. Every peak elutes at k' 0.6-1.1, essentially in the void, so the retention residual here tests the void volume rather than the retention model; peaks below k' 1 are excluded from residual statistics. s* = 0.00525, 0.33 window-widths BELOW the scouting bracket, so this run varies the start and the steepness together and isolates neither. Empower's report for this run lists a fifth peak at 25.525 min carrying 94.8 % of the area; that is the baseline step where the gradient returns to 75 %B, not a compound, and it is not integrated here. Not pre-registered."
+"NOTE: 75 -> 95 %B over tG 20. Every peak elutes at k' 0.6-1.1, essentially in the void, so the retention residual here tests the void volume rather than the retention model; peaks below k' 1 are excluded from residual statistics. s* = 0.00525, which SPEC section 6 item 1's log_beta measure puts 0.83 window-widths BELOW the scouting bracket -- past the 0.6 boundary, so diagnostic 1 fires STRONG and the run varies start and steepness together, isolating neither. Empower's report for this run lists a fifth peak at 25.525 min carrying 94.8 % of the area; that is the baseline step where the gradient returns to 75 %B, not a compound, and it is not integrated here. Not pre-registered."

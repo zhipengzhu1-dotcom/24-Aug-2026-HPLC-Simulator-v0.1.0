@@ -17,7 +17,7 @@ critical pair at Rs ≈ 1.75, which is what SPEC §10's `Rs ± 0.3` bar always n
 | `4peaks_run6.csv` | tG 25, 25 → 95 %B | held out — raised φ0 by 20 %B, in-bracket on s* (pre-registered as `../run-sheets/4peaks_run6-predicted.csv`; re-equilibrated 3.4 min, 5.7 CV) |
 | `E1.csv` | tG 20, 5 → 85 %B | held out — the axis test (#52 §5.2): shares φ0 with run3 and Δφ / tG / s* with run4 (pre-registered as `../run-sheets/4peaks_E1-predicted.csv`; re-equilibrated 4.0 min, 6.7 CV, not the sheet's 6.4 min, and without its 95 %B wash step) |
 | `4peaks_run7.csv` | tG 20, 50 → 95 %B | held out — φ0 raised to 50 %B, s\* 0.0118 on the shallow bracket edge (#134; **not** pre-registered) |
-| `4peaks_run8.csv` | tG 20, 75 → 95 %B | held out — φ0 raised to 75 %B; every peak at k′ 0.6–1.1, i.e. in the void, and s\* 0.00525 is 0.33 window-widths below the bracket, so it varies start and steepness together (#134; **not** pre-registered) |
+| `4peaks_run8.csv` | tG 20, 75 → 95 %B | held out — φ0 raised to 75 %B; every peak at k′ 0.6–1.1, i.e. in the void, and s\* 0.00525 is 0.83 window-widths below the bracket on SPEC §6 item 1's log_β measure, past the 0.6 strong boundary, so it varies start and steepness together (#134; **not** pre-registered) |
 | `E4_Run3.csv` | tG 20, 5 → 95 %B, two replicates of run3 in one file | repeatability — tR spread 0.002 min (0.012 %), W½ within one tick, at 4.0 min / 6.7 CV re-equilibration (#46, #55) |
 | `sticky-check.json` | scouting pair as a session file | loads the set into the app |
 

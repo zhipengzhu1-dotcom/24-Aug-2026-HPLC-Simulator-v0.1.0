@@ -25,7 +25,7 @@ nominal_nm,254
 units,area µAU·s; height µAU; times min
 sampling_hz,20.008
 trace,validation/traces/run8-254.0824nm.csv
-integrator,scripts/integrate.py at 9ba9e11
+integrator,scripts/integrate.py at 93aba33
 t0_min,0.525
 dwell_min,0.9375
 noise_AU,5.862e-06
