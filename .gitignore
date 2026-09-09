@@ -14,3 +14,6 @@ Front-End Design/
 # validation/traces/MANIFEST.csv the checksums that identify the raw they came from.
 validation/Waters Data/
 *.arw
+
+# PROTOTYPE scratch — sign-off decisions, meant to be deleted with the branch.
+PROTOTYPE-*.json
