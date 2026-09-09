@@ -28,3 +28,12 @@ The approved spec is `SPEC.md` (normative). Science detail: `docs/research/gradi
 
 - One build ticket per branch (`build/NN-slug`); run `/code-review` before merging to main.
 - Parallel ticket sessions get separate `git worktree`s from the start — never share one checkout (learned the hard way during #16/#18).
+- **A resolution is the record; a research doc is the authority.** Any number a later
+  prediction, warning or SPEC line will rest on lands in `docs/research/` (or `SPEC.md`)
+  in the **same session that establishes it** — the issue comment carries the story, the
+  doc carries the number. A resolution that supersedes a figure already in a research doc
+  amends that doc in the same pass, in place, dated and ticket-stamped, with the
+  superseded reading kept beneath rather than deleted. The failure this prevents is two
+  authorities disagreeing: `run-sheets/4peaks_run6-predicted.csv` and
+  `Validation_2/4peaks_run6.csv` carried opposite claims about the re-equilibration
+  end-point for five days, and only a later bench run settled which was true.

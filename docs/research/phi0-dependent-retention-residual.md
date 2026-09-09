@@ -655,23 +655,83 @@ ticket; a different convention scales the whole column but not the ordering.)
 
 ### 6.3 The empirical law, and the honest limit on it [derived]
 
-Both samples give **×2.1 per 10 %B of φ₀** — 2.086 and 2.082 for campaign #27's
-two successive steps, 2.26 for Validation_2's one step. The residual is
-*multiplicative* in φ₀: it behaves like a **gain** on whatever produces the
-baseline residual, not like an additive term bolted on top.
+**Amended 2026-09-09 (#134).** The ×2.1 figure was fitted on short baselines at
+t₀ = 0.6 min. Both of those conditions have since changed and the law is weaker
+than it looked. The amended result is stated first; the original reading is kept
+beneath it, because §7 rests on the part of it that survived.
 
-That is the most robust quantitative statement in this document and also its
-sharpest unexplained fact: **no mechanism in §3 has a sensitivity that grows
-faster than ×1.4 per 10 %B.** The timing family is pinned at ×1.30, essentially
-regardless of which quantity is wrong.
+**The amended law.** Held-out runs on Validation_2 now span φ₀ = 5 → 75 %B. Refit
+on one footing (engine at `main`, t₀ = 0.525 min, fit from `4peaks_run1.csv` +
+`4peaks_run2.csv` only), the mean over-prediction per run is:
 
-**But the two datasets agree only on the ratio, not on the size.** In absolute
-terms the φ₀ excess is 0.0155 min (Validation_2) and 0.046 min (campaign #27) for
-the same 5 → 15 %B step; expressed as an equivalent composition error, 0.16 %B and
-0.24 %B; expressed as an equivalent error in the fitted S_e, 0.47 % and 1.04 %.
-**A single calibrated correction fitted to one of them would be wrong by a factor
-of 3 on the other**, which is the main reason §7 recommends reporting the hazard
-rather than correcting for it.
+| φ₀ | run | departure from the scouting start | pred − meas |
+|---|---|---|---|
+| 5 %B | run 3 | — | +0.019 min |
+| 5 %B | E1 | — | +0.026 min |
+| 15 %B | run 4 | +10 %B | +0.036 min |
+| 25 %B | run 6 | +20 %B | +0.044 min |
+| 50 %B | φ₀-50 | +45 %B | +0.246 min |
+| 75 %B | φ₀-75 | +70 %B | **−0.084 min** |
+
+Least squares in ln(residual) over the four φ₀ from 5 to 50 %B, averaging the two
+5 %B runs, gives
+
+> residual (min) = e^(−4.174 + 0.05322·%B) → **×1.70 per 10 %B**
+
+reproducing those four points to −10 % / +32 %. The multiplicative *form*
+survives; the *exponent* does not. Two things moved it off ×2.1:
+
+1. **The t₀ rebaseline (#24).** The same Validation_2 step that gave ×2.26 at
+   t₀ = 0.6 min gives **×1.63** at t₀ = 0.525 min. §7.7 warned that any reading
+   of this baseline was hostage to #24. It was.
+2. **The lever arm.** Per-step ratios are 1.63 (5→15), 1.21 (15→25) and 1.99
+   (25→50) — scatter of about ±30 % around 1.70, not the tight agreement two
+   adjacent short steps suggested. Extrapolating the old ×2.1–2.26 from φ₀ 5 to
+   50 %B predicts +0.63 to +0.87 min against a measured +0.246: **too large by
+   2.6–3.6×**.
+
+**The law has a ceiling, and it lies between +45 and +70 %B of departure.** At
+φ₀ = 75 %B the ×1.70 law predicts +0.83 min and the residual is **−0.084 min** —
+it changes sign. That is not a larger version of the same drift: three of the four
+bands leave the column during the initial hold, before the ramp reaches the column
+head, at k_e = 2.19–2.80, on or below the k ≫ 1 floor the closed form assumes. The
+gain law describes the gradient regime, and stops describing anything once the
+bands stop eluting on the ramp.
+
+**Where SPEC §10's bar breaks.** Measured: the two-run fit holds to a **+20 %B
+departure** from the scouting start (mean |Δt_R| 0.26 % against a 2 % bar) and
+fails at **+45 %B** (2.81 %). The crossing is bracketed by measurement, not
+measured — the ×1.70 law places it near a +40 %B departure, i.e. a candidate
+starting around 45 %B against a scouting pair that started at 5 %B. That figure is
+an interpolation between two runs and must not be quoted as a threshold.
+
+**What has not changed: the two datasets still disagree on size.** For the same
+5 → 15 %B step the φ₀ excess is 0.0155 min (Validation_2) and 0.046 min (campaign
+#27); as an equivalent composition error, 0.16 %B and 0.24 %B; as an equivalent
+error in fitted S_e, 0.47 % and 1.04 %. **A single calibrated correction fitted to
+one would still be wrong by a factor of 3 on the other.** The 50 and 75 %B runs
+were made on Validation_2 alone, so they do not narrow that gap — they widen the
+range over which it is untested. §7.1's recommendation to report the hazard rather
+than correct for it stands, and stands more firmly.
+
+**Provenance of the two new runs, and a caveat unique to them.** Measured
+2026-09-08 at t_G 20, 50 → 95 %B and 75 → 95 %B, 0.5 min initial hold, the scouting
+method otherwise unchanged; peak tables from the driver's `08Sep2026 Results.xlsx`
+and the `.arw` exports under `validation/Waters Data/` (untracked). No run sheet
+preceded either injection, so neither was pre-registered. **The transcribed CSVs
+are not in this repository** — they were prepared and then withdrawn at the
+driver's instruction on 2026-09-09. Unlike every other number in this document,
+these two runs cannot be re-derived from `validation/`.
+
+**The original reading, superseded above [2026-09-02].** Both samples gave **×2.1
+per 10 %B of φ₀** — 2.086 and 2.082 for campaign #27's two successive steps, 2.26
+for Validation_2's one step — and the residual was *multiplicative* in φ₀: a
+**gain** on whatever produces the baseline residual, not an additive term bolted on
+top. That was called the most robust quantitative statement in this document and
+also its sharpest unexplained fact: no mechanism in §3 has a sensitivity growing
+faster than ×1.4 per 10 %B, the timing family pinned at ×1.30. The gain reading
+survives at the amended exponent; ×1.4 still does not reach ×1.70, so the §3 gap
+is narrowed, not closed.
 
 ---
 
@@ -682,10 +742,15 @@ it belongs in an open v0.1 build ticket; it is material for the v0.2 φ₀-freed
 work (`composition-extrapolation.md` §10 / issues #44, #46) and for a new ticket
 covering §5's bench runs.
 
-**7.1 Do not fit a correction.** The two datasets agree on the *ratio* (×2.1 per
-10 %B) and disagree by a factor of 3–4 on the *size* (§6.3). A correction term
-calibrated on either one would be wrong on the other, and the mechanism is not
-identified. Predict honestly and annotate.
+**7.1 Do not fit a correction.** *(Amended 2026-09-09, #134.)* The two datasets
+disagree by a factor of 3–4 on the *size* of the residual (§6.3), and they no
+longer agree closely on the *ratio* either: at t₀ = 0.525 min the exponent is
+×1.70 per 10 %B across φ₀ 5–50 %B with ±30 % scatter between steps, and it
+reverses sign entirely by φ₀ = 75 %B. A correction calibrated on either dataset
+would be wrong on the other *and* would be extrapolated outside its own measured
+range at exactly the starting compositions a user is most likely to try. The
+recommendation is unchanged and better supported than when it was written:
+predict honestly and annotate.
 
 **7.2 φ₀ is a third axis, distinct from t_G and from s\*, and the repo currently
 has no diagnostic for it.** `composition-extrapolation.md` §10.1 establishes that
@@ -705,14 +770,23 @@ run 7 peak 1 does fall below it (log₁₀ k₀ = 1.74), which is consistent wit
 peak having the worst λ (1.90) — so keep the guard, but do not treat it as
 covering φ₀ generally.
 
-**7.4 A defensible interim rule, pending E1.** Express the expected penalty in λ
-and make it grow multiplicatively in φ₀-distance, since that is the one thing both
-datasets agree on: a candidate at Δφ₀ = |φ₀,cand − φ₀,scout| carries an expected
-retention error of roughly the in-bracket residual × 2.1^(Δφ₀/0.10). Stated to a
-user as *"every 10 %B you raise the starting composition above the scouting runs'
-roughly doubles the retention error"*, that is honest, memorable, supported by two
-independent samples on this instrument, and explicitly empirical rather than
-mechanistic. It should be labelled as an observation on this instrument, not a law.
+**7.4 An interim rule — withdrawn 2026-09-09 (#134).** This section proposed
+telling the user that *"every 10 %B you raise the starting composition above the
+scouting runs' roughly doubles the retention error"*, from an expected penalty of
+the in-bracket residual × 2.1^(Δφ₀/0.10). **Do not ship that sentence.** E1 has
+since been run, and so have held-out starts at φ₀ = 25, 50 and 75 %B: the exponent
+is ×1.70 rather than ×2.1, it scatters ±30 % between steps, and at a +70 %B
+departure the residual changes sign — so the rule mispredicts by 2.6–3.6× at a
++45 %B departure and gets the *direction* wrong at +70 %B (§6.3).
+
+Per the repository's rule against unevidenced numbers in user-facing warnings, the
+defensible statement is the measured bracket rather than an exponent: **the fit is
+known to hold to a +20 %B departure from the scouting start, and to fail SPEC §10's
+mean bar by a +45 %B departure.** Stated as a departure, with a worked example: a
+scouting pair that started at 5 %B supports a candidate starting at 25 %B; a
+candidate starting at 50 %B is outside anything the fit has been shown to do. Where
+the crossing lies between those two is interpolated, not measured, and should not
+appear in warning text.
 
 **7.5 Keep warnings over blocks.** Nothing here justifies refusing a prediction at
 raised φ₀. At φ₀ = 15 %B the error is 0.18 % of t_R; it matters because the peaks
@@ -762,6 +836,20 @@ This is a reason to close #24 before, not after, the φ₀ work.
    protocol. Given that the re-equilibration end-point (5 vs 15 vs 25 %B) is one of
    the two surviving candidate mechanisms, this is worth fixing before more φ₀ runs
    are collected, not after.
+
+   **Amended 2026-09-09 (#134): eliminated as a *mechanism*; the protocol gap
+   stands.** The held-out run at φ₀ = 75 %B settles the end-point question
+   directly. `4peaks_run6.csv`'s own note records that re-equilibration
+   deliberately ends at 5 %B. Had the column head still been at 5 %B at injection,
+   no band could move until the 75 %B front arrived at t_D = 0.9375 min, putting
+   the earliest possible elution at 0.9375 + t₀(1 + k) = 2.61 min for Unknown-1.
+   It was measured at **1.788 min**, against 1.675 min predicted for a column
+   fully equilibrated at 75 %B. The column was at φ₀. At φ₀ = 50 %B the same
+   mechanism pushes the wrong way — an under-equilibrated column elutes *later*
+   than predicted, and the engine over-predicts there. Re-equilibration is
+   therefore not available as an explanation at either start, which leaves §2's
+   other survivor alone. The protocol gap itself (5.7–6.7 CV against the stated
+   ≥ 10 CV) is untouched by this and still worth closing.
 5. **`validation/Validation_2/` has no `method.csv` or protocol note of its own.**
    The four-peak dataset's column, mobile phase, injection volume and diluent are
    inferred from the parent `validation/method.csv`. If they differ in any respect
@@ -772,6 +860,26 @@ This is a reason to close #24 before, not after, the φ₀ work.
    quantity is both the dwell sensitivity and the size of the entire pre-gradient
    migration correction** (§2.1). One number then bounds two error sources at once,
    which is exactly the arithmetic this ticket needed.
+7. **`SPEC.md` §6, diagnostic 7 (φ₀ departure) — its message numbers are
+   superseded** [derived, §6.3, 2026-09-09]. The specified message quotes *"the
+   first 10 %B above the scouting start roughly doubled the retention error on
+   both samples (0.42 → 0.82 %… 0.11 → 0.23 %)"* and *"one sample kept doubling
+   (1.67 % at +20 %B) and the other flattened (0.26 %)"*. Those figures stand as
+   measurements, but the **doubling reading does not survive** the four-peak
+   sample's new points: the exponent across φ₀ 5–50 %B is ×1.70 per 10 %B, the
+   per-step ratios scatter 1.21–1.99, and the residual reverses sign by
+   φ₀ = 75 %B. SPEC's surrounding design is unaffected and correct — no correction
+   is fitted, no multiplier is evaluated for the candidate, and the message quotes
+   observations rather than a rule — so this is a **numbers refresh inside an
+   unchanged diagnostic**, not a redesign. Two further facts belong in the same
+   refresh: the strong tier at Δφ₀ ≥ +10 %B is now backed by a run that fails
+   SPEC §10's mean bar at a **+45 %B departure with no diagnostic firing at all**
+   (s\* on the bracket edge, elution composition inside the scouting window,
+   widths within 1 %); and §10 item 5's Rs claim is still scoped to "a raised start
+   up to 20 %B". This belongs to the v0.3 amendment (#145), not to any open v0.2
+   ticket. Note the constraint in §6.3's provenance paragraph: **the two underlying
+   runs are not in the repository**, so the refresh cannot be made from
+   `validation/` as it stands.
 
 ---
 
