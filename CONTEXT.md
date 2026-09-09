@@ -93,3 +93,41 @@ _Avoid_: temperature level, set-point (which is the instrument's instruction, no
 **Van 't Hoff slope**:
 For one peak, the fitted slope of ln k0, or of S_e, against reciprocal kelvin temperature through the temperature points. Two per peak; a peak from a session without a series has none.
 _Avoid_: temperature coefficient, enthalpy (a reading of the ln k0 slope, not its name), dH
+
+### Measurement
+
+**Trace**:
+The signal of one run at one channel: absorbance against time. It is what every measured
+number is read off, and it is not the peak table — a peak table is an interpretation of a
+trace, and two people can disagree about it while sharing the trace.
+_Avoid_: chromatogram (which is also the drawn figure), signal, raw data
+
+**Channel**:
+The single wavelength a run is read at, named by the wavelength it actually holds rather
+than the one that was asked for. A detector's grid rarely contains the round number a
+method names, so the two differ by a fraction of a nanometre and the difference is
+recorded, never rounded away.
+_Avoid_: wavelength (which is the nominal request), nm, detector setting
+
+**Measured resolution**:
+The resolution read off a trace: the separation divided by twice the summed standard
+deviations, with each taken from that peak's measured width at half height. It is the
+same definition the engine predicts in, so a measured and a predicted resolution differ
+by the model and never by the definition.
+_Avoid_: resolution unqualified when a measurement is meant, Rs (which is either)
+
+**USP resolution**:
+The pharmacopoeial resolution an instrument reports, built from tangent widths struck at
+the baseline instead of from standard deviations. Recorded beside the measured resolution
+and never asserted against a prediction: the two agree on a symmetric peak, and the gap
+between them on a real one is that peak's asymmetry rather than a disagreement about
+separation.
+_Avoid_: resolution, instrument resolution, tangent resolution
+
+**Void-eluting peak**:
+A peak whose retention factor is below 1. It leaves so soon after the void that its
+retention time reports the column's dead volume more than the compound's retention, so it
+is measured and reported like any other peak and left out of residual statistics — a
+model that places it correctly has been tested on the plumbing, not on retention.
+_Avoid_: unretained peak (which is k′ = 0 exactly), early eluter (SPEC §6's own term for a
+different check), void peak
