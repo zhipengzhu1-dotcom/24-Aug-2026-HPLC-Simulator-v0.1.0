@@ -6,6 +6,17 @@ A Python HPLC simulator for working chromatographers, inspired by ACD/Labs Metho
 
 The approved specification is [SPEC.md](SPEC.md); the science was validated against real lab runs before build (see `validation/`). Planning ran as two wayfinder maps: [#1](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/1) for v0.1 and [#41](https://github.com/zhipengzhu1-dotcom/24-Aug-2026-HPLC-Simulator-v0.1.0/issues/41) for v0.2.
 
+## What it looks like
+
+Both screenshots load the three-compound lab runs from `validation/` (scouting at tG 15 and
+45 min) and predict a 25-minute candidate. The predicted retention times, 13.871, 16.740 and
+24.395 min, compare with 13.787, 16.658 and 24.358 min measured on the instrument in
+`validation/run3.csv`.
+
+![v0.2.0 with the three-peak lab runs loaded, showing the fitted LSS parameters, calibrated composition windows, and the predicted chromatogram for a 25-minute candidate](docs/screenshots/v0.2.0-example-fit-parameters.png)
+
+![v0.2.0 Resolution tab for the same session, showing predicted retention times, peak widths, and Rs for each adjacent pair](docs/screenshots/v0.2.0-example-resolution.png)
+
 ## Quickstart
 
 You need [uv](https://docs.astral.sh/uv/) and Python ≥ 3.12 — uv fetches a matching interpreter itself if you have none. Every command below is run from the repo root; uv creates and syncs the environment on first use, so there is no separate install step.
